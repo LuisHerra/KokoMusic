@@ -33,11 +33,14 @@ const app = express();
 const PORT = process.env.PORT ?? 3001;
 
 // ── Middleware ────────────────────────────────────────────────────────────────
+const rawOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''))
+  : [];
+
 const allowedOrigins = [
   // Localhost dev — cualquier puerto
   /^http:\/\/(localhost|127\.0\.0\.1):\d+$/,
-  // Portfolio en Vercel (producción)
-  process.env.CORS_ORIGIN,
+  ...rawOrigins,
 ].filter(Boolean);
 
 app.use(
