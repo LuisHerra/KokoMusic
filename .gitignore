@@ -1,0 +1,28 @@
+# Dependencias
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Builds
+frontend/dist/
+backend/dist/
+
+# Audio cache (puede ser grande)
+backend/audio_cache/
+audio_cache/
+
+# Entorno
+.env
+frontend/.env
+backend/.env
+
+# Vite
+frontend/.vite/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db

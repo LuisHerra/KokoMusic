@@ -1,0 +1,11 @@
+node_modules/
+dist/
+audio_cache/
+.env
+*.log
+npm-debug.log*
+data/uploads/*.m4a
+data/uploads/*.mp3
+data/uploads/*.opus
+data/user_history.json
+data/cdn_usage.json

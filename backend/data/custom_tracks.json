@@ -1,0 +1,25 @@
+[
+  {
+    "id": "custom_31daec78-919f-4f0f-a891-2b08500ad9f6",
+    "title": "Halo 2",
+    "artist": "Samurai Jay & Vito Salamanca",
+    "album": "",
+    "cover": "https://img.youtube.com/vi/LuOiIojQKTc/0.jpg",
+    "sourceType": "youtube_alias",
+    "youtubeId": "LuOiIojQKTc",
+    "originalTrackId": "6769064409",
+    "duration": 137960,
+    "createdAt": "2026-06-08T12:53:59.819Z"
+  },
+  {
+    "id": "custom_5a853402-05ba-4762-a227-b1d1fd68c0e9",
+    "title": "Transicion1",
+    "artist": "Koko",
+    "album": "",
+    "cover": "/uploads/default_cover.png",
+    "audioPath": "D:\\Github\\KokoWorks\\KokoMusic\\backend\\data\\uploads\\9c7c48f5-a73e-4076-adae-ca7bff98783f.m4a",
+    "sourceType": "upload",
+    "duration": 180000,
+    "createdAt": "2026-06-17T11:03:52.141Z"
+  }
+]
