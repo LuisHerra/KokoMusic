@@ -40,8 +40,14 @@ const rawOrigins = process.env.CORS_ORIGIN
 const allowedOrigins = [
   // Localhost dev — cualquier puerto
   /^http:\/\/(localhost|127\.0\.0\.1):\d+$/,
+  // Permitir kokoworks.es y subdominios
+  /^https?:\/\/(.*\.)?kokoworks\.es$/,
+  // Permitir vercel.app y subdominios
+  /^https?:\/\/(.*\.)?vercel\.app$/,
   ...rawOrigins,
 ].filter(Boolean);
+
+console.log('[CORS] Configured origins:', allowedOrigins.map(o => o.toString()));
 
 app.use(
   cors({
