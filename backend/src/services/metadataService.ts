@@ -16,8 +16,7 @@ import {
   getTrackFromDB,
   type TrackRow,
 } from './supabaseService';
-import yts from 'yt-search';
-import { searchInvidious as invidiousSearch, isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './invidiousService';
+import { searchInvidious as invidiousSearch } from './invidiousService';
 
 const ITUNES_BASE = 'https://itunes.apple.com';
 
@@ -316,25 +315,10 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
   }
 }
 
-/** Búsqueda directa en YouTube via yt-search con fallback a Invidious */
+/** Búsqueda de YouTube vía Invidious (yt-search eliminado — siempre falla por bloqueo de IP) */
 async function searchYouTube(query: string, limit: number, cacheKey: string): Promise<TrackMetadata[]> {
-  let videos: any[] = [];
-
-  // Sólo intentamos yt-search si el circuit breaker lo permite
-  if (!isYtSearchDisabled()) {
-    try {
-      const result = await yts(query);
-      videos = result.videos || [];
-      recordYtSearchSuccess();
-    } catch (ytsErr) {
-      recordYtSearchFailure();
-    }
-  }
-
   try {
-    if (videos.length === 0) {
-      videos = await invidiousSearch(query, limit);
-    }
+    const videos = await invidiousSearch(query, limit);
 
     // Priorizar canales oficiales (VEVO, Topic)
     const filteredVideos = videos

@@ -64,12 +64,17 @@ export function isYtSearchDisabled(): boolean {
 
 /** Registra un fallo de yt-search y activa el circuit breaker si es necesario. */
 export function recordYtSearchFailure(): void {
+  // Si ya está desactivado, solo renovar el timer sin spam en logs
+  if (isYtSearchDisabled()) {
+    ytSearchDisabledUntil = Date.now() + YT_SEARCH_COOLDOWN_MS;
+    return;
+  }
   ytSearchFailCount++;
   if (ytSearchFailCount >= YT_SEARCH_FAIL_THRESHOLD) {
     ytSearchDisabledUntil = Date.now() + YT_SEARCH_COOLDOWN_MS;
     console.warn(
       `[InvidiousService] yt-search desactivado por ${YT_SEARCH_COOLDOWN_MS / 60000} min ` +
-      `(${ytSearchFailCount} fallos consecutivos). Usando Invidious directamente.`
+      `(${ytSearchFailCount} fallos). Usando Invidious directamente.`
     );
   }
 }
@@ -101,6 +106,11 @@ export async function refreshInstancesList(): Promise<void> {
     const processItem = (domain: string, details: any) => {
       if (details.type === 'https') {
         const uri = details.uri || `https://${domain}`;
+
+        // Filtrar dominios Yggdrasil (.ygg) — son una red overlay y no funcionan desde internet normal
+        if (uri.endsWith('.ygg') || domain.endsWith('.ygg')) return;
+        // Filtrar dominios .i2p — otra red overlay inaccesible
+        if (uri.includes('.i2p') || domain.endsWith('.i2p')) return;
         
         const monitor = details.monitor;
         const uptime = Number(monitor?.uptime ?? 0);
@@ -196,7 +206,8 @@ async function fetchFromInstance(
     clearTimeout(timeoutId);
     const msg = (err as Error).message;
     if (!msg.includes('aborted')) {
-      console.warn(`[InvidiousService] Falló ${instance}: ${msg}`);
+      // Penalizar también en errores de red (fetch failed, DNS, etc.)
+      penalizeInstance(instance);
     }
     return null;
   }
