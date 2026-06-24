@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && !localStorage.getItem('koko_device_id')) {
   localStorage.setItem('koko_device_id', crypto.randomUUID());
 }
 
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
+export const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
 
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -54,7 +54,7 @@ export interface Playlist {
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
-export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube' = 'itunes') =>
+export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube' | 'lyrics' = 'itunes') =>
   apiFetch<{ tracks: Track[]; source: string }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`);
 
 // ── Tracks ────────────────────────────────────────────────────────────────────

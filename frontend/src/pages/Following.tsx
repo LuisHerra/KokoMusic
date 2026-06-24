@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useNotificationStore } from '../store/notificationStore';
 import { usePlayerStore } from '../store/playerStore';
+import { BASE } from '../lib/api';
 
 interface FollowedArtist {
   artistId: number;
@@ -28,7 +29,7 @@ export default function Following() {
     queryKey: ['followed-artists'],
     queryFn: async () => {
       const userId = localStorage.getItem('koko_device_id') || '';
-      const res = await fetch('http://localhost:3001/api/artist/follows', {
+      const res = await fetch(`${BASE}/artist/follows`, {
         headers: {
           'Content-Type': 'application/json',
           ...(userId ? { 'x-user-id': userId } : {})
@@ -70,7 +71,7 @@ export default function Following() {
   const handleMarkAllRead = async () => {
     try {
       markAllRead();
-      await fetch('http://localhost:3001/api/artist/notifications/read', {
+      await fetch(`${BASE}/artist/notifications/read`, {
         method: 'POST',
       });
       // Invalidate query to refresh follows or notification status if needed
@@ -93,7 +94,7 @@ export default function Following() {
 
     // Call individual mark as read API or trigger global (global is fine)
     try {
-      await fetch('http://localhost:3001/api/artist/notifications/read', {
+      await fetch(`${BASE}/artist/notifications/read`, {
         method: 'POST',
       });
     } catch (e) {
@@ -111,7 +112,7 @@ export default function Following() {
 
     setPlayingId(artist.artistId);
     try {
-      const res = await fetch(`http://localhost:3001/api/artist/${artist.artistId}?name=${encodeURIComponent(artist.artistName)}`);
+      const res = await fetch(`${BASE}/artist/${artist.artistId}?name=${encodeURIComponent(artist.artistName)}`);
       if (!res.ok) return;
       const data = await res.json();
       const tracks = data.artist?.topTracks || [];

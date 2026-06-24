@@ -24,7 +24,7 @@ export default function Search() {
   const mood = searchParams.get('mood');
   const [input, setInput] = useState(searchParams.get('q') ?? '');
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
-  const [source, setSource] = useState<'itunes' | 'youtube'>('itunes');
+  const [source, setSource] = useState<'itunes' | 'youtube' | 'lyrics'>('itunes');
 
   const { currentTrack, isPlaying, setTrack, activeJamCode, addToQueue, setError } = usePlayerStore();
 
@@ -89,7 +89,7 @@ export default function Search() {
         </h1>
         {/* Toggle de fuente */}
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', borderRadius: 'var(--radius-full)', padding: 4 }}>
-          {(['itunes', 'youtube'] as const).map((s) => (
+          {(['itunes', 'youtube', 'lyrics'] as const).map((s) => (
             <button
               key={s}
               onClick={() => setSource(s)}
@@ -106,7 +106,7 @@ export default function Search() {
                 color: source === s ? '#000' : 'var(--text-secondary)',
               }}
             >
-              {s === 'itunes' ? 'KokoMusic' : 'YouTube'}
+              {s === 'itunes' ? 'KokoMusic' : s === 'youtube' ? 'YouTube' : 'Letra'}
             </button>
           ))}
         </div>
@@ -122,7 +122,7 @@ export default function Search() {
           <input
             className="search-input"
             type="text"
-            placeholder="Artistas, canciones, álbumes..."
+            placeholder={source === 'lyrics' ? 'Introduce fragmento de letra de la canción...' : 'Artistas, canciones, álbumes...'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             autoFocus

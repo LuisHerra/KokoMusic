@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
+import { BASE } from '../lib/api';
 
 const COUNTRIES = [
   { code: 'global', name: 'Global' },
@@ -27,7 +28,7 @@ export default function TopArtists() {
     queryKey: ['top', type, country, sort],
     queryFn: async () => {
       const endpoint = type === 'artists' ? 'top-artists' : 'top-tracks';
-      const res = await fetch(`http://localhost:3001/api/${endpoint}?country=${country}&sort=${sort}`);
+      const res = await fetch(`${BASE}/${endpoint}?country=${country}&sort=${sort}`);
       if (!res.ok) throw new Error(`Error al cargar ${type}`);
       return res.json();
     }

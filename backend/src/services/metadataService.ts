@@ -79,7 +79,7 @@ function trackToRow(track: TrackMetadata): TrackRow {
 }
 import { hashStringToInteger } from './artistService';
 
-export type SearchSource = 'itunes' | 'youtube';
+export type SearchSource = 'itunes' | 'youtube' | 'lyrics';
 
 /** Convierte un resultado de yt-search al formato interno (fuente YouTube) */
 function ytResultToTrack(v: any, index = 0): TrackMetadata {
@@ -203,6 +203,11 @@ export async function searchTracks(
     return searchYouTube(query, limit, cacheKey);
   }
 
+  // Si el usuario elige letras, ir a LRCLIB
+  if (source === 'lyrics') {
+    return searchLyrics(query, limit, cacheKey);
+  }
+
   try {
     const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(query)}&entity=musicTrack&limit=${limit}&media=music`;
     const res = await fetch(url);
@@ -236,13 +241,99 @@ export async function searchTracks(
   }
 }
 
+/** Búsqueda por letra a través de LRCLIB y resolución de metadatos */
+async function searchLyrics(query: string, limit: number, cacheKey: string): Promise<TrackMetadata[]> {
+  try {
+    const lrcUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
+    const res = await fetch(lrcUrl, {
+      headers: {
+        'User-Agent': 'KokoMusic/1.0 (https://github.com/lherraa/KokoMusic)'
+      }
+    });
+    if (!res.ok) throw new Error(`LRCLIB API error: ${res.status}`);
+    const results = await res.json() as any[];
+
+    if (!Array.isArray(results) || results.length === 0) {
+      return [];
+    }
+
+    const uniqueMatches = results.slice(0, limit);
+    const resolvedTracks: TrackMetadata[] = [];
+
+    // Resolver cada coincidencia en iTunes para obtener carátulas y metadatos limpios
+    for (const item of uniqueMatches) {
+      try {
+        const itunesUrl = `${ITUNES_BASE}/search?term=${encodeURIComponent(item.artistName + ' ' + item.trackName)}&entity=musicTrack&limit=1&media=music`;
+        const itunesRes = await fetch(itunesUrl);
+        if (itunesRes.ok) {
+          const itunesData = await itunesRes.json() as any;
+          if (itunesData.results && itunesData.results.length > 0) {
+            const track = itunesResultToTrack(itunesData.results[0], 0);
+            resolvedTracks.push(track);
+            continue;
+          }
+        }
+      } catch (err) {
+        console.warn(`[Lyrics Search] Falló resolución iTunes para ${item.artistName} - ${item.trackName}:`, err);
+      }
+
+      // Fallback si iTunes no lo encuentra: armar track con la info de LRCLIB
+      const fallbackTrackId = String(item.id || hashStringToInteger(item.trackName + item.artistName));
+      resolvedTracks.push({
+        id: fallbackTrackId,
+        itunesId: 0,
+        artistId: hashStringToInteger(item.artistName),
+        title: item.trackName,
+        artist: item.artistName,
+        album: item.albumName || 'Coincidencia de letra',
+        cover: '', // Sin carátula o fallback
+        duration: (item.duration || 0) * 1000,
+        genre: 'Desconocido',
+        releaseDate: null,
+        popularity: 50,
+        preview_url: null,
+      });
+    }
+
+    const tracks = deduplicateTracks(resolvedTracks);
+    if (tracks.length > 0) {
+      cache.setex(cacheKey, 3600, JSON.stringify(tracks));
+    }
+
+    // UPSERT en Supabase L2 los tracks válidos de iTunes
+    const itunesTracks = tracks.filter(t => t.itunesId > 0);
+    if (itunesTracks.length > 0) {
+      upsertTracks(itunesTracks.map(trackToRow)).catch(err =>
+        console.error('[Metadata] Error en UPSERT a Supabase (lyrics):', err)
+      );
+    }
+
+    return tracks;
+  } catch (error) {
+    console.error('[Metadata] Error en searchLyrics:', error);
+    return [];
+  }
+}
+
 /** Búsqueda directa en YouTube via yt-search */
 async function searchYouTube(query: string, limit: number, cacheKey: string): Promise<TrackMetadata[]> {
+  let videos: any[] = [];
   try {
     const result = await yts(query);
+    videos = result.videos || [];
+  } catch (ytsErr) {
+    console.warn('[Metadata] yt-search falló en searchYouTube, intentando Invidious fallback:', (ytsErr as Error).message);
+  }
+
+  try {
+    if (videos.length === 0) {
+      const { searchInvidious } = await import('./invidiousService');
+      videos = await searchInvidious(query, limit);
+    }
+
     // Priorizar canales oficiales (VEVO, Topic)
-    const videos = result.videos
-      .filter(v => v.videoId && v.duration?.seconds > 0)
+    const filteredVideos = videos
+      .filter(v => v.videoId && (v.duration?.seconds > 0 || v.duration?.seconds === undefined))
       .sort((a, b) => {
         const aOfficial = /vevo$|- topic$/i.test(a.author?.name ?? '');
         const bOfficial = /vevo$|- topic$/i.test(b.author?.name ?? '');
@@ -252,7 +343,7 @@ async function searchYouTube(query: string, limit: number, cacheKey: string): Pr
       })
       .slice(0, limit);
 
-    const rawTracks = videos.map((v, idx) => ytResultToTrack(v, idx));
+    const rawTracks = filteredVideos.map((v, idx) => ytResultToTrack(v, idx));
     const uniqueTracks = deduplicateTracks(rawTracks);
     
     if (uniqueTracks.length > 0) {

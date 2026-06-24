@@ -1,7 +1,7 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylists, createPlaylist, getCollabPlaylists, deletePlaylist, getPlaylistTrackCount } from '../../lib/api';
+import { getPlaylists, createPlaylist, getCollabPlaylists, deletePlaylist, getPlaylistTrackCount, BASE } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/api';
 import { usePlayerStore } from '../../store/playerStore';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -183,7 +183,7 @@ export default function Sidebar() {
       setImportState({ active: true, current: 0, total: 0, name: 'Analizando...' });
       
       // 1. Obtener metadatos crudos de Spotify
-      const parseRes = await fetch('http://localhost:3001/api/import/parse', {
+      const parseRes = await fetch(`${BASE}/import/parse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
@@ -201,7 +201,7 @@ export default function Sidebar() {
       for (let i = 0; i < tracksToResolve.length; i++) {
         const track = tracksToResolve[i];
         try {
-          const res = await fetch('http://localhost:3001/api/import/resolve', {
+          const res = await fetch(`${BASE}/import/resolve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ track })

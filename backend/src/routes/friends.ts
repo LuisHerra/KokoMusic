@@ -176,7 +176,18 @@ router.get('/profile/:userId', async (req, res) => {
     }
   }
 
-  if (!profile) return err(res, 'Perfil no encontrado', 404);
+  if (!profile) {
+    // Fallback guest profile in memory to avoid 404 for guest device IDs
+    profile = {
+      id: userId,
+      username: `guest_${userId.substring(0, 8)}`,
+      display_name: 'Oyente Koko',
+      avatar_url: null,
+      bio: 'Oyente temporal (Invitado)',
+      is_public: true,
+      created_at: new Date().toISOString()
+    };
+  }
 
   // Find common playlists
   let commonPlaylists: any[] = [];
@@ -613,31 +624,57 @@ router.patch('/profile', async (req, res) => {
   if (username !== undefined) update.username = username;
   if (is_public !== undefined) update.is_public = is_public;
 
-  const { data, error } = await supabase!
-    .schema('kokomusic')
-    .from('koko_profiles')
-    .upsert({ id: userId, ...update }, { onConflict: 'id' })
-    .select()
-    .single();
-
-  if (error) return err(res, error.message);
-
-  // Sync to auth.users raw_user_meta_data
+  // Check if user is registered in auth.users before attempting DB upsert to avoid foreign key violations
+  let isAuthUser = false;
   try {
-    const metaUpdates: any = {};
-    if (display_name !== undefined) metaUpdates.display_name = display_name;
-    if (avatar_url !== undefined) metaUpdates.avatar_url = avatar_url;
-
-    if (Object.keys(metaUpdates).length > 0) {
-      await supabase!.auth.admin.updateUserById(userId, {
-        user_metadata: metaUpdates
-      });
+    const { data: authUser } = await supabase!.auth.admin.getUserById(userId);
+    if (authUser?.user) {
+      isAuthUser = true;
     }
-  } catch (authErr) {
-    console.error('[Sync Profile Update] updateUserById error:', authErr);
+  } catch (e) {
+    // Not an auth user
   }
 
-  res.json({ profile: data });
+  if (isAuthUser) {
+    const { data, error } = await supabase!
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .upsert({ id: userId, ...update }, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) return err(res, error.message);
+
+    // Sync to auth.users raw_user_meta_data
+    try {
+      const metaUpdates: any = {};
+      if (display_name !== undefined) metaUpdates.display_name = display_name;
+      if (avatar_url !== undefined) metaUpdates.avatar_url = avatar_url;
+
+      if (Object.keys(metaUpdates).length > 0) {
+        await supabase!.auth.admin.updateUserById(userId, {
+          user_metadata: metaUpdates
+        });
+      }
+    } catch (authErr) {
+      console.error('[Sync Profile Update] updateUserById error:', authErr);
+    }
+
+    res.json({ profile: data });
+  } else {
+    // Return virtual updated profile for guest users
+    const mockProfile = {
+      id: userId,
+      username: username || `guest_${userId.substring(0, 8)}`,
+      display_name: display_name || 'Oyente Koko',
+      avatar_url: avatar_url || null,
+      bio: bio || 'Oyente temporal (Invitado)',
+      is_public: is_public !== undefined ? is_public : true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    res.json({ profile: mockProfile });
+  }
 });
 
 // ── DELETE /api/friends/profile/:userId ───────────────────────────────────────

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { useFollowArtist } from '../hooks/useFollowArtist';
+import { BASE } from '../lib/api';
 
 function formatDuration(ms: number): string {
   const m = Math.floor(ms / 60000);
@@ -125,7 +126,7 @@ export default function Artist() {
     queryKey: ['artist', id],
     queryFn: async () => {
       const isNumeric = id && !isNaN(Number(id)) && id !== '0';
-      const url = `http://localhost:3001/api/artist/${id}${!isNumeric ? `?name=${encodeURIComponent(id || '')}` : ''}`;
+      const url = `${BASE}/artist/${id}${!isNumeric ? `?name=${encodeURIComponent(id || '')}` : ''}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error('Error al cargar el artista');
       const json = await res.json();
@@ -163,7 +164,7 @@ export default function Artist() {
             setRealPlays((prev) => {
               if (prev[track.id]) return prev;
               // Make fetch call outside of setState
-              fetch(`http://localhost:3001/api/search?q=${encodeURIComponent(track.title + ' ' + track.artist)}&limit=1&source=youtube`)
+              fetch(`${BASE}/search?q=${encodeURIComponent(track.title + ' ' + track.artist)}&limit=1&source=youtube`)
                 .then(res => res.json())
                 .then(json => {
                   if (json.tracks && json.tracks[0] && json.tracks[0].popularity) {

@@ -21,12 +21,23 @@ export interface TrackMetadata {
 }
 
 export async function searchTracks(query: string, limit = 20): Promise<TrackMetadata[]> {
+  let videos: any[] = [];
   try {
     const result = await yts(query);
+    videos = result.videos || [];
+  } catch (ytsErr) {
+    console.warn('[SpotifyService] yt-search falló, intentando Invidious fallback:', (ytsErr as Error).message);
+  }
+
+  try {
+    if (videos.length === 0) {
+      const { searchInvidious } = await import('./invidiousService');
+      videos = await searchInvidious(query, limit);
+    }
     
     // Priorizar videos que contengan "lyrics" o "letra" en el título
     // para evitar videoclips con audios extra/desincronizados
-    const sortedVideos = result.videos.sort((a, b) => {
+    const sortedVideos = videos.sort((a, b) => {
       const aHasLyrics = /\b(lyrics|letra)\b/i.test(a.title);
       const bHasLyrics = /\b(lyrics|letra)\b/i.test(b.title);
       if (aHasLyrics && !bHasLyrics) return -1;
@@ -34,37 +45,47 @@ export async function searchTracks(query: string, limit = 20): Promise<TrackMeta
       return 0; // Mantener orden original si ambos o ninguno tienen
     });
 
-    const videos = sortedVideos.slice(0, limit);
+    const slicedVideos = sortedVideos.slice(0, limit);
 
-    return videos.map((v) => ({
+    return slicedVideos.map((v) => ({
       id: v.videoId,
       title: v.title,
-      artist: v.author.name,
+      artist: v.author?.name || 'Desconocido',
       album: 'YouTube Audio',
       cover: v.thumbnail ?? '',
-      duration: v.duration.seconds * 1000,
-      popularity: v.views,
+      duration: (v.duration?.seconds || 0) * 1000,
+      popularity: v.views || 0,
       preview_url: null,
     }));
   } catch (error) {
-    console.error('[Search] Error en yt-search:', error);
+    console.error('[Search] Error en searchTracks fallback:', error);
     return [];
   }
 }
 
 export async function getTrackById(id: string): Promise<TrackMetadata | null> {
+  let video: any = null;
   try {
-    const video = await yts({ videoId: id });
+    video = await yts({ videoId: id });
+  } catch (ytsErr) {
+    console.warn('[SpotifyService] yt-search (getTrackById) falló, intentando Invidious fallback:', (ytsErr as Error).message);
+  }
+
+  try {
+    if (!video) {
+      const { getInvidiousTrackById } = await import('./invidiousService');
+      video = await getInvidiousTrackById(id);
+    }
     if (!video) return null;
 
     return {
       id: video.videoId,
       title: video.title,
-      artist: video.author.name,
+      artist: video.author?.name || 'Desconocido',
       album: 'YouTube Audio',
-      cover: video.thumbnail,
-      duration: video.duration.seconds * 1000,
-      popularity: video.views,
+      cover: video.thumbnail || '',
+      duration: (video.duration?.seconds || 0) * 1000,
+      popularity: video.views || 0,
       preview_url: null,
     };
   } catch (error) {

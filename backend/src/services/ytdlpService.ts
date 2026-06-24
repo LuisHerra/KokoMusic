@@ -136,8 +136,34 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
     ytdlpCmd = `${ytdlpCmd} || ${fallbackCmd}`;
   }
 
-  await execAsync(ytdlpCmd);
+  let tempFile = `${tempBase}.opus`;
 
+  try {
+    await execAsync(ytdlpCmd);
+  } catch (ytdlpError) {
+    console.warn(`[yt-dlp] Error descargando con yt-dlp: ${(ytdlpError as Error).message}. Intentando fallback con Invidious...`);
+    try {
+      const { getInvidiousStreamUrl } = await import('./invidiousService');
+      const invidiousUrl = await getInvidiousStreamUrl(trackId);
+      if (!invidiousUrl) {
+        throw new Error(`Invidious no pudo resolver el stream URL para ${trackId}`);
+      }
+
+      console.log(`[yt-dlp Fallback] Descargando stream de Invidious: ${invidiousUrl}`);
+      const res = await fetch(invidiousUrl);
+      if (!res.ok) {
+        throw new Error(`Invidious stream HTTP error: ${res.statusText}`);
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+      tempFile = `${tempBase}.downloaded`;
+      fs.writeFileSync(tempFile, Buffer.from(arrayBuffer));
+      console.log(`[yt-dlp Fallback] Descargado archivo temporal de ${arrayBuffer.byteLength} bytes.`);
+    } catch (fallbackError) {
+      console.error('[yt-dlp Fallback] Falló la descarga alternativa de Invidious:', fallbackError);
+      throw new Error(`Tanto yt-dlp como el fallback de Invidious fallaron: ${(fallbackError as Error).message}`);
+    }
+  }
 
   // 2. Transcodificación con FFmpeg con pipeline de calidad optimizado:
   //    - libopus: codec de alta eficiencia (mejor que AAC/MP3 a ≤128k)
@@ -147,7 +173,6 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
   //    - -ar: sample rate (48kHz = nativo Opus, ninguna degradación)
   //    - -ac 2: stereo (mono ahorraría más pero degradaría experiencia)
   //    - -af loudnorm: normalización EBU R128 (igual que Spotify, -14 LUFS)
-  const tempFile = `${tempBase}.opus`;
   const ffmpegCmd = [
     'ffmpeg',
     '-i', `"${tempFile}"`,

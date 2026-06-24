@@ -49,8 +49,19 @@ export async function resolveYoutubeId(
   try {
     // Query 1: buscar audio oficial
     const query = `${artistName} ${trackName} official audio`;
-    const result = await yts(query);
-    const videos = result.videos.slice(0, 10);
+    let videos: any[] = [];
+    
+    try {
+      const result = await yts(query);
+      videos = result.videos.slice(0, 10);
+    } catch (ytsErr) {
+      console.warn('[YTResolver] yt-search falló, intentando Invidious fallback:', (ytsErr as Error).message);
+    }
+
+    if (videos.length === 0) {
+      const { searchInvidious } = await import('./invidiousService');
+      videos = await searchInvidious(query, 10);
+    }
 
     if (videos.length === 0) return null;
 

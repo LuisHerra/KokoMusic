@@ -12,7 +12,12 @@ router.get('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Parámetro q requerido' });
   }
 
-  const searchSource: SearchSource = source === 'youtube' ? 'youtube' : 'itunes';
+  let searchSource: SearchSource = 'itunes';
+  if (source === 'youtube') {
+    searchSource = 'youtube';
+  } else if (source === 'lyrics') {
+    searchSource = 'lyrics';
+  }
 
   try {
     const tracks = await searchTracks(q.trim(), Number(limit) || 20, searchSource);

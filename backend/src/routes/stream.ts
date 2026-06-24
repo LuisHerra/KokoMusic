@@ -300,17 +300,37 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
       }
     }
 
-    // 3. No está en ningún caché — obtener URL de stream desde yt-dlp y hacer proxy
+    // 3. No está en ningún caché — obtener URL de stream desde yt-dlp y hacer proxy o fallback
     const streamUrlCacheKey = `stream-url:${youtubeId}`;
     let rawUrl = cache.get(streamUrlCacheKey) as string | undefined;
 
     if (!rawUrl) {
       console.log(`[Stream] Extrayendo URL de YouTube para: ${youtubeId}`);
-      rawUrl = await getYTStreamUrl(youtubeId);
-      cache.setex(streamUrlCacheKey, 1800, rawUrl); // 30 min
+      try {
+        rawUrl = await getYTStreamUrl(youtubeId);
+        cache.setex(streamUrlCacheKey, 1800, rawUrl); // 30 min
+        proxyYouTubeStream(req, res, rawUrl);
+      } catch (err) {
+        console.warn(`[Stream] yt-dlp falló para ${youtubeId}, buscando fallback en Invidious...`, err);
+        try {
+          const { getInvidiousStreamUrl } = await import('../services/invidiousService');
+          const invidiousUrl = await getInvidiousStreamUrl(youtubeId);
+          if (invidiousUrl) {
+            console.log(`[Stream] Redirigiendo cliente a Invidious stream URL: ${invidiousUrl}`);
+            return res.redirect(302, invidiousUrl);
+          } else {
+            throw new Error('Invidious no devolvió URL para este stream');
+          }
+        } catch (invErr) {
+          console.error('[Stream] Fallaron tanto yt-dlp como Invidious:', invErr);
+          if (!res.headersSent) {
+            return res.status(404).json({ error: 'No se pudo obtener el stream de audio' });
+          }
+        }
+      }
+    } else {
+      proxyYouTubeStream(req, res, rawUrl);
     }
-
-    proxyYouTubeStream(req, res, rawUrl);
 
     // 4. En background: descargar + transcodificar + cachear (solo si autoDownload !== 'false')
     const autoDownload = req.query.autoDownload !== 'false';

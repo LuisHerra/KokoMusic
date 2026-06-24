@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylist, getTrack, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount } from '../lib/api';
+import { getPlaylist, getTrack, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, BASE } from '../lib/api';
 import type { Track, Friendship } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useLikedSongs } from '../hooks/useLikedSongs';
@@ -468,7 +468,7 @@ function DuplicateAliasModal({ track, onClose, onCreated }: { track: Track; onCl
 
   useEffect(() => {
     let active = true;
-    fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api'}/tracks/${track.id}/video`)
+    fetch(`${BASE}/tracks/${track.id}/video`)
       .then(res => res.json())
       .then((data: any) => {
         if (active && data?.youtubeId) {
@@ -505,7 +505,6 @@ function DuplicateAliasModal({ track, onClose, onCreated }: { track: Track; onCl
       formData.append('duration', String(track.duration));
       formData.append('originalTrackId', track.id);
 
-      const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
       const res = await fetch(`${BASE}/tracks/upload`, {
         method: 'POST',
         body: formData,
@@ -607,7 +606,7 @@ function ChangeVideoModal({ track, onClose }: { track: Track; onClose: () => voi
     setLoading(true);
     setSearched(true);
     try {
-      const res = await fetch('http://localhost:3001/api/import/search-youtube', {
+      const res = await fetch(`${BASE}/import/search-youtube`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query.trim() })
@@ -632,7 +631,7 @@ function ChangeVideoModal({ track, onClose }: { track: Track; onClose: () => voi
   const selectVideo = async (youtubeId: string) => {
     setSaving(true);
     try {
-      const res = await fetch(`http://localhost:3001/api/tracks/${track.id}/resolve`, {
+      const res = await fetch(`${BASE}/tracks/${track.id}/resolve`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ youtubeId })
@@ -886,7 +885,7 @@ export default function Playlist() {
           const trackInfo = await getTrack(t.trackId);
           if (!trackInfo) continue;
           
-          const res = await fetch('http://localhost:3001/api/import/upgrade', {
+          const res = await fetch(`${BASE}/import/upgrade`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ track: trackInfo })
@@ -909,7 +908,7 @@ export default function Playlist() {
               setUpgradeDisambiguation(null);
               
               if (chosenId && mounted) {
-                await fetch(`http://localhost:3001/api/playlists/${id}/tracks/${t.trackId}`, {
+                await fetch(`${BASE}/playlists/${id}/tracks/${t.trackId}`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ newId: chosenId })
@@ -919,7 +918,7 @@ export default function Playlist() {
             } else if (data.id && mounted) {
               // Confiable o auto-accept: upgrade automático
               const upgradeId = data.ambiguous ? data.candidates[0].id : data.id;
-              await fetch(`http://localhost:3001/api/playlists/${id}/tracks/${t.trackId}`, {
+              await fetch(`${BASE}/playlists/${id}/tracks/${t.trackId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ newId: upgradeId })
