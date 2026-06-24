@@ -73,7 +73,7 @@ function getYTStreamUrl(youtubeId: string): Promise<string> {
     const formatSelector = `bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best`;
     const ytUrl = `"https://www.youtube.com/watch?v=${youtubeId}"`;
     const cookiesArg = getCookiesArg();
-    const baseArgs = `${cookiesArg ? cookiesArg + ' ' : ''}--get-url --no-playlist -f ${formatSelector}`;
+    const baseArgs = `${cookiesArg ? cookiesArg + ' ' : ''}--force-ipv4 --legacy-server-connect --get-url --no-playlist -f ${formatSelector}`;
 
     let cmd = `yt-dlp ${baseArgs} ${ytUrl}`;
 

@@ -155,6 +155,8 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
     'yt-dlp',
     cookiesArg,
     `"${ytUrl}"`,
+    '--force-ipv4',
+    '--legacy-server-connect',
     '--extract-audio',
     '--audio-format', 'opus',
     '--audio-quality', '0',
