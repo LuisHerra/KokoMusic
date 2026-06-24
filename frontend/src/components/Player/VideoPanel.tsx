@@ -103,19 +103,25 @@ export default function VideoPanel() {
 
     window.addEventListener('message', handleWindowMessage);
 
+    let interval: number | undefined;
+    
     // Indicar periódicamente al iframe que estamos escuchando eventos
-    const interval = setInterval(() => {
-      try {
-        iframeEl.contentWindow?.postMessage(
-          JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }),
-          '*'
-        );
-      } catch {}
-    }, 1000);
+    // Se inicia con un retraso para evitar errores "isExternalMethodAvailable" en el API interno de YouTube
+    const timeout = setTimeout(() => {
+      interval = setInterval(() => {
+        try {
+          iframeEl.contentWindow?.postMessage(
+            JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }),
+            '*'
+          );
+        } catch {}
+      }, 1000);
+    }, 2500);
 
     return () => {
       window.removeEventListener('message', handleWindowMessage);
-      clearInterval(interval);
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
     };
   }, [isEmbedMode, iframeEl]);
 
