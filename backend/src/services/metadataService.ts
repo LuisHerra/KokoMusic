@@ -397,9 +397,10 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
 
   const id = Number(itunesId);
   if (isNaN(id) || id === 0) {
-    // Es un ID de YouTube
+    // Es un ID de YouTube — usar Invidious para obtener metadata (yt-search hace scraping directo a YouTube y falla en IPs bloqueadas)
     try {
-      const v = await yts({ videoId: idStr });
+      const { getInvidiousTrackById } = await import('./invidiousService');
+      const v = await getInvidiousTrackById(idStr);
       if (!v) return null;
       
       const authorName = v.author?.name ?? 'Artista desconocido';

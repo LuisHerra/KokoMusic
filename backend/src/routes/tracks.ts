@@ -938,7 +938,7 @@ function cleanMetadataForLyrics(title: string, author: string) {
   return { artist, title: trackName };
 }
 
-import yts from 'yt-search';
+import { searchInvidious } from '../services/invidiousService';
 
 function stringToSafeIntegerHash(str: string): number {
   let hash = 5381;
@@ -983,21 +983,23 @@ router.get('/:id/video', async (req: Request, res: Response) => {
       youtubeId = await resolveYoutubeId(trackMeta.itunesId, trackMeta.artist, trackMeta.title);
     }
 
-    // Buscar videos musicales relacionados con yt-search
+    // Buscar videos musicales relacionados via Invidious
     let relatedVideos: any[] = [];
     try {
       const query = `${trackMeta.artist} ${trackMeta.title}`;
-      const searchRes = await yts(query);
-      relatedVideos = searchRes.videos
-        .filter(v => v.videoId && v.videoId !== youtubeId)
+      const results = await searchInvidious(query, 10);
+      relatedVideos = results
+        .filter((v: any) => v.videoId && v.videoId !== youtubeId)
         .slice(0, 6)
-        .map(v => ({
+        .map((v: any) => ({
           id: v.videoId,
           title: v.title,
           artist: v.author?.name || trackMeta.artist,
-          thumbnail: v.thumbnail || v.image,
+          thumbnail: v.thumbnail,
           views: v.views,
-          duration: v.timestamp
+          duration: v.duration?.seconds
+            ? `${Math.floor(v.duration.seconds / 60)}:${String(v.duration.seconds % 60).padStart(2, '0')}`
+            : ''
         }));
     } catch (err) {
       console.error('[Video] Error buscando videos relacionados:', err);

@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import yts from 'yt-search';
+import { searchInvidious } from './invidiousService';
 import { TrackMetadata } from './spotifyService';
 import { supabase } from './supabaseService';
 
@@ -633,21 +633,21 @@ export async function getRecommendations(limit = 10, userId?: string, mood?: str
   const query = searchTerms[Math.floor(Math.random() * searchTerms.length)];
 
   try {
-    const result = await yts(query);
+    const videos = await searchInvidious(query, limit * 3);
     const seen = new Set(history.map((h) => h.trackId));
-    const pool = result.videos.filter((v) => !seen.has(v.videoId));
-    const source = pool.length > 3 ? pool : result.videos;
+    const pool = videos.filter((v) => !seen.has(v.videoId));
+    const source = pool.length > 3 ? pool : videos;
     return source
       .sort(() => 0.5 - Math.random())
       .slice(0, limit)
       .map((v) => ({
         id: v.videoId,
         title: v.title,
-        artist: v.author.name,
+        artist: v.author?.name ?? 'Desconocido',
         album: mood ? `Mood: ${mood.charAt(0).toUpperCase() + mood.slice(1)}` : 'YouTube Recommendations',
         cover: v.thumbnail || '',
-        duration: v.duration.seconds * 1000,
-        popularity: v.views,
+        duration: (v.duration?.seconds ?? 0) * 1000,
+        popularity: v.views ?? 0,
         preview_url: null,
       }));
   } catch {

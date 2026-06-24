@@ -7,7 +7,7 @@
  * y garantiza que los metadatos coincidan exactamente con el audio descargado por yt-dlp.
  */
 
-import yts from 'yt-search';
+import { searchInvidious, isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess, getInvidiousTrackById } from './invidiousService';
 
 export interface TrackMetadata {
   id: string;
@@ -22,16 +22,20 @@ export interface TrackMetadata {
 
 export async function searchTracks(query: string, limit = 20): Promise<TrackMetadata[]> {
   let videos: any[] = [];
-  try {
-    const result = await yts(query);
-    videos = result.videos || [];
-  } catch (ytsErr) {
-    console.warn('[SpotifyService] yt-search falló, intentando Invidious fallback:', (ytsErr as Error).message);
+
+  if (!isYtSearchDisabled()) {
+    try {
+      const yts = (await import('yt-search')).default;
+      const result = await yts(query);
+      videos = result.videos || [];
+      recordYtSearchSuccess();
+    } catch (ytsErr) {
+      recordYtSearchFailure();
+    }
   }
 
   try {
     if (videos.length === 0) {
-      const { searchInvidious } = await import('./invidiousService');
       videos = await searchInvidious(query, limit);
     }
     
@@ -65,31 +69,24 @@ export async function searchTracks(query: string, limit = 20): Promise<TrackMeta
 
 export async function getTrackById(id: string): Promise<TrackMetadata | null> {
   let video: any = null;
+
+  // Siempre usar Invidious para lookup por ID — yt-search hace scraping directo a YouTube
   try {
-    video = await yts({ videoId: id });
-  } catch (ytsErr) {
-    console.warn('[SpotifyService] yt-search (getTrackById) falló, intentando Invidious fallback:', (ytsErr as Error).message);
+    video = await getInvidiousTrackById(id);
+  } catch (err) {
+    console.warn('[SpotifyService] getInvidiousTrackById falló:', (err as Error).message);
   }
 
-  try {
-    if (!video) {
-      const { getInvidiousTrackById } = await import('./invidiousService');
-      video = await getInvidiousTrackById(id);
-    }
-    if (!video) return null;
+  if (!video) return null;
 
-    return {
-      id: video.videoId,
-      title: video.title,
-      artist: video.author?.name || 'Desconocido',
-      album: 'YouTube Audio',
-      cover: video.thumbnail || '',
-      duration: (video.duration?.seconds || 0) * 1000,
-      popularity: video.views || 0,
-      preview_url: null,
-    };
-  } catch (error) {
-    console.error('[Search] Error obteniendo track por ID:', error);
-    return null;
-  }
+  return {
+    id: video.videoId,
+    title: video.title,
+    artist: video.author?.name || 'Desconocido',
+    album: 'YouTube Audio',
+    cover: video.thumbnail || '',
+    duration: (video.duration?.seconds || 0) * 1000,
+    popularity: video.views || 0,
+    preview_url: null,
+  };
 }

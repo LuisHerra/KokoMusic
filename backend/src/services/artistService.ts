@@ -45,28 +45,21 @@ export function hashStringToInteger(str: string): number {
  * Busca vídeos del canal con yt-search y los convierte en "canciones" / top content.
  */
 async function buildArtistInfoFromYouTube(channelName: string): Promise<ArtistInfo | null> {
-  const yts = (await import('yt-search')).default;
+  const { searchInvidious } = await import('./invidiousService');
 
   try {
-    // 1. Buscar el canal
-    const channelSearch = await yts({ query: channelName, category: 'channel' });
-    const channel = channelSearch.channels?.[0];
-
-    // 2. Buscar vídeos del canal como top tracks
-    const videoSearch = await yts(`${channelName} channel`);
-    const channelVideos = videoSearch.videos
-      .filter(v => v.videoId && v.duration?.seconds > 0)
-      .slice(0, 20);
+    // Buscar vídeos del canal como top tracks via Invidious
+    const channelVideos = await searchInvidious(`${channelName} official`, 20);
 
     if (channelVideos.length === 0) return null;
 
-    const channelImage = channel?.image || channelVideos[0]?.thumbnail || '';
-    const channelUrl = channel?.url || `https://www.youtube.com/@${encodeURIComponent(channelName)}`;
-    const resolvedArtistName = channel?.name || channelName;
+    const channelImage = channelVideos[0]?.thumbnail || '';
+    const channelUrl = `https://www.youtube.com/@${encodeURIComponent(channelName)}`;
+    const resolvedArtistName = channelName;
     const artistId = hashStringToInteger(resolvedArtistName);
 
     // Convertir vídeos a "tracks" con itunesId=0 (ID de YouTube directo)
-    const topTracks = channelVideos.map((v, idx) => ({
+    const topTracks = channelVideos.map((v: any, idx: number) => ({
       id: v.videoId,
       itunesId: 0,
       artistId: artistId,
@@ -82,27 +75,27 @@ async function buildArtistInfoFromYouTube(channelName: string): Promise<ArtistIn
     }));
 
     // Buscar vídeos más recientes como "musicVideos"
-    const recentSearch = await yts(`${channelName} latest`);
-    const musicVideos = recentSearch.videos.slice(0, 6).map(v => ({
+    const recentVideos = await searchInvidious(`${channelName} latest`, 6);
+    const musicVideos = recentVideos.map((v: any) => ({
       id: v.videoId,
       title: v.title,
       thumbnail: v.thumbnail,
       views: v.views,
-      duration: v.timestamp,
-      url: v.url,
+      duration: v.duration?.seconds ? `${Math.floor(v.duration.seconds / 60)}:${String(v.duration.seconds % 60).padStart(2, '0')}` : '',
+      url: `https://www.youtube.com/watch?v=${v.videoId}`,
     }));
 
     const artistInfo: ArtistInfo = {
       itunesArtistId: artistId,
       name: resolvedArtistName,
-      bio: `Canal de YouTube de ${resolvedArtistName}. ${channel?.subCountLabel ? `${channel.subCountLabel} suscriptores.` : ''} Contenido disponible en YouTube.`,
+      bio: `Canal de YouTube de ${resolvedArtistName}. Contenido disponible en YouTube.`,
       image: channelImage,
       genre: 'YouTube',
       topTracks,
       albums: [],
       musicVideos,
       livePerformances: [],
-      monthlyListeners: channel?.subCount || 0,
+      monthlyListeners: 0,
       playcount: 0,
       fanart: '',
       gallery: [],
@@ -111,7 +104,7 @@ async function buildArtistInfoFromYouTube(channelName: string): Promise<ArtistIn
         twitter: `https://twitter.com/search?q=${encodeURIComponent(resolvedArtistName)}`,
         instagram: `https://www.instagram.com/explore/tags/${encodeURIComponent(resolvedArtistName.replace(/\s+/g, ''))}/`,
       },
-      isVerified: (channel?.subCount || 0) > 100000,
+      isVerified: false,
       events: [],
       merch: [],
       similarArtists: [],
@@ -127,7 +120,7 @@ async function buildArtistInfoFromYouTube(channelName: string): Promise<ArtistIn
       updated_at: new Date().toISOString()
     });
 
-    console.log(`[Artist] Canal de YouTube encontrado y registrado: ${artistInfo.name} (ID: ${artistId}, ${artistInfo.topTracks.length} vídeos)`);
+    console.log(`[Artist] Canal de YouTube construido: ${artistInfo.name} (${artistInfo.topTracks.length} vídeos)`);
     return artistInfo;
   } catch (err) {
     console.error('[Artist] Error construyendo perfil desde YouTube:', err);
@@ -478,33 +471,33 @@ export async function getArtistInfo(artistIdentifier: number | string): Promise<
     console.error('[Artist] Error obteniendo álbumes:', e);
   }
 
-  // Obtener vídeos de YouTube (Oficiales y en vivo)
+  // Obtener vídeos de YouTube (Oficiales y en vivo) via Invidious
   let musicVideos: any[] = [];
   let livePerformances: any[] = [];
   try {
-    const yts = (await import('yt-search')).default;
+    const { searchInvidious } = await import('./invidiousService');
     const topTrackName = topTracks.length > 0 ? topTracks[0].title : '';
-    const [mvRes, liveRes] = await Promise.all([
-      yts(`${name} ${topTrackName} official music video`),
-      yts(`${name} live performance`)
+    const [mvVideos, liveVideos] = await Promise.all([
+      searchInvidious(`${name} ${topTrackName} official music video`, 6),
+      searchInvidious(`${name} live performance`, 4)
     ]);
 
-    musicVideos = mvRes.videos.slice(0, 6).map(v => ({
+    musicVideos = mvVideos.map((v: any) => ({
       id: v.videoId,
       title: v.title,
       thumbnail: v.thumbnail,
       views: v.views,
-      duration: v.timestamp,
-      url: v.url
+      duration: v.duration?.seconds ? `${Math.floor(v.duration.seconds / 60)}:${String(v.duration.seconds % 60).padStart(2, '0')}` : '',
+      url: `https://www.youtube.com/watch?v=${v.videoId}`
     }));
 
-    livePerformances = liveRes.videos.slice(0, 4).map(v => ({
+    livePerformances = liveVideos.map((v: any) => ({
       id: v.videoId,
       title: v.title,
       thumbnail: v.thumbnail,
       views: v.views,
-      duration: v.timestamp,
-      url: v.url
+      duration: v.duration?.seconds ? `${Math.floor(v.duration.seconds / 60)}:${String(v.duration.seconds % 60).padStart(2, '0')}` : '',
+      url: `https://www.youtube.com/watch?v=${v.videoId}`
     }));
   } catch(e) {
     console.error('[Artist] Error obteniendo YouTube videos:', e);
