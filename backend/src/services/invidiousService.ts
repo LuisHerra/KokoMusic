@@ -8,10 +8,12 @@
 
 import fs from 'fs';
 
-// Instancias estables de fallback en caso de que falle la carga dinámica
+// Instancias estables de fallback en caso de que falle la carga dinámica o se esté cargando
 const FALLBACK_INSTANCES = [
-  'https://inv.tux.pizza',
+  'https://inv.thepixora.com',
+  'https://yt.chocolatemoo53.com',
   'https://yewtu.be',
+  'https://inv.tux.pizza',
   'https://invidious.projectsegfau.lt',
   'https://inv.nadeko.net',
   'https://invidious.nerdvpn.de',
@@ -26,7 +28,7 @@ let isFetchingList = false;
 /**
  * Actualiza la lista de instancias públicas de Invidious desde la API oficial.
  */
-async function refreshInstancesList(): Promise<void> {
+export async function refreshInstancesList(): Promise<void> {
   if (isFetchingList) return;
   isFetchingList = true;
   try {
@@ -35,13 +37,27 @@ async function refreshInstancesList(): Promise<void> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json() as any;
 
-    const instances: { uri: string; score: number }[] = [];
+    const instances: { uri: string; score: number; hasApi: boolean }[] = [];
 
     const processItem = (domain: string, details: any) => {
-      if (details.type === 'https' && details.api !== false) {
+      if (details.type === 'https') {
         const uri = details.uri || `https://${domain}`;
-        const score = Number(details.health?.score ?? 0);
-        instances.push({ uri, score });
+        
+        const monitor = details.monitor;
+        const uptime = Number(monitor?.uptime ?? 0);
+        const lastStatus = monitor?.last_status;
+        const isDown = monitor?.down === true;
+        
+        // Si el monitor indica que está caido o el último status no fue 200, no usar
+        if (isDown || (lastStatus && lastStatus !== 200)) {
+          return;
+        }
+
+        const score = monitor ? uptime : 50;
+        // Priorizar instancias con API habilitada, pero no descartar las que digan false (a veces funcionan)
+        const hasApi = details.api !== false;
+
+        instances.push({ uri, score, hasApi });
       }
     };
 
@@ -57,10 +73,13 @@ async function refreshInstancesList(): Promise<void> {
       }
     }
 
-    // Filtrar instancias con salud aceptable (>= 75) y ordenar de mayor a menor
+    // Ordenar: primero las que soportan API de forma declarada, luego por score/uptime descendente
     const sorted = instances
-      .filter(inst => inst.score >= 75)
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        if (a.hasApi && !b.hasApi) return -1;
+        if (!a.hasApi && b.hasApi) return 1;
+        return b.score - a.score;
+      })
       .map(inst => inst.uri);
 
     if (sorted.length > 0) {
@@ -96,7 +115,10 @@ export async function searchInvidious(query: string, limit = 20): Promise<any[]>
       const res = await fetch(searchUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
 
-      if (!res.ok) continue;
+      if (!res.ok) {
+        console.warn(`[InvidiousService] Instancia ${instance} devolvió HTTP ${res.status} en búsqueda`);
+        continue;
+      }
 
       const data = await res.json() as any;
       if (Array.isArray(data)) {
@@ -144,15 +166,16 @@ export async function getInvidiousStreamUrl(videoId: string): Promise<string | n
       const res = await fetch(videoUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
 
-      if (!res.ok) continue;
+      if (!res.ok) {
+        console.warn(`[InvidiousService] Instancia ${instance} devolvió HTTP ${res.status} para stream`);
+        continue;
+      }
 
       const data = await res.json() as any;
       if (data && Array.isArray(data.adaptiveFormats)) {
-        // Filtrar solo streams de audio
         const audioStreams = data.adaptiveFormats.filter((f: any) => f.type && f.type.startsWith('audio/'));
         if (audioStreams.length === 0) continue;
 
-        // Preferir opus (webm), luego m4a
         const opusStream = audioStreams.find((f: any) => f.type.includes('codecs="opus"'));
         const selectedStream = opusStream || audioStreams[0];
 
@@ -191,7 +214,10 @@ export async function getInvidiousTrackById(videoId: string): Promise<any | null
       const res = await fetch(videoUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
 
-      if (!res.ok) continue;
+      if (!res.ok) {
+        console.warn(`[InvidiousService] Instancia ${instance} devolvió HTTP ${res.status} para trackById`);
+        continue;
+      }
 
       const v = await res.json() as any;
       if (v && v.videoId) {
@@ -215,3 +241,6 @@ export async function getInvidiousTrackById(videoId: string): Promise<any | null
 
   return null;
 }
+
+// Cargar la lista al iniciar el archivo
+refreshInstancesList().catch(() => {});
