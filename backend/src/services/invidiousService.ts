@@ -249,32 +249,66 @@ export async function searchInvidious(query: string, limit = 20): Promise<any[]>
 }
 
 /**
- * Obtiene el stream URL proxied (local=true) de un video de YouTube vía Invidious.
+ * Obtiene la URL de audio directa (googlevideo.com) para un video vía Invidious.
+ *
+ * IMPORTANTE: NO usa local=true para no pedir que Invidious proxyfique el stream.
+ * En su lugar, devolvemos la URL de googlevideo.com (CDN de Google) que:
+ *   1. No está bloqueada desde cloud providers (es una CDN global, no la web de YouTube)
+ *   2. No sobrecarga las instancias de Invidious (ellas solo sirven el metadata)
+ *   3. Funciona con range requests para seeking correcto en el frontend
+ *
+ * Progresión de calidad intentada:
+ *   1. opus/webm (mejor calidad, nativo en chromium)
+ *   2. mp4a/m4a (AAC, compatibilidad universal)
+ *   3. cualquier audio disponible
  */
 export async function getInvidiousStreamUrl(videoId: string): Promise<string | null> {
   if (Date.now() - lastFetchedTime > 4 * 3600 * 1000) {
     refreshInstancesList().catch(() => {});
   }
 
+  // Sin local=true → Invidious devuelve URLs directas de googlevideo.com
   for (const instance of cachedInstances) {
-    const data = await fetchFromInstance(instance, `/api/v1/videos/${videoId}?local=true`, 6000);
+    const data = await fetchFromInstance(instance, `/api/v1/videos/${videoId}`, 8000);
     if (!data) continue;
 
     if (data && Array.isArray(data.adaptiveFormats)) {
       const audioStreams = data.adaptiveFormats.filter((f: any) => f.type?.startsWith('audio/'));
       if (audioStreams.length === 0) continue;
 
-      const opusStream = audioStreams.find((f: any) => f.type.includes('codecs="opus"'));
-      const selectedStream = opusStream || audioStreams[0];
+      // Prioridad: opus > aac > cualquier audio
+      const opusStream = audioStreams.find((f: any) =>
+        f.type?.includes('opus') || f.encoding?.toLowerCase() === 'opus'
+      );
+      const aacStream = audioStreams.find((f: any) =>
+        f.type?.includes('mp4a') || f.encoding?.toLowerCase() === 'aac'
+      );
+      const selected = opusStream || aacStream || audioStreams[0];
 
-      if (selectedStream.url) {
-        let streamUrl = selectedStream.url;
+      // Invidious puede devolver la URL con o sin dominio completo
+      if (selected?.url) {
+        let streamUrl: string = selected.url;
         if (streamUrl.startsWith('/')) streamUrl = `${instance}${streamUrl}`;
+        console.log(`[InvidiousService] Stream URL obtenida de ${instance} (${selected.type || 'audio'})`);
+        return streamUrl;
+      }
+    }
+
+    // Fallback: si no hay adaptiveFormats, intentar formatStreams
+    if (data && Array.isArray(data.formatStreams)) {
+      const audioStream = data.formatStreams.find((f: any) =>
+        f.type?.startsWith('audio/') || f.container === 'webm' || f.container === 'm4a'
+      );
+      if (audioStream?.url) {
+        let streamUrl: string = audioStream.url;
+        if (streamUrl.startsWith('/')) streamUrl = `${instance}${streamUrl}`;
+        console.log(`[InvidiousService] Stream URL (formatStreams) de ${instance}`);
         return streamUrl;
       }
     }
   }
 
+  console.error(`[InvidiousService] Ninguna instancia pudo obtener stream URL para: ${videoId}`);
   return null;
 }
 

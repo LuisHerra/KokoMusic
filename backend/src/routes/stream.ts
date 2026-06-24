@@ -125,32 +125,73 @@ function streamLocalFile(req: Request, res: Response, filePath: string, contentT
   }
 }
 
-/** Proxy HTTPS hacia la URL de Google/YouTube (fallback sin CDN) */
-function proxyYouTubeStream(req: Request, res: Response, rawUrl: string): void {
-  const headers: Record<string, string> = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+/** Proxy hacia URL directa de audio (googlevideo.com u otras) con soporte Range */
+async function proxyAudioStream(req: Request, res: Response, rawUrl: string): Promise<void> {
+  const requestHeaders: Record<string, string> = {
+    // googlevideo.com requiere un User-Agent moderno
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    // Evitar que googlevideo cachee para IPs específicas
+    'Connection': 'keep-alive',
   };
+  // Pasar Range header para soporte de seeking
   if (req.headers.range) {
-    headers['Range'] = req.headers.range;
+    requestHeaders['Range'] = req.headers.range;
   }
 
-  const proxyReq = https.request(rawUrl, { method: 'GET', headers }, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode || 200, {
-      'Content-Type': 'audio/webm',
+  try {
+    const upstream = await fetch(rawUrl, { headers: requestHeaders });
+
+    if (!upstream.ok && upstream.status !== 206) {
+      console.error(`[Stream] Proxy error ${upstream.status} para URL: ${rawUrl.substring(0, 80)}...`);
+      if (!res.headersSent) res.status(upstream.status).end();
+      return;
+    }
+
+    const responseHeaders: Record<string, string> = {
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=86400',
-      ...(proxyRes.headers['content-length'] && { 'Content-Length': proxyRes.headers['content-length'] }),
-      ...(proxyRes.headers['content-range'] && { 'Content-Range': proxyRes.headers['content-range'] }),
-    });
-    proxyRes.pipe(res);
-  });
+      'Cache-Control': 'public, max-age=3600',
+    };
 
-  proxyReq.on('error', (e) => {
-    console.error('[Stream] Error en proxy YouTube:', e);
-    if (!res.headersSent) res.status(500).end();
-  });
+    const ct = upstream.headers.get('content-type');
+    if (ct) responseHeaders['Content-Type'] = ct;
+    else responseHeaders['Content-Type'] = 'audio/webm';
 
-  proxyReq.end();
+    const cl = upstream.headers.get('content-length');
+    if (cl) responseHeaders['Content-Length'] = cl;
+
+    const cr = upstream.headers.get('content-range');
+    if (cr) responseHeaders['Content-Range'] = cr;
+
+    res.writeHead(upstream.status === 206 ? 206 : 200, responseHeaders);
+
+    // Pipe stream body directamente al cliente
+    if (upstream.body) {
+      const reader = upstream.body.getReader();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { res.end(); break; }
+          if (!res.write(value)) {
+            // Backpressure: esperar drain antes de continuar
+            await new Promise(resolve => res.once('drain', resolve));
+          }
+        }
+      };
+      pump().catch(() => { if (!res.writableEnded) res.end(); });
+    } else {
+      res.end();
+    }
+  } catch (e) {
+    console.error('[Stream] Error en proxy de audio:', e);
+    if (!res.headersSent) res.status(502).end();
+  }
+}
+
+/** @deprecated Mantenida para compatibilidad interna — usar proxyAudioStream */
+function proxyYouTubeStream(req: Request, res: Response, rawUrl: string): void {
+  proxyAudioStream(req, res, rawUrl).catch(() => {
+    if (!res.headersSent) res.status(502).end();
+  });
 }
 
 /**
@@ -300,36 +341,39 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
       }
     }
 
-    // 3. No está en ningún caché — obtener URL de stream desde yt-dlp y hacer proxy o fallback
+    // 3. No está en ningún caché — obtener URL de stream vía Invidious (directa googlevideo.com)
+    //    yt-dlp se omite porque contacta www.youtube.com directamente (TLS bloqueado en HF Spaces)
     const streamUrlCacheKey = `stream-url:${youtubeId}`;
     let rawUrl = cache.get(streamUrlCacheKey) as string | undefined;
 
     if (!rawUrl) {
       console.log(`[Stream] Extrayendo URL de YouTube para: ${youtubeId}`);
-      try {
-        rawUrl = await getYTStreamUrl(youtubeId);
-        cache.setex(streamUrlCacheKey, 1800, rawUrl); // 30 min
-        proxyYouTubeStream(req, res, rawUrl);
-      } catch (err) {
-        console.warn(`[Stream] yt-dlp falló para ${youtubeId}, buscando fallback en Invidious...`, err);
+      const { getInvidiousStreamUrl } = await import('../services/invidiousService');
+      const invidiousUrl = await getInvidiousStreamUrl(youtubeId);
+
+      if (invidiousUrl) {
+        // Cachear por 25 min — las URLs de googlevideo.com expiran en ~6h pero
+        // preferimos renovarlas frecuentemente para evitar URLs caducadas mid-session
+        cache.setex(streamUrlCacheKey, 1500, invidiousUrl);
+        rawUrl = invidiousUrl;
+        console.log(`[Stream] ✅ Stream URL obtenida para ${youtubeId}, haciendo proxy...`);
+        await proxyAudioStream(req, res, invidiousUrl);
+      } else {
+        // Último recurso: intentar yt-dlp (solo funciona localmente o en IPs no bloqueadas)
+        console.warn(`[Stream] Invidious falló para ${youtubeId}, intentando yt-dlp como último recurso...`);
         try {
-          const { getInvidiousStreamUrl } = await import('../services/invidiousService');
-          const invidiousUrl = await getInvidiousStreamUrl(youtubeId);
-          if (invidiousUrl) {
-            console.log(`[Stream] Redirigiendo cliente a Invidious stream URL: ${invidiousUrl}`);
-            return res.redirect(302, invidiousUrl);
-          } else {
-            throw new Error('Invidious no devolvió URL para este stream');
-          }
-        } catch (invErr) {
-          console.error('[Stream] Fallaron tanto yt-dlp como Invidious:', invErr);
+          rawUrl = await getYTStreamUrl(youtubeId);
+          cache.setex(streamUrlCacheKey, 1800, rawUrl);
+          proxyYouTubeStream(req, res, rawUrl);
+        } catch (ytdlpErr) {
+          console.error(`[Stream] Todos los métodos fallaron para ${youtubeId}:`, ytdlpErr);
           if (!res.headersSent) {
-            return res.status(404).json({ error: 'No se pudo obtener el stream de audio' });
+            return res.status(404).json({ error: 'No se pudo obtener el stream de audio. YouTube puede estar bloqueando las peticiones desde este servidor.' });
           }
         }
       }
     } else {
-      proxyYouTubeStream(req, res, rawUrl);
+      await proxyAudioStream(req, res, rawUrl);
     }
 
     // 4. En background: descargar + transcodificar + cachear (solo si autoDownload !== 'false')
