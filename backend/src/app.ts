@@ -132,6 +132,9 @@ app.use((_req, res) => {
 startReleaseChecker();
 startBackgroundJobs(); // Starts charts pre-fetcher + recommendation pipeline scheduler
 
+import { updateYtDlp } from './services/ytdlpService';
+updateYtDlp(); // Run yt-dlp updater asynchronously on startup
+
 import { backfillLocalHistoryToCloud } from './services/historyService';
 
 app.listen(PORT, () => {

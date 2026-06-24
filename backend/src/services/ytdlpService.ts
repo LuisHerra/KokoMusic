@@ -102,6 +102,39 @@ export function estimateFileSizeMB(durationSeconds: number, bitrateKbps: number 
 
 export { AUDIO_DIR as AUDIO_CACHE_DIR };
 
+/** Busca un archivo cookies.txt en el directorio de datos o raíz para inyectarlo en yt-dlp */
+export function getCookiesArg(): string {
+  const possiblePaths = [
+    path.join(process.cwd(), 'data', 'cookies.txt'),
+    path.join(process.cwd(), 'cookies.txt'),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return `--cookies "${p}"`;
+    }
+  }
+  return '';
+}
+
+/** Actualiza yt-dlp a la última versión disponible */
+export async function updateYtDlp(): Promise<void> {
+  try {
+    console.log('[yt-dlp] Buscando actualizaciones...');
+    let cmd = 'yt-dlp -U';
+    if (process.platform === 'win32') {
+      const wingetPath = `"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\yt-dlp.exe"`;
+      cmd = `yt-dlp -U || ${wingetPath} -U`;
+    } else {
+      // En linux (ej. HF Spaces), si se instaló con pip, a veces requiere pip install -U yt-dlp
+      cmd = 'yt-dlp -U || pip3 install -U --break-system-packages yt-dlp';
+    }
+    const { stdout } = await execAsync(cmd);
+    console.log(`[yt-dlp] Actualización completada: ${stdout.trim().split('\n').pop()}`);
+  } catch (err) {
+    console.warn('[yt-dlp] No se pudo actualizar:', (err as Error).message);
+  }
+}
+
 /**
  * Descarga + transcodifica una canción con la configuración de calidad óptima.
  * @param trackId  ID del video de YouTube — usado para descarga y nombre de archivo
@@ -116,9 +149,11 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
   //    --audio-quality 0 = mejor calidad disponible antes de nuestro re-encode controlado
   const ytUrl = `https://www.youtube.com/watch?v=${trackId}`;
   const outputTemplate = `"${tempBase}.%(ext)s"`;
+  const cookiesArg = getCookiesArg();
 
   let ytdlpCmd = [
     'yt-dlp',
+    cookiesArg,
     `"${ytUrl}"`,
     '--extract-audio',
     '--audio-format', 'opus',
@@ -127,7 +162,7 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
     '--no-playlist',
     '--quiet',
     '--no-warnings',
-  ].join(' ');
+  ].filter(Boolean).join(' ');
 
   // En Windows, intentar también la ruta de WinGet como fallback
   if (process.platform === 'win32') {

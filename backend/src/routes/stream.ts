@@ -38,7 +38,7 @@ import {
   MAX_CDN_SIZE_MB,
   BUCKET_CAPACITY_MB,
 } from '../services/cdnService';
-import { downloadAndTranscode, getAudioPath, AUDIO_DIR } from '../services/ytdlpService';
+import { downloadAndTranscode, getAudioPath, AUDIO_DIR, getCookiesArg } from '../services/ytdlpService';
 
 const router = Router();
 
@@ -72,7 +72,8 @@ function getYTStreamUrl(youtubeId: string): Promise<string> {
     // Nota: NO añadir comillas extra al selector — exec() en Node no usa shell expansion
     const formatSelector = `bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best`;
     const ytUrl = `"https://www.youtube.com/watch?v=${youtubeId}"`;
-    const baseArgs = `--get-url --no-playlist -f ${formatSelector}`;
+    const cookiesArg = getCookiesArg();
+    const baseArgs = `${cookiesArg ? cookiesArg + ' ' : ''}--get-url --no-playlist -f ${formatSelector}`;
 
     let cmd = `yt-dlp ${baseArgs} ${ytUrl}`;
 
