@@ -355,6 +355,21 @@ export function useAudioPlayer() {
     // embedMode=true, abrimos el VideoPanel con el iframe de YouTube en lugar de
     // cargar audio. Esto permite escuchar con pantalla apagada vía YouTube nativo.
     const checkEmbedMode = async (): Promise<boolean> => {
+      const useYtPlayer = localStorage.getItem('koko_use_youtube_player') === 'true';
+      if (!useYtPlayer) return false;
+
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/stream/${currentTrack.id}/status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.youtubeId) {
+             usePlayerStore.getState().setEmbedMode(true, data.youtubeId);
+             return true;
+          }
+        }
+      } catch (e) {
+         console.error('Failed to get youtubeId for embed mode', e);
+      }
       return false;
     };
 

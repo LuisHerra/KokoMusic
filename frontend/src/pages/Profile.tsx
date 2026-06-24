@@ -109,6 +109,7 @@ export default function ProfilePage() {
     const saved = localStorage.getItem('koko_plays_needed_for_offline');
     return saved ? parseInt(saved) : 3;
   });
+  const [useYtPlayer, setUseYtPlayer] = useState(() => localStorage.getItem('koko_use_youtube_player') === 'true');
   const [savedId, setSavedId] = useState(rawId);
   const [uuidInput, setUuidInput] = useState(rawId);
   const [uuidError, setUuidError] = useState('');
@@ -180,6 +181,12 @@ export default function ProfilePage() {
   const handlePlaysNeededChange = (val: number) => {
     setPlaysNeededForOffline(val);
     localStorage.setItem('koko_plays_needed_for_offline', String(val));
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleToggleYtPlayer = (val: boolean) => {
+    setUseYtPlayer(val);
+    localStorage.setItem('koko_use_youtube_player', String(val));
     window.dispatchEvent(new Event('storage'));
   };
 
@@ -634,6 +641,12 @@ export default function ProfilePage() {
               description="Descarga y transcodifica automáticamente en segundo plano el audio de YouTube para guardarlo localmente. Si el archivo pesa menos de 30 MB, también se sube al CDN para acelerar futuras reproducciones desde cualquier dispositivo."
               checked={autoDownloadYt}
               onChange={handleToggleAutoDownloadYt}
+            />
+            <ToggleRow
+              label="Reproductor Oficial de YouTube (Anti-Bloqueos)"
+              description="Evita bloqueos de servidor reproduciendo la música desde el iframe oficial de YouTube usando tu propia conexión. (Desactiva el Crossfade y el Ecualizador)."
+              checked={useYtPlayer}
+              onChange={handleToggleYtPlayer}
             />
             <div style={{
               display: 'flex',
