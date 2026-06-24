@@ -11,6 +11,7 @@
 import yts from 'yt-search';
 import { cache } from './cacheService';
 import { getYouTubeResolution, upsertYouTubeResolution } from './supabaseService';
+import { searchInvidious, isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './invidiousService';
 
 // Canales considerados oficiales (prioridad máxima)
 const OFFICIAL_CHANNEL_PATTERNS = [
@@ -45,21 +46,23 @@ export async function resolveYoutubeId(
     return fromDB;
   }
 
-  // L3: yt-search con query inteligente
+  // L3: búsqueda de YouTube
   try {
-    // Query 1: buscar audio oficial
     const query = `${artistName} ${trackName} official audio`;
     let videos: any[] = [];
     
-    try {
-      const result = await yts(query);
-      videos = result.videos.slice(0, 10);
-    } catch (ytsErr) {
-      console.warn('[YTResolver] yt-search falló, intentando Invidious fallback:', (ytsErr as Error).message);
+    // Sólo intentamos yt-search si el circuit breaker lo permite
+    if (!isYtSearchDisabled()) {
+      try {
+        const result = await yts(query);
+        videos = result.videos.slice(0, 10);
+        recordYtSearchSuccess();
+      } catch (ytsErr) {
+        recordYtSearchFailure();
+      }
     }
 
     if (videos.length === 0) {
-      const { searchInvidious } = await import('./invidiousService');
       videos = await searchInvidious(query, 10);
     }
 

@@ -17,6 +17,7 @@ import {
   type TrackRow,
 } from './supabaseService';
 import yts from 'yt-search';
+import { searchInvidious as invidiousSearch, isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './invidiousService';
 
 const ITUNES_BASE = 'https://itunes.apple.com';
 
@@ -315,20 +316,24 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
   }
 }
 
-/** Búsqueda directa en YouTube via yt-search */
+/** Búsqueda directa en YouTube via yt-search con fallback a Invidious */
 async function searchYouTube(query: string, limit: number, cacheKey: string): Promise<TrackMetadata[]> {
   let videos: any[] = [];
-  try {
-    const result = await yts(query);
-    videos = result.videos || [];
-  } catch (ytsErr) {
-    console.warn('[Metadata] yt-search falló en searchYouTube, intentando Invidious fallback:', (ytsErr as Error).message);
+
+  // Sólo intentamos yt-search si el circuit breaker lo permite
+  if (!isYtSearchDisabled()) {
+    try {
+      const result = await yts(query);
+      videos = result.videos || [];
+      recordYtSearchSuccess();
+    } catch (ytsErr) {
+      recordYtSearchFailure();
+    }
   }
 
   try {
     if (videos.length === 0) {
-      const { searchInvidious } = await import('./invidiousService');
-      videos = await searchInvidious(query, limit);
+      videos = await invidiousSearch(query, limit);
     }
 
     // Priorizar canales oficiales (VEVO, Topic)

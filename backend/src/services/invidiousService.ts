@@ -2,16 +2,18 @@
  * Invidious Service
  * Fallback descentralizado para búsqueda y resolución de YouTube cuando
  * la IP del servidor está bloqueada por YouTube (caso común en Hugging Face Spaces).
- * Obtiene instancias activas de https://api.invidious.io/instances.json
- * y realiza búsquedas / extracción de stream proxy.
+ *
+ * Mecanismos de resiliencia:
+ *  - Circuit breaker por instancia: si una instancia devuelve 401/403/timeout,
+ *    se le aplica un cooldown de INSTANCE_COOLDOWN_MS antes de reintentarla.
+ *  - Circuit breaker de yt-search: si yt-search falla N veces seguidas,
+ *    se salta yt-search durante YT_SEARCH_COOLDOWN_MS y va directo a Invidious.
  */
 
-import fs from 'fs';
-
-// Instancias estables de fallback en caso de que falle la carga dinámica o se esté cargando
+// ── Instancias de respaldo estables ────────────────────────────────────────────
 const FALLBACK_INSTANCES = [
-  'https://inv.thepixora.com',
   'https://yt.chocolatemoo53.com',
+  'https://inv.thepixora.com',
   'https://yewtu.be',
   'https://inv.tux.pizza',
   'https://invidious.projectsegfau.lt',
@@ -21,9 +23,66 @@ const FALLBACK_INSTANCES = [
   'https://invidious.privacydev.net'
 ];
 
+// ── Estado de caché de instancias ──────────────────────────────────────────────
 let cachedInstances: string[] = [...FALLBACK_INSTANCES];
 let lastFetchedTime = 0;
 let isFetchingList = false;
+
+// ── Circuit breaker por instancia ──────────────────────────────────────────────
+// Mapa de instanceUri → timestamp hasta el que está en cooldown
+const INSTANCE_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutos
+const instanceCooldowns = new Map<string, number>();
+
+function isInstanceOnCooldown(uri: string): boolean {
+  const until = instanceCooldowns.get(uri);
+  if (!until) return false;
+  if (Date.now() >= until) {
+    instanceCooldowns.delete(uri);
+    return false;
+  }
+  return true;
+}
+
+function penalizeInstance(uri: string): void {
+  instanceCooldowns.set(uri, Date.now() + INSTANCE_COOLDOWN_MS);
+  console.warn(`[InvidiousService] Instancia ${uri} en cooldown por ${INSTANCE_COOLDOWN_MS / 60000} min.`);
+}
+
+// ── Circuit breaker global de yt-search ────────────────────────────────────────
+// yt-search hace scraping directo a youtube.com y falla cuando la IP está bloqueada
+const YT_SEARCH_FAIL_THRESHOLD = 2;    // Fallos consecutivos para activar
+const YT_SEARCH_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutos de cooldown
+
+let ytSearchFailCount = 0;
+let ytSearchDisabledUntil = 0;
+
+/** Indica si yt-search debe saltarse por estar en cooldown. */
+export function isYtSearchDisabled(): boolean {
+  if (ytSearchDisabledUntil && Date.now() < ytSearchDisabledUntil) return true;
+  return false;
+}
+
+/** Registra un fallo de yt-search y activa el circuit breaker si es necesario. */
+export function recordYtSearchFailure(): void {
+  ytSearchFailCount++;
+  if (ytSearchFailCount >= YT_SEARCH_FAIL_THRESHOLD) {
+    ytSearchDisabledUntil = Date.now() + YT_SEARCH_COOLDOWN_MS;
+    console.warn(
+      `[InvidiousService] yt-search desactivado por ${YT_SEARCH_COOLDOWN_MS / 60000} min ` +
+      `(${ytSearchFailCount} fallos consecutivos). Usando Invidious directamente.`
+    );
+  }
+}
+
+/** Registra un éxito de yt-search y resetea el circuit breaker. */
+export function recordYtSearchSuccess(): void {
+  if (ytSearchFailCount > 0) {
+    ytSearchFailCount = 0;
+    ytSearchDisabledUntil = 0;
+  }
+}
+
+// ── Actualización de lista dinámica de instancias ─────────────────────────────
 
 /**
  * Actualiza la lista de instancias públicas de Invidious desde la API oficial.
@@ -48,13 +107,9 @@ export async function refreshInstancesList(): Promise<void> {
         const lastStatus = monitor?.last_status;
         const isDown = monitor?.down === true;
         
-        // Si el monitor indica que está caido o el último status no fue 200, no usar
-        if (isDown || (lastStatus && lastStatus !== 200)) {
-          return;
-        }
+        if (isDown || (lastStatus && lastStatus !== 200)) return;
 
         const score = monitor ? uptime : 50;
-        // Priorizar instancias con API habilitada, pero no descartar las que digan false (a veces funcionan)
         const hasApi = details.api !== false;
 
         instances.push({ uri, score, hasApi });
@@ -73,7 +128,7 @@ export async function refreshInstancesList(): Promise<void> {
       }
     }
 
-    // Ordenar: primero las que soportan API de forma declarada, luego por score/uptime descendente
+    // Ordenar: primero API=true, luego por uptime desc
     const sorted = instances
       .sort((a, b) => {
         if (a.hasApi && !b.hasApi) return -1;
@@ -83,67 +138,102 @@ export async function refreshInstancesList(): Promise<void> {
       .map(inst => inst.uri);
 
     if (sorted.length > 0) {
-      // Unir ordenadamente con los fallbacks para no perder los de confianza
       cachedInstances = Array.from(new Set([...sorted, ...FALLBACK_INSTANCES]));
       lastFetchedTime = Date.now();
-      console.log(`[InvidiousService] Lista de instancias actualizada. Total: ${cachedInstances.length}`);
+      console.log(`[InvidiousService] Lista actualizada. Total: ${cachedInstances.length}`);
     }
   } catch (err) {
-    console.error('[InvidiousService] Error obteniendo lista de instancias de api.invidious.io:', err);
-    // Conservamos los fallbacks actuales
+    console.error('[InvidiousService] Error obteniendo lista de instancias:', err);
   } finally {
     isFetchingList = false;
   }
 }
 
+// ── Helpers de fetch con circuit breaker ──────────────────────────────────────
+
+/**
+ * Realiza una petición GET a una instancia con timeout.
+ * Penaliza la instancia si devuelve 401, 403 o 429 (rate limit) o si da timeout.
+ * Devuelve `null` si la petición falla o debe saltarse.
+ */
+async function fetchFromInstance(
+  instance: string,
+  path: string,
+  timeoutMs = 4000
+): Promise<any | null> {
+  if (isInstanceOnCooldown(instance)) return null;
+
+  const url = `${instance}${path}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    penalizeInstance(instance);
+  }, timeoutMs);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if ([401, 403, 429].includes(res.status)) {
+      penalizeInstance(instance);
+      return null;
+    }
+
+    if (!res.ok) {
+      console.warn(`[InvidiousService] ${instance} devolvió HTTP ${res.status}`);
+      return null;
+    }
+
+    const text = await res.text();
+    if (text.trim().startsWith('<')) {
+      // HTML en vez de JSON → probablemente Cloudflare
+      penalizeInstance(instance);
+      return null;
+    }
+
+    return JSON.parse(text);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const msg = (err as Error).message;
+    if (!msg.includes('aborted')) {
+      console.warn(`[InvidiousService] Falló ${instance}: ${msg}`);
+    }
+    return null;
+  }
+}
+
+// ── API pública ───────────────────────────────────────────────────────────────
+
 /**
  * Busca videos en Invidious como fallback de yt-search.
  */
 export async function searchInvidious(query: string, limit = 20): Promise<any[]> {
-  if (Date.now() - lastFetchedTime > 4 * 3600 * 1000) { // refrescar cada 4 horas
+  if (Date.now() - lastFetchedTime > 4 * 3600 * 1000) {
     refreshInstancesList().catch(() => {});
   }
 
-  const instancesToTry = [...cachedInstances];
-  for (const instance of instancesToTry) {
-    try {
-      const searchUrl = `${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&fields=title,videoId,author,lengthSeconds,videoThumbnails,viewCount`;
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout por instancia
+  const path = `/api/v1/search?q=${encodeURIComponent(query)}&type=video&fields=title,videoId,author,lengthSeconds,videoThumbnails,viewCount`;
 
-      const res = await fetch(searchUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
+  for (const instance of cachedInstances) {
+    const data = await fetchFromInstance(instance, path);
+    if (!data) continue;
 
-      if (!res.ok) {
-        console.warn(`[InvidiousService] Instancia ${instance} devolvió HTTP ${res.status} en búsqueda`);
-        continue;
+    if (Array.isArray(data)) {
+      const videos = data.filter((item: any) => item.type === 'video' && item.videoId);
+      if (videos.length > 0) {
+        return videos.slice(0, limit).map((v: any) => ({
+          videoId: v.videoId,
+          title: v.title,
+          author: { name: v.author || 'Desconocido' },
+          duration: { seconds: v.lengthSeconds || 0 },
+          thumbnail: v.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
+          views: v.viewCount || 0
+        }));
       }
-
-      const data = await res.json() as any;
-      if (Array.isArray(data)) {
-        const videos = data.filter((item: any) => item.type === 'video' && item.videoId);
-        if (videos.length > 0) {
-          return videos.slice(0, limit).map((v: any) => ({
-            videoId: v.videoId,
-            title: v.title,
-            author: {
-              name: v.author || 'Desconocido'
-            },
-            duration: {
-              seconds: v.lengthSeconds || 0
-            },
-            thumbnail: v.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
-            views: v.viewCount || 0
-          }));
-        }
-      }
-    } catch (err) {
-      console.warn(`[InvidiousService] Falló búsqueda en ${instance}:`, (err as Error).message);
     }
   }
 
-  console.error(`[InvidiousService] Fallaron todas las instancias para la búsqueda: "${query}"`);
+  console.error(`[InvidiousService] Fallaron todas las instancias para: "${query}"`);
   return [];
 }
 
@@ -155,40 +245,22 @@ export async function getInvidiousStreamUrl(videoId: string): Promise<string | n
     refreshInstancesList().catch(() => {});
   }
 
-  const instancesToTry = [...cachedInstances];
-  for (const instance of instancesToTry) {
-    try {
-      const videoUrl = `${instance}/api/v1/videos/${videoId}?local=true`;
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4500);
+  for (const instance of cachedInstances) {
+    const data = await fetchFromInstance(instance, `/api/v1/videos/${videoId}?local=true`, 6000);
+    if (!data) continue;
 
-      const res = await fetch(videoUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
+    if (data && Array.isArray(data.adaptiveFormats)) {
+      const audioStreams = data.adaptiveFormats.filter((f: any) => f.type?.startsWith('audio/'));
+      if (audioStreams.length === 0) continue;
 
-      if (!res.ok) {
-        console.warn(`[InvidiousService] Instancia ${instance} devolvió HTTP ${res.status} para stream`);
-        continue;
+      const opusStream = audioStreams.find((f: any) => f.type.includes('codecs="opus"'));
+      const selectedStream = opusStream || audioStreams[0];
+
+      if (selectedStream.url) {
+        let streamUrl = selectedStream.url;
+        if (streamUrl.startsWith('/')) streamUrl = `${instance}${streamUrl}`;
+        return streamUrl;
       }
-
-      const data = await res.json() as any;
-      if (data && Array.isArray(data.adaptiveFormats)) {
-        const audioStreams = data.adaptiveFormats.filter((f: any) => f.type && f.type.startsWith('audio/'));
-        if (audioStreams.length === 0) continue;
-
-        const opusStream = audioStreams.find((f: any) => f.type.includes('codecs="opus"'));
-        const selectedStream = opusStream || audioStreams[0];
-
-        if (selectedStream.url) {
-          let streamUrl = selectedStream.url;
-          if (streamUrl.startsWith('/')) {
-            streamUrl = `${instance}${streamUrl}`;
-          }
-          return streamUrl;
-        }
-      }
-    } catch (err) {
-      console.warn(`[InvidiousService] Falló extracción de stream en ${instance}:`, (err as Error).message);
     }
   }
 
@@ -203,44 +275,22 @@ export async function getInvidiousTrackById(videoId: string): Promise<any | null
     refreshInstancesList().catch(() => {});
   }
 
-  const instancesToTry = [...cachedInstances];
-  for (const instance of instancesToTry) {
-    try {
-      const videoUrl = `${instance}/api/v1/videos/${videoId}`;
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+  for (const instance of cachedInstances) {
+    const v = await fetchFromInstance(instance, `/api/v1/videos/${videoId}`);
+    if (!v || !v.videoId) continue;
 
-      const res = await fetch(videoUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        console.warn(`[InvidiousService] Instancia ${instance} devolvió HTTP ${res.status} para trackById`);
-        continue;
-      }
-
-      const v = await res.json() as any;
-      if (v && v.videoId) {
-        return {
-          videoId: v.videoId,
-          title: v.title,
-          author: {
-            name: v.author || 'Desconocido'
-          },
-          duration: {
-            seconds: v.lengthSeconds || 0
-          },
-          thumbnail: v.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
-          views: v.viewCount || 0
-        };
-      }
-    } catch (err) {
-      console.warn(`[InvidiousService] Falló getTrackById en ${instance}:`, (err as Error).message);
-    }
+    return {
+      videoId: v.videoId,
+      title: v.title,
+      author: { name: v.author || 'Desconocido' },
+      duration: { seconds: v.lengthSeconds || 0 },
+      thumbnail: v.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
+      views: v.viewCount || 0
+    };
   }
 
   return null;
 }
 
-// Cargar la lista al iniciar el archivo
+// Cargar la lista al iniciar
 refreshInstancesList().catch(() => {});
