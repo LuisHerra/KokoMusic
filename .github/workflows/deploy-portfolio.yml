@@ -2,7 +2,7 @@ name: Deploy KokoMusic to Portfolio
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'frontend/**'
       - 'build-for-portfolio.js'
