@@ -2,49 +2,42 @@ name: Deploy KokoMusic to Portfolio
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
     paths:
-      - 'frontend/**'
-      - 'build-for-portfolio.js'
-
-  # Permite lanzarlo manualmente desde GitHub Actions tab
+      - "frontend/**"
+      - "build-for-portfolio.js"
   workflow_dispatch:
 
 jobs:
   build-and-deploy:
-    name: Build & Push to KokoPortfolio
+    name: Build and Push to KokoPortfolio
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout KokoMusic ────────────────────────────────────────────────
       - name: Checkout KokoMusic
         uses: actions/checkout@v4
 
-      # ── 2. Setup Node.js ─────────────────────────────────────────────────────
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      # ── 3. Instalar dependencias del frontend ────────────────────────────────
       - name: Install frontend dependencies
         run: npm ci
         working-directory: frontend
 
-      # ── 4. Compilar frontend (modo portfolio, base=/kokoMusic/) ──────────────
       - name: Build frontend for portfolio
         run: npm run build
         working-directory: frontend
         env:
-          # Variables de producción — guardar en GitHub Secrets del repo KokoMusic
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           VITE_TICKETMASTER_KEY: ${{ secrets.VITE_TICKETMASTER_KEY }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      # ── 5. Checkout KokoPortfolio (repo separado) ────────────────────────────
       - name: Checkout KokoPortfolio
         uses: actions/checkout@v4
         with:
@@ -52,22 +45,18 @@ jobs:
           token: ${{ secrets.PORTFOLIO_DEPLOY_TOKEN }}
           path: KokoPortfolio
 
-      # ── 6. Copiar dist + actualizar kokoMusic.astro ──────────────────────────
-      - name: Update portfolio assets
+      - name: Copy assets to portfolio
         run: node build-for-portfolio.js --portfolio-path ./KokoPortfolio --skip-build
 
-      # ── 7. Commit & push a KokoPortfolio ────────────────────────────────────
-      - name: Commit and push changes
+      - name: Commit and push to KokoPortfolio
         working-directory: KokoPortfolio
         run: |
           git config user.name "KokoMusic CI"
           git config user.email "ci@kokomusic.app"
           git add .
-          # Solo commitear si hay cambios reales
           if git diff --staged --quiet; then
-            echo "No hay cambios nuevos. Skip."
+            echo "No changes to commit."
           else
             git commit -m "chore: update KokoMusic build $(date +'%Y-%m-%d %H:%M')"
             git push
-            echo "✅ KokoPortfolio actualizado — Vercel desplegará en breve."
           fi
