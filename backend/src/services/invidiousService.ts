@@ -10,18 +10,12 @@
  *    se salta yt-search durante YT_SEARCH_COOLDOWN_MS y va directo a Invidious.
  */
 
-// ── Instancias de respaldo estables ────────────────────────────────────────────
-const FALLBACK_INSTANCES = [
-  'https://yt.chocolatemoo53.com',
-  'https://inv.thepixora.com',
-  'https://yewtu.be',
-  'https://inv.tux.pizza',
-  'https://invidious.projectsegfau.lt',
-  'https://inv.nadeko.net',
-  'https://invidious.nerdvpn.de',
-  'https://invidious.no-logs.com',
-  'https://invidious.privacydev.net'
-];
+// ── Invidious desactivado — usando yt-dlp como fuente principal ——————————————
+// Invidious era un fallback para servidores cloud con IP bloqueada por YouTube.
+// Con yt-dlp funcionando localmente con IP residencial ya no es necesario.
+// Las instancias están vacías para que todos los callers reciban [] / null
+// inmediatamente y usen sus propios fallbacks (yt-dlp, yt-search, etc.).
+const FALLBACK_INSTANCES: string[] = [];
 
 // ── Estado de caché de instancias ──────────────────────────────────────────────
 let cachedInstances: string[] = [...FALLBACK_INSTANCES];
@@ -337,5 +331,4 @@ export async function getInvidiousTrackById(videoId: string): Promise<any | null
   return null;
 }
 
-// Cargar la lista al iniciar
-refreshInstancesList().catch(() => {});
+// Invidious desactivado — no se auto-inicia la lista de instancias
