@@ -342,34 +342,53 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
       }
     }
 
-    // 3. No está en ningún caché — obtener URL de stream vía Invidious (directa googlevideo.com)
-    //    yt-dlp se omite porque contacta www.youtube.com directamente (TLS bloqueado en HF Spaces)
+    // 3. No está en ningún caché — obtener URL de stream
+    //    PREFER_YTDLP=true → yt-dlp directo (para uso local/Termux con IP residencial)
+    //    Por defecto → Invidious primero (para servidores en la nube donde YT bloquea yt-dlp)
     const streamUrlCacheKey = `stream-url:${youtubeId}`;
     let rawUrl = cache.get(streamUrlCacheKey) as string | undefined;
+    const preferYtdlp = process.env.PREFER_YTDLP === 'true';
 
     if (!rawUrl) {
-      console.log(`[Stream] Extrayendo URL de YouTube para: ${youtubeId}`);
-      const { getInvidiousStreamUrl } = await import('../services/invidiousService');
-      const invidiousUrl = await getInvidiousStreamUrl(youtubeId);
+      console.log(`[Stream] Extrayendo URL de YouTube para: ${youtubeId} (modo: ${preferYtdlp ? 'yt-dlp directo' : 'Invidious'})`);
 
-      if (invidiousUrl) {
-        // Cachear por 25 min — las URLs de googlevideo.com expiran en ~6h pero
-        // preferimos renovarlas frecuentemente para evitar URLs caducadas mid-session
-        cache.setex(streamUrlCacheKey, 1500, invidiousUrl);
-        rawUrl = invidiousUrl;
-        console.log(`[Stream] ✅ Stream URL obtenida para ${youtubeId}, haciendo proxy...`);
-        await proxyAudioStream(req, res, invidiousUrl);
-      } else {
-        // Último recurso: intentar yt-dlp (solo funciona localmente o en IPs no bloqueadas)
-        console.warn(`[Stream] Invidious falló para ${youtubeId}, intentando yt-dlp como último recurso...`);
+      if (preferYtdlp) {
+        // Modo local: yt-dlp directo, sin pasar por instancias Invidious
         try {
           rawUrl = await getYTStreamUrl(youtubeId);
           cache.setex(streamUrlCacheKey, 1800, rawUrl);
-          proxyYouTubeStream(req, res, rawUrl);
+          console.log(`[Stream] ✅ yt-dlp stream URL obtenida para ${youtubeId}`);
+          await proxyAudioStream(req, res, rawUrl);
         } catch (ytdlpErr) {
-          console.error(`[Stream] Todos los métodos fallaron para ${youtubeId}:`, ytdlpErr);
+          console.error(`[Stream] yt-dlp falló para ${youtubeId}:`, ytdlpErr);
           if (!res.headersSent) {
-            return res.status(404).json({ error: 'No se pudo obtener el stream de audio. YouTube puede estar bloqueando las peticiones desde este servidor.' });
+            return res.status(404).json({ error: 'No se pudo obtener el stream. Asegúrate de que yt-dlp está instalado.' });
+          }
+        }
+      } else {
+        // Modo servidor: Invidious primero, yt-dlp como último recurso
+        const { getInvidiousStreamUrl } = await import('../services/invidiousService');
+        const invidiousUrl = await getInvidiousStreamUrl(youtubeId);
+
+        if (invidiousUrl) {
+          // Cachear por 25 min — las URLs de googlevideo.com expiran en ~6h pero
+          // preferimos renovarlas frecuentemente para evitar URLs caducadas mid-session
+          cache.setex(streamUrlCacheKey, 1500, invidiousUrl);
+          rawUrl = invidiousUrl;
+          console.log(`[Stream] ✅ Invidious stream URL obtenida para ${youtubeId}, haciendo proxy...`);
+          await proxyAudioStream(req, res, invidiousUrl);
+        } else {
+          // Último recurso: yt-dlp (solo funciona en IPs no bloqueadas)
+          console.warn(`[Stream] Invidious falló para ${youtubeId}, intentando yt-dlp como último recurso...`);
+          try {
+            rawUrl = await getYTStreamUrl(youtubeId);
+            cache.setex(streamUrlCacheKey, 1800, rawUrl);
+            proxyYouTubeStream(req, res, rawUrl);
+          } catch (ytdlpErr) {
+            console.error(`[Stream] Todos los métodos fallaron para ${youtubeId}:`, ytdlpErr);
+            if (!res.headersSent) {
+              return res.status(404).json({ error: 'No se pudo obtener el stream de audio. YouTube puede estar bloqueando las peticiones desde este servidor.' });
+            }
           }
         }
       }
