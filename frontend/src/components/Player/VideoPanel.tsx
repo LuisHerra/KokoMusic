@@ -329,7 +329,19 @@ export default function VideoPanel() {
               title="Video Background"
               frameBorder="0"
               allow="autoplay; encrypted-media"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
+              style={{
+                // Fill portrait screen: video is 16:9, screen is taller than wide.
+                // Set width to 177.78vh so at full screen height the video covers full width.
+                position: 'absolute',
+                width: '177.78vh',
+                height: '100vh',
+                minWidth: '100%',
+                minHeight: '100%',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                pointerEvents: 'none',
+              }}
             />
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)' }} />
           </div>

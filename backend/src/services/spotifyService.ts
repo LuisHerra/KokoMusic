@@ -7,7 +7,7 @@
  * y garantiza que los metadatos coincidan exactamente con el audio descargado por yt-dlp.
  */
 
-import { searchInvidious, isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess, getInvidiousTrackById } from './invidiousService';
+import { searchYtdlp, getVideoByIdYtdlp, isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './ytdlpSearchService';
 
 export interface TrackMetadata {
   id: string;
@@ -36,7 +36,7 @@ export async function searchTracks(query: string, limit = 20): Promise<TrackMeta
 
   try {
     if (videos.length === 0) {
-      videos = await searchInvidious(query, limit);
+      videos = await searchYtdlp(query, limit);
     }
     
     // Priorizar videos que contengan "lyrics" o "letra" en el título
@@ -56,7 +56,7 @@ export async function searchTracks(query: string, limit = 20): Promise<TrackMeta
       title: v.title,
       artist: v.author?.name || 'Desconocido',
       album: 'YouTube Audio',
-      cover: v.thumbnail ?? '',
+      cover: v.thumbnail ?? `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
       duration: (v.duration?.seconds || 0) * 1000,
       popularity: v.views || 0,
       preview_url: null,
@@ -70,11 +70,11 @@ export async function searchTracks(query: string, limit = 20): Promise<TrackMeta
 export async function getTrackById(id: string): Promise<TrackMetadata | null> {
   let video: any = null;
 
-  // Siempre usar Invidious para lookup por ID — yt-search hace scraping directo a YouTube
+  // Siempre usar yt-dlp para lookup por ID
   try {
-    video = await getInvidiousTrackById(id);
+    video = await getVideoByIdYtdlp(id);
   } catch (err) {
-    console.warn('[SpotifyService] getInvidiousTrackById falló:', (err as Error).message);
+    console.warn('[SpotifyService] getVideoByIdYtdlp falló:', (err as Error).message);
   }
 
   if (!video) return null;
@@ -84,7 +84,7 @@ export async function getTrackById(id: string): Promise<TrackMetadata | null> {
     title: video.title,
     artist: video.author?.name || 'Desconocido',
     album: 'YouTube Audio',
-    cover: video.thumbnail || '',
+    cover: video.thumbnail || `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
     duration: (video.duration?.seconds || 0) * 1000,
     popularity: video.views || 0,
     preview_url: null,

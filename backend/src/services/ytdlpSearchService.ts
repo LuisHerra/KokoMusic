@@ -12,6 +12,43 @@
 import { exec } from 'child_process';
 import { getCookiesArg } from './ytdlpService';
 
+// ── Circuit breaker global de yt-search ────────────────────────────────────────
+const YT_SEARCH_FAIL_THRESHOLD = 2;    // Fallos consecutivos para activar
+const YT_SEARCH_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutos de cooldown
+
+let ytSearchFailCount = 0;
+let ytSearchDisabledUntil = 0;
+
+/** Indica si yt-search debe saltarse por estar en cooldown. */
+export function isYtSearchDisabled(): boolean {
+  if (ytSearchDisabledUntil && Date.now() < ytSearchDisabledUntil) return true;
+  return false;
+}
+
+/** Registra un fallo de yt-search y activa el circuit breaker si es necesario. */
+export function recordYtSearchFailure(): void {
+  if (isYtSearchDisabled()) {
+    ytSearchDisabledUntil = Date.now() + YT_SEARCH_COOLDOWN_MS;
+    return;
+  }
+  ytSearchFailCount++;
+  if (ytSearchFailCount >= YT_SEARCH_FAIL_THRESHOLD) {
+    ytSearchDisabledUntil = Date.now() + YT_SEARCH_COOLDOWN_MS;
+    console.warn(
+      `[ytdlpSearchService] yt-search desactivado por ${YT_SEARCH_COOLDOWN_MS / 60000} min ` +
+      `(${ytSearchFailCount} fallos). Usando yt-dlp directamente.`
+    );
+  }
+}
+
+/** Registra un éxito de yt-search y resetea el circuit breaker. */
+export function recordYtSearchSuccess(): void {
+  if (ytSearchFailCount > 0) {
+    ytSearchFailCount = 0;
+    ytSearchDisabledUntil = 0;
+  }
+}
+
 /** Normaliza la salida de yt-dlp dump-json a formato VideoResult común */
 function parseYtdlpVideo(v: any): any | null {
   if (!v?.id) return null;

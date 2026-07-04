@@ -76,6 +76,7 @@ html, body, #root {
     "sidebar main"
     "player  player";
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -4129,6 +4130,8 @@ select:focus {
       "main"
       "player"
       "nav";
+    height: 100vh;
+    height: 100dvh;
   }
   .sidebar {
     display: none;

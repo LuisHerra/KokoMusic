@@ -318,10 +318,10 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
 
     // ── Flujo CDN-first ───────────────────────────────────────────────────────
 
-    // 1. ¿Existe localmente? (para YouTube directos: guardamos siempre en local)
+    // 1. ¿Existe localmente? Servir directamente
     const localPath = getAudioPath(youtubeId);
-    if (isDirectYouTube && fs.existsSync(localPath)) {
-      console.log(`[Stream] 💾 Local hit (YouTube directo): ${youtubeId}`);
+    if (fs.existsSync(localPath)) {
+      console.log(`[Stream] 💾 Local hit: ${youtubeId}`);
       streamLocalFile(req, res, localPath, 'audio/ogg; codecs=opus');
       return;
     }
@@ -371,15 +371,14 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
       if (!isTooLargeForServer) {
         cache.setex(downloadingKey, 600, '1'); // lock 10 min
 
-        if (isDirectYouTube) {
-          // Videos de YouTube buscados directamente: guardar localmente de forma permanente
-          // para evitar re-descargas futuras (alta probabilidad de re-escucha)
-          console.log(`[Stream] 📥 Background: descargando ${youtubeId} (YT directo → local permanente)...`);
+        if (isDirectYouTube || !isCDNEnabled()) {
+          // Videos de YouTube directos o si el CDN no está configurado: guardar localmente de forma permanente
+          console.log(`[Stream] 📥 Background: descargando ${youtubeId} (local permanente)...`);
           downloadAndUploadToCDN(youtubeId, true).finally(() => {
             cache.del(downloadingKey);
           });
         } else if (isCDNEnabled()) {
-          // Tracks iTunes: subir a CDN y eliminar local
+          // Tracks iTunes con CDN habilitado: subir a CDN y eliminar local
           console.log(`[Stream] 📥 Background: descargando ${youtubeId} para CDN...`);
           downloadAndUploadToCDN(youtubeId, false).finally(() => {
             cache.del(downloadingKey);
@@ -537,8 +536,8 @@ router.post('/:itunesId/download', async (req: Request, res: Response) => {
     const downloadingKey = `downloading:${youtubeId}`;
     if (!cache.get(downloadingKey)) {
       cache.setex(downloadingKey, 600, '1'); // lock 10 min
-      console.log(`[Stream] 📥 Descarga manual solicitada para ${youtubeId} (keepLocal: ${isDirectYouTube})`);
-      downloadAndUploadToCDN(youtubeId, isDirectYouTube).finally(() => {
+      console.log(`[Stream] 📥 Descarga manual solicitada para ${youtubeId} (keepLocal: ${isDirectYouTube || !isCDNEnabled()})`);
+      downloadAndUploadToCDN(youtubeId, isDirectYouTube || !isCDNEnabled()).finally(() => {
         cache.del(downloadingKey);
       });
     }

@@ -16,7 +16,7 @@ import {
   getTrackFromDB,
   type TrackRow,
 } from './supabaseService';
-import { searchInvidious as invidiousSearch } from './invidiousService';
+import { searchYtdlp, getVideoByIdYtdlp } from './ytdlpSearchService';
 
 const ITUNES_BASE = 'https://itunes.apple.com';
 
@@ -315,10 +315,10 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
   }
 }
 
-/** Búsqueda de YouTube vía Invidious (yt-search eliminado — siempre falla por bloqueo de IP) */
+/** Búsqueda de YouTube vía yt-dlp */
 async function searchYouTube(query: string, limit: number, cacheKey: string): Promise<TrackMetadata[]> {
   try {
-    const videos = await invidiousSearch(query, limit);
+    const videos = await searchYtdlp(query, limit);
 
     // Priorizar canales oficiales (VEVO, Topic)
     const filteredVideos = videos
@@ -381,10 +381,9 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
 
   const id = Number(itunesId);
   if (isNaN(id) || id === 0) {
-    // Es un ID de YouTube — usar Invidious para obtener metadata (yt-search hace scraping directo a YouTube y falla en IPs bloqueadas)
+    // Es un ID de YouTube — usar yt-dlp para obtener metadata
     try {
-      const { getInvidiousTrackById } = await import('./invidiousService');
-      const v = await getInvidiousTrackById(idStr);
+      const v = await getVideoByIdYtdlp(idStr);
       if (!v) return null;
       
       const authorName = v.author?.name ?? 'Artista desconocido';
@@ -395,9 +394,9 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
         title: v.title ?? 'Sin título',
         artist: authorName,
         album: 'YouTube',
-        cover: v.thumbnail ?? '',
+        cover: v.thumbnail ?? `https://img.youtube.com/vi/${idStr}/hqdefault.jpg`,
         duration: (v.duration?.seconds ?? 0) * 1000,
-        genre: '',
+        genre: 'YouTube Video',
         releaseDate: null,
         popularity: v.views || 0,
         preview_url: null,

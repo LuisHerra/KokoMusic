@@ -87,6 +87,11 @@ export function recordYtSearchSuccess(): void {
  * Actualiza la lista de instancias públicas de Invidious desde la API oficial.
  */
 export async function refreshInstancesList(): Promise<void> {
+  // Invidious desactivado — no actualizamos instancias
+  return;
+}
+
+async function _refreshInstancesList_disabled(): Promise<void> {
   if (isFetchingList) return;
   isFetchingList = true;
   try {

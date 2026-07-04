@@ -45,11 +45,11 @@ export function hashStringToInteger(str: string): number {
  * Busca vídeos del canal con yt-search y los convierte en "canciones" / top content.
  */
 async function buildArtistInfoFromYouTube(channelName: string): Promise<ArtistInfo | null> {
-  const { searchInvidious } = await import('./invidiousService');
+  const { searchYtdlp } = await import('./ytdlpSearchService');
 
   try {
-    // Buscar vídeos del canal como top tracks via Invidious
-    const channelVideos = await searchInvidious(`${channelName} official`, 20);
+    // Buscar vídeos del canal como top tracks via yt-dlp
+    const channelVideos = await searchYtdlp(`${channelName} official`, 20);
 
     if (channelVideos.length === 0) return null;
 
@@ -75,7 +75,7 @@ async function buildArtistInfoFromYouTube(channelName: string): Promise<ArtistIn
     }));
 
     // Buscar vídeos más recientes como "musicVideos"
-    const recentVideos = await searchInvidious(`${channelName} latest`, 6);
+    const recentVideos = await searchYtdlp(`${channelName} latest`, 6);
     const musicVideos = recentVideos.map((v: any) => ({
       id: v.videoId,
       title: v.title,
@@ -471,15 +471,15 @@ export async function getArtistInfo(artistIdentifier: number | string): Promise<
     console.error('[Artist] Error obteniendo álbumes:', e);
   }
 
-  // Obtener vídeos de YouTube (Oficiales y en vivo) via Invidious
+  // Obtener vídeos de YouTube (Oficiales y en vivo) via yt-dlp
   let musicVideos: any[] = [];
   let livePerformances: any[] = [];
   try {
-    const { searchInvidious } = await import('./invidiousService');
+    const { searchYtdlp } = await import('./ytdlpSearchService');
     const topTrackName = topTracks.length > 0 ? topTracks[0].title : '';
     const [mvVideos, liveVideos] = await Promise.all([
-      searchInvidious(`${name} ${topTrackName} official music video`, 6),
-      searchInvidious(`${name} live performance`, 4)
+      searchYtdlp(`${name} ${topTrackName} official music video`, 6),
+      searchYtdlp(`${name} live performance`, 4)
     ]);
 
     musicVideos = mvVideos.map((v: any) => ({

@@ -178,28 +178,8 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
   try {
     await execAsync(ytdlpCmd);
   } catch (ytdlpError) {
-    console.warn(`[yt-dlp] Error descargando con yt-dlp: ${(ytdlpError as Error).message}. Intentando fallback con Invidious...`);
-    try {
-      const { getInvidiousStreamUrl } = await import('./invidiousService');
-      const invidiousUrl = await getInvidiousStreamUrl(trackId);
-      if (!invidiousUrl) {
-        throw new Error(`Invidious no pudo resolver el stream URL para ${trackId}`);
-      }
-
-      console.log(`[yt-dlp Fallback] Descargando stream de Invidious: ${invidiousUrl}`);
-      const res = await fetch(invidiousUrl);
-      if (!res.ok) {
-        throw new Error(`Invidious stream HTTP error: ${res.statusText}`);
-      }
-
-      const arrayBuffer = await res.arrayBuffer();
-      tempFile = `${tempBase}.downloaded`;
-      fs.writeFileSync(tempFile, Buffer.from(arrayBuffer));
-      console.log(`[yt-dlp Fallback] Descargado archivo temporal de ${arrayBuffer.byteLength} bytes.`);
-    } catch (fallbackError) {
-      console.error('[yt-dlp Fallback] Falló la descarga alternativa de Invidious:', fallbackError);
-      throw new Error(`Tanto yt-dlp como el fallback de Invidious fallaron: ${(fallbackError as Error).message}`);
-    }
+    console.error(`[yt-dlp] Error descargando con yt-dlp: ${(ytdlpError as Error).message}`);
+    throw ytdlpError;
   }
 
   // 2. Transcodificación con FFmpeg con pipeline de calidad optimizado:

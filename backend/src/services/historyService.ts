@@ -16,9 +16,10 @@
 
 import fs from 'fs';
 import path from 'path';
-import { searchInvidious } from './invidiousService';
-import { TrackMetadata } from './spotifyService';
+import { searchYtdlp } from './ytdlpSearchService';
+import { TrackMetadata } from './metadataService';
 import { supabase } from './supabaseService';
+import { hashStringToInteger } from './artistService';
 
 const HISTORY_FILE = path.join(__dirname, '../../data/user_history.json');
 
@@ -633,7 +634,7 @@ export async function getRecommendations(limit = 10, userId?: string, mood?: str
   const query = searchTerms[Math.floor(Math.random() * searchTerms.length)];
 
   try {
-    const videos = await searchInvidious(query, limit * 3);
+    const videos = await searchYtdlp(query, limit * 3);
     const seen = new Set(history.map((h) => h.trackId));
     const pool = videos.filter((v) => !seen.has(v.videoId));
     const source = pool.length > 3 ? pool : videos;
@@ -642,11 +643,15 @@ export async function getRecommendations(limit = 10, userId?: string, mood?: str
       .slice(0, limit)
       .map((v) => ({
         id: v.videoId,
+        itunesId: 0,
+        artistId: hashStringToInteger(v.author?.name ?? 'Desconocido'),
         title: v.title,
         artist: v.author?.name ?? 'Desconocido',
         album: mood ? `Mood: ${mood.charAt(0).toUpperCase() + mood.slice(1)}` : 'YouTube Recommendations',
-        cover: v.thumbnail || '',
+        cover: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
         duration: (v.duration?.seconds ?? 0) * 1000,
+        genre: 'YouTube Video',
+        releaseDate: null,
         popularity: v.views ?? 0,
         preview_url: null,
       }));

@@ -15,7 +15,7 @@
 import yts from 'yt-search';
 import { cache } from './cacheService';
 import { getYouTubeResolution, upsertYouTubeResolution } from './supabaseService';
-import { isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './invidiousService';
+import { isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './ytdlpSearchService';
 
 // Canales considerados oficiales (prioridad máxima)
 const OFFICIAL_CHANNEL_PATTERNS = [

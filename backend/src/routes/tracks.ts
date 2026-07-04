@@ -938,7 +938,7 @@ function cleanMetadataForLyrics(title: string, author: string) {
   return { artist, title: trackName };
 }
 
-import { searchInvidious } from '../services/invidiousService';
+import { searchYtdlp } from '../services/ytdlpSearchService';
 
 function stringToSafeIntegerHash(str: string): number {
   let hash = 5381;
@@ -983,11 +983,11 @@ router.get('/:id/video', async (req: Request, res: Response) => {
       youtubeId = await resolveYoutubeId(trackMeta.itunesId, trackMeta.artist, trackMeta.title);
     }
 
-    // Buscar videos musicales relacionados via Invidious
+    // Buscar videos musicales relacionados via yt-dlp
     let relatedVideos: any[] = [];
     try {
       const query = `${trackMeta.artist} ${trackMeta.title}`;
-      const results = await searchInvidious(query, 10);
+      const results = await searchYtdlp(query, 10);
       relatedVideos = results
         .filter((v: any) => v.videoId && v.videoId !== youtubeId)
         .slice(0, 6)
@@ -995,7 +995,7 @@ router.get('/:id/video', async (req: Request, res: Response) => {
           id: v.videoId,
           title: v.title,
           artist: v.author?.name || trackMeta.artist,
-          thumbnail: v.thumbnail,
+          thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
           views: v.views,
           duration: v.duration?.seconds
             ? `${Math.floor(v.duration.seconds / 60)}:${String(v.duration.seconds % 60).padStart(2, '0')}`
