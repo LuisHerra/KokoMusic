@@ -5,7 +5,11 @@
  * Busca con query inteligente y prioriza canales oficiales (VEVO, Topic).
  *
  * Estrategia de caché:
- *   L1: memoria (permanente en proceso) → L2: Supabase (permanente) → yt-search
+ *   L1: memoria (permanente en proceso) → L2: Supabase (permanente) → yt-search / yt-dlp
+ *
+ * Modos:
+ *   PREFER_YTDLP=true  → yt-search → yt-dlp search (sin Invidious, para Termux/local)
+ *   Por defecto        → yt-search → Invidious (para servidores en la nube)
  */
 
 import yts from 'yt-search';
@@ -50,8 +54,9 @@ export async function resolveYoutubeId(
   try {
     const query = `${artistName} ${trackName} official audio`;
     let videos: any[] = [];
-    
-    // Sólo intentamos yt-search si el circuit breaker lo permite
+    const preferYtdlp = process.env.PREFER_YTDLP === 'true';
+
+    // Intentar yt-search (biblioteca npm) primero — rápido si la IP no está bloqueada
     if (!isYtSearchDisabled()) {
       try {
         const result = await yts(query);
@@ -62,8 +67,17 @@ export async function resolveYoutubeId(
       }
     }
 
+    // Fallback si yt-search no devolvió resultados
     if (videos.length === 0) {
-      videos = await searchInvidious(query, 10);
+      if (preferYtdlp) {
+        // Modo local: yt-dlp search (residencial, sin bloqueos)
+        const { searchYtdlp } = await import('./ytdlpSearchService');
+        console.log(`[YTResolver] yt-search vacío — buscando via yt-dlp: "${query}"`);
+        videos = await searchYtdlp(query, 10);
+      } else {
+        // Modo servidor: Invidious API
+        videos = await searchInvidious(query, 10);
+      }
     }
 
     if (videos.length === 0) return null;
