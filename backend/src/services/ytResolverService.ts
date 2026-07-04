@@ -15,7 +15,7 @@
 import yts from 'yt-search';
 import { cache } from './cacheService';
 import { getYouTubeResolution, upsertYouTubeResolution } from './supabaseService';
-import { searchInvidious, isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './invidiousService';
+import { isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './invidiousService';
 
 // Canales considerados oficiales (prioridad máxima)
 const OFFICIAL_CHANNEL_PATTERNS = [
@@ -52,32 +52,24 @@ export async function resolveYoutubeId(
 
   // L3: búsqueda de YouTube
   try {
+    // L3: búsqueda — yt-search primero (rápido), yt-dlp search como fallback
     const query = `${artistName} ${trackName} official audio`;
     let videos: any[] = [];
-    const preferYtdlp = process.env.PREFER_YTDLP === 'true';
 
-    // Intentar yt-search (biblioteca npm) primero — rápido si la IP no está bloqueada
     if (!isYtSearchDisabled()) {
       try {
         const result = await yts(query);
         videos = result.videos.slice(0, 10);
         recordYtSearchSuccess();
-      } catch (ytsErr) {
+      } catch {
         recordYtSearchFailure();
       }
     }
 
-    // Fallback si yt-search no devolvió resultados
     if (videos.length === 0) {
-      if (preferYtdlp) {
-        // Modo local: yt-dlp search (residencial, sin bloqueos)
-        const { searchYtdlp } = await import('./ytdlpSearchService');
-        console.log(`[YTResolver] yt-search vacío — buscando via yt-dlp: "${query}"`);
-        videos = await searchYtdlp(query, 10);
-      } else {
-        // Modo servidor: Invidious API
-        videos = await searchInvidious(query, 10);
-      }
+      const { searchYtdlp } = await import('./ytdlpSearchService');
+      console.log(`[YTResolver] yt-search vacío — buscando via yt-dlp: "${query}"`);
+      videos = await searchYtdlp(query, 10);
     }
 
     if (videos.length === 0) return null;
