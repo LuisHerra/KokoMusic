@@ -26,3 +26,6 @@ npm-debug.log*
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Scripts con keys — no subir al repo
+scripts/upload-secrets.mjs

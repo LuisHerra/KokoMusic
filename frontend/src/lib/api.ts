@@ -1,23 +1,30 @@
 /**
  * API client centralizado con React Query.
- * Base URL desde variable de entorno VITE_API_URL.
+ * Base URL resuelta automáticamente: local → tunnel → cloud (HF/VITE_API_URL)
+ * Ver: lib/backendResolver.ts
  */
+
+import { getApiUrl, getCachedBaseUrl } from './backendResolver';
 
 if (typeof window !== 'undefined' && !localStorage.getItem('koko_device_id')) {
   localStorage.setItem('koko_device_id', crypto.randomUUID());
 }
 
-export const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
+// Fallback síncrono mientras el resolver aún no ha completado
+export const BASE = getCachedBaseUrl()
+  ? `${getCachedBaseUrl()}/api`
+  : (import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api');
 
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const userId = localStorage.getItem('koko_device_id') || '';
+  const userId  = localStorage.getItem('koko_device_id') || '';
+  const apiBase = await getApiUrl();   // resuelve local/tunnel/cloud automáticamente
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(userId ? { 'x-user-id': userId } : {}),
     ...(options?.headers || {}),
   };
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
   });
@@ -618,8 +625,8 @@ export const markNotificationsRead = (userId: string) =>
 export function resolveImageUrl(url?: string): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('/') && !url.startsWith('//')) {
-    const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
-    const domain = apiBase.replace('/api', '');
+    const cached = getCachedBaseUrl();
+    const domain = cached ?? (import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api').replace('/api', '');
     return `${domain}${url}`;
   }
   return url;

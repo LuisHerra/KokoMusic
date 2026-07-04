@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar/Sidebar';
 import Player from './components/Player/Player';
 import BottomNav from './components/BottomNav';
@@ -28,6 +28,8 @@ import NotificationBell from './components/NotificationBell';
 import { useNotifications } from './hooks/useNotifications';
 import { joinJam, getJam, getMyProfile, getProfileNames, cleanName, resolveImageUrl } from './lib/api';
 import { cleanupOldOfflineTracks } from './lib/offlineAudio';
+import InstallPrompt from './components/InstallPrompt';
+import AppSplash from './components/AppSplash';
 
 
 const queryClient = new QueryClient({
@@ -391,16 +393,24 @@ function AppShell() {
 }
 
 export default function App() {
+  const [backendReady, setBackendReady] = useState(false);
+  const handleReady = useCallback(() => setBackendReady(true), []);
+
   // import.meta.env.BASE_URL = '/kokoMusic/' in production build (set by vite.config base)
   // and '/' in dev mode — so routing works correctly in both environments
   const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Splash mientras el backend local (Termux) arranca */}
+      {!backendReady && <AppSplash onReady={handleReady} />}
+
       <BrowserRouter basename={basename}>
         <AudioEngine />
         <ListeningSessionTracker />
         <NotificationPoller />
         <AppShell />
+        {/* Banner de instalación PWA — solo aparece si Chrome lo ofrece */}
+        <InstallPrompt />
       </BrowserRouter>
     </QueryClientProvider>
   );

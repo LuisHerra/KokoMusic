@@ -44,6 +44,8 @@ const allowedOrigins = [
   /^https?:\/\/(.*\.)?kokoworks\.es$/,
   // Permitir vercel.app y subdominios
   /^https?:\/\/(.*\.)?vercel\.app$/,
+  // Cloudflare Tunnel — URLs dinámicas generadas por cloudflared
+  /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/,
   ...rawOrigins,
 ].filter(Boolean);
 
@@ -67,6 +69,19 @@ import path from 'path';
 
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.resolve('data/uploads')));
+
+// ── Servir frontend en modo local (Termux / PWA) ──────────────────────────────
+// Activar con SERVE_FRONTEND=true en .env o variable de entorno
+if (process.env.SERVE_FRONTEND === 'true') {
+  const frontendDist = path.resolve(process.cwd(), '..', 'frontend', 'dist');
+  if (require('fs').existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+    console.log(`[Frontend] Sirviendo desde ${frontendDist}`);
+  } else {
+    console.warn('[Frontend] SERVE_FRONTEND=true pero no existe frontend/dist. Ejecuta: npm run build:local');
+  }
+}
+
 
 // ── Health check & Root dashboard ─────────────────────────────────────────────
 app.get('/', (_req, res) => {

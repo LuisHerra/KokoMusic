@@ -2,9 +2,26 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231DB954'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'/></svg>" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="KokoMusic — Reproductor de música académico con Spotify API y streaming de audio" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1db954" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS PWA (Safari) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KokoMusic" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+    <!-- SEO / Info -->
+    <meta name="description" content="KokoMusic — Reproductor de música con streaming de YouTube y tu biblioteca personal" />
+    <meta name="application-name" content="KokoMusic" />
+
+    <!-- Icono -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+
     <title>KokoMusic</title>
   </head>
   <body>
@@ -12,3 +29,4 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+

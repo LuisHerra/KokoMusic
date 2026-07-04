@@ -8,7 +8,10 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
-    "deploy:portfolio": "node build-for-portfolio.js"
+    "deploy:portfolio": "node build-for-portfolio.js",
+    "local:install": "powershell -ExecutionPolicy Bypass -File scripts/install-deps.ps1",
+    "local:start": "powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1",
+    "build:local": "cross-env VITE_BUILD_MODE=local npm --prefix frontend run build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

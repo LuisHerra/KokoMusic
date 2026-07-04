@@ -25,6 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const portfolioFlagIdx = args.indexOf('--portfolio-path');
 const portfolioRelPath = portfolioFlagIdx !== -1 ? args[portfolioFlagIdx + 1] : '../KokoPortfolio';
+const skipBuild = args.includes('--skip-build'); // En CI ya se compiló antes
 
 const FRONTEND_DIR = path.join(__dirname, 'frontend');
 const DIST_DIR = path.join(FRONTEND_DIR, 'dist');
@@ -38,13 +39,17 @@ console.log(`   Portfolio: ${PORTFOLIO_DIR}`);
 console.log('');
 
 // ── 1. Build frontend ──────────────────────────────────────────────────────────
-console.log('📦 Step 1/3: Building KokoMusic frontend...');
-try {
-  execSync('npm run build', { cwd: FRONTEND_DIR, stdio: 'inherit' });
-  console.log('   ✅ Build completed\n');
-} catch (err) {
-  console.error('   ❌ Build failed:', err.message);
-  process.exit(1);
+if (skipBuild) {
+  console.log('✔️  Build omitido (--skip-build)\n');
+} else {
+  console.log('📦 Step 1/3: Building KokoMusic frontend...');
+  try {
+    execSync('npm run build', { cwd: FRONTEND_DIR, stdio: 'inherit' });
+    console.log('   ✅ Build completed\n');
+  } catch (err) {
+    console.error('   ❌ Build failed:', err.message);
+    process.exit(1);
+  }
 }
 
 // ── 2. Copy dist → public/kokoMusic ───────────────────────────────────────────
