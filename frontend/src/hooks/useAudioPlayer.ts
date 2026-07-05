@@ -15,6 +15,7 @@ import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler } from '../s
 import { getStreamUrl, logTrackPlay } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
+import { logToServer } from '../lib/logger';
 
 let currentBlobUrl: string | null = null;
 
@@ -188,40 +189,50 @@ export function setAudioPlaybackRate(rate: number) {
  * Must be called synchronously within a user interaction handler.
  */
 export function unlockAudio() {
+  logToServer('INFO', `[useAudioPlayer] unlockAudio() triggered by user interaction.`);
   try {
     const ctx = getAudioContext();
+    logToServer('INFO', `[useAudioPlayer] AudioContext state: ${ctx.state}`);
     if (ctx && ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
+      ctx.resume()
+        .then(() => logToServer('INFO', '[useAudioPlayer] AudioContext resumed successfully'))
+        .catch((err) => logToServer('WARN', '[useAudioPlayer] AudioContext resume failed', err));
     }
   } catch (e) {
-    console.warn('[Player] Error resuming AudioContext:', e);
+    logToServer('ERROR', '[useAudioPlayer] Error resuming AudioContext', e);
   }
 
   // Play a silent short sound to unlock audio1 and audio2
   const silentSrc = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
   
-  [audio1, audio2].forEach((audio) => {
+  [audio1, audio2].forEach((audio, idx) => {
     try {
+      const label = `audio${idx + 1}`;
+      logToServer('INFO', `[useAudioPlayer] Unlocking ${label}. src: ${audio.src ? audio.src.substring(0, 50) : 'empty'}, paused: ${audio.paused}`);
       if (!audio.src || audio.src.startsWith('data:')) {
         audio.src = silentSrc;
         audio.play()
           .then(() => {
             audio.pause();
             audio.src = '';
+            logToServer('INFO', `[useAudioPlayer] ${label} unlocked successfully (silent play finished)`);
           })
           .catch((err) => {
-            console.warn('[Player] Silent play failed:', err);
+            logToServer('WARN', `[useAudioPlayer] ${label} silent play failed`, err);
           });
       } else {
         const active = getActiveAudio();
         if (audio === active && audio.paused) {
-          audio.play().catch((err) => {
-            console.warn('[Player] Sync play of active audio failed:', err);
-          });
+          logToServer('INFO', `[useAudioPlayer] ${label} is active and paused. Attempting sync play...`);
+          audio.play()
+            .then(() => logToServer('INFO', `[useAudioPlayer] ${label} sync play succeeded`))
+            .catch((err) => {
+              logToServer('WARN', `[useAudioPlayer] ${label} sync play failed`, err);
+            });
         }
       }
     } catch (e) {
-      console.warn('[Player] Error unlocking audio element:', e);
+      logToServer('ERROR', `[useAudioPlayer] Error unlocking audio element index ${idx}`, e);
     }
   });
 }
@@ -356,12 +367,21 @@ export function useAudioPlayer() {
       setDuration((e.target as HTMLAudioElement).duration || 0);
     };
     const onWaiting = (e: Event) => {
-      if (e.target === getActiveAudio()) setLoading(true);
+      const audioEl = e.target as HTMLAudioElement;
+      logToServer('INFO', `[useAudioPlayer] audio onWaiting. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isActive: ${audioEl === getActiveAudio()}`);
+      if (audioEl === getActiveAudio()) setLoading(true);
     };
     const onCanPlay = (e: Event) => {
-      if (e.target === getActiveAudio()) setLoading(false);
+      const audioEl = e.target as HTMLAudioElement;
+      logToServer('INFO', `[useAudioPlayer] audio onCanPlay. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isActive: ${audioEl === getActiveAudio()}`);
+      if (audioEl === getActiveAudio()) setLoading(false);
     };
     const onError = (e: Event) => {
+      const audioEl = e.target as HTMLAudioElement;
+      logToServer('ERROR', `[useAudioPlayer] audio onError. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isActive: ${audioEl === getActiveAudio()}`, {
+        code: audioEl.error?.code,
+        message: audioEl.error?.message
+      });
       if (e.target === getActiveAudio()) {
         setError('Error al cargar el audio. El archivo puede estar procesándose.');
         setIsPlaying(false);
@@ -431,10 +451,12 @@ export function useAudioPlayer() {
 
     const autoDownload = localStorage.getItem('autoDownloadYt') !== 'false';
     const url = `${getStreamUrl(currentTrack.id)}?autoDownload=${autoDownload}`;
+    logToServer('INFO', `[useAudioPlayer] Loading new track. id: ${currentTrack.id}, title: ${currentTrack.title}, autoDownload: ${autoDownload}, URL: ${url}`);
     setLoading(true);
 
     // Primero comprobar si debe usar embed mode; si no, cargar audio normal
     checkEmbedMode().then(async (isEmbed) => {
+      logToServer('INFO', `[useAudioPlayer] checkEmbedMode resolved. isEmbed: ${isEmbed}`);
       if (isEmbed) {
         // El VideoPanel toma el control. Pausar y vaciar src de los audios HTML5 nativos para no duplicar sonido.
         audio1.pause();
@@ -461,17 +483,19 @@ export function useAudioPlayer() {
         // Comprobar si está guardado en caché local (IndexedDB)
         const offlineTrack = await getOfflineTrack(currentTrack.id);
         if (offlineTrack && offlineTrack.blob) {
-          console.log(`[Player] 💾 Reproduciendo desde caché local (IndexedDB) para: ${currentTrack.title}`);
+          logToServer('INFO', `[useAudioPlayer] Found in IndexedDB cache.`);
           currentBlobUrl = URL.createObjectURL(offlineTrack.blob);
           nextAudio.src = currentBlobUrl;
         } else {
+          logToServer('INFO', `[useAudioPlayer] Not in IndexedDB cache, using network: ${url}`);
           nextAudio.src = url;
         }
       } catch (err) {
-        console.warn('[Player] Error al recuperar de IndexedDB, usando red:', err);
+        logToServer('WARN', `[useAudioPlayer] IndexedDB check failed. Fallback to network URL: ${url}`, err);
         nextAudio.src = url;
       }
 
+      logToServer('INFO', `[useAudioPlayer] Calling nextAudio.load(). src is: ${nextAudio.src ? nextAudio.src.substring(0, 120) : 'none'}`);
       nextAudio.load();
 
       const targetVolume = isMuted ? 0 : volume;
@@ -479,22 +503,34 @@ export function useAudioPlayer() {
 
       const playWhenReady = () => {
         const { isPlaying: shouldPlay } = usePlayerStore.getState();
+        logToServer('INFO', `[useAudioPlayer] playWhenReady callback fired. shouldPlay: ${shouldPlay}`);
         if (shouldPlay) {
           if (rule) {
             nextAudio.currentTime = rule.toTime;
           }
 
           try {
-            if (audioCtx?.state === 'suspended') audioCtx.resume();
+            if (audioCtx?.state === 'suspended') {
+              logToServer('INFO', `[useAudioPlayer] playWhenReady: AudioContext suspended. Resuming...`);
+              audioCtx.resume();
+            }
             applyEqBands(nextAudio, currentEqBands);
-          } catch { /* ignore */ }
+          } catch (e) {
+            logToServer('WARN', `[useAudioPlayer] playWhenReady: error resuming ctx or applying EQ`, e);
+          }
 
           const fadeInStartVol = rule?.fadeInPercent
             ? targetVolume * (1 - rule.fadeInPercent / 100)
             : prevAudio.paused ? targetVolume : 0;
 
           nextAudio.volume = fadeInStartVol;
-          nextAudio.play().catch(() => setIsPlaying(false));
+          logToServer('INFO', `[useAudioPlayer] playWhenReady: calling nextAudio.play(). volume: ${fadeInStartVol}`);
+          nextAudio.play()
+            .then(() => logToServer('INFO', `[useAudioPlayer] playWhenReady: play succeeded.`))
+            .catch((err) => {
+              logToServer('ERROR', `[useAudioPlayer] playWhenReady: play REJECTED`, err);
+              setIsPlaying(false);
+            });
 
           if (!prevAudio.paused && prevAudio.src) {
             if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
@@ -579,13 +615,27 @@ export function useAudioPlayer() {
     const audio = getActiveAudio();
     if (!currentTrack) return;
 
+    logToServer('INFO', `[useAudioPlayer] isPlaying changed effect: ${isPlaying}. audio.src: ${audio.src ? audio.src.substring(0, 100) : 'none'}, readyState: ${audio.readyState}`);
+
     if (isPlaying) {
       if (audio.src && audio.readyState >= 2) {
         // Resume AudioContext if suspended (browser autoplay policy)
-        if (audioCtx?.state === 'suspended') audioCtx.resume();
-        audio.play().catch(() => setIsPlaying(false));
+        if (audioCtx?.state === 'suspended') {
+          logToServer('INFO', '[useAudioPlayer] isPlaying effect: AudioContext suspended. Resuming...');
+          audioCtx.resume();
+        }
+        logToServer('INFO', '[useAudioPlayer] isPlaying effect: Calling audio.play()');
+        audio.play()
+          .then(() => logToServer('INFO', '[useAudioPlayer] isPlaying effect: play succeeded'))
+          .catch((err) => {
+            logToServer('ERROR', '[useAudioPlayer] isPlaying effect: play REJECTED', err);
+            setIsPlaying(false);
+          });
+      } else {
+        logToServer('INFO', `[useAudioPlayer] isPlaying effect: cannot play yet, readyState is ${audio.readyState}`);
       }
     } else {
+      logToServer('INFO', '[useAudioPlayer] isPlaying effect: Calling audio.pause()');
       audio.pause();
       getInactiveAudio().pause();
       if (fadeIntervalRef.current) {

@@ -137,6 +137,14 @@ app.use('/api/friends', friendsRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/spotify', spotifyRouter);
 
+// ── Remote logging from frontend for mobile debugging ──────────────────────────
+app.post('/api/log', (req, res) => {
+  const { level, message, details } = req.body;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  console.log(`[FrontendLog][${level || 'INFO'}][${ip}] ${message}`, details ? JSON.stringify(details) : '');
+  res.sendStatus(200);
+});
+
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });

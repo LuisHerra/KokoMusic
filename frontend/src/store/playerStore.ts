@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import type { Track } from '../lib/api';
 import { getApiUrl } from '../lib/backendResolver';
+import { logToServer } from '../lib/logger';
 
 let globalUnlockHandler: (() => void) | null = null;
 
@@ -188,6 +189,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   }),
 
   setTrack: (track, queue) => {
+    logToServer('INFO', `[playerStore] setTrack: ${track.title} - ${track.artist} (${track.id})`);
     if (globalUnlockHandler) globalUnlockHandler();
     const { isShuffle } = get();
     const newOriginal = queue ?? get().originalQueue;
@@ -217,12 +219,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ queue: tracks, originalQueue: tracks, queueIndex: startIndex }),
 
   togglePlay: () => {
+    logToServer('INFO', `[playerStore] togglePlay. Current playing: ${get().isPlaying} -> ${!get().isPlaying}`);
     if (globalUnlockHandler) globalUnlockHandler();
     set((s) => ({ isPlaying: !s.isPlaying }));
   },
   setIsPlaying: (v) => set({ isPlaying: v }),
 
   nextTrack: async () => {
+    logToServer('INFO', `[playerStore] nextTrack`);
     if (globalUnlockHandler) globalUnlockHandler();
     const { queue, queueIndex, repeatMode, currentTrack, autoplayEnabled } = get();
 
@@ -278,6 +282,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   prevTrack: () => {
+    logToServer('INFO', `[playerStore] prevTrack`);
     if (globalUnlockHandler) globalUnlockHandler();
     const { queue, queueIndex, progress } = get();
     // Si llevamos >3s en la canción → volver al inicio; si no → track anterior
@@ -349,6 +354,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   jumpToQueueIndex: (index) => {
+    logToServer('INFO', `[playerStore] jumpToQueueIndex to: ${index}`);
     if (globalUnlockHandler) globalUnlockHandler();
     const { queue } = get();
     if (index < 0 || index >= queue.length) return;

@@ -102,6 +102,14 @@ export async function getBaseUrl(): Promise<string> {
   resolving = resolveBackend().then((url) => {
     resolvedBase = url;
     resolving = null;
+    // Log resolved backend to the server console
+    import('./logger').then(({ logToServer }) => {
+      logToServer('INFO', `Backend resolver finalized. Resolved URL: ${url}`, {
+        userAgent: navigator.userAgent,
+        href: window.location.href,
+        origin: window.location.origin
+      });
+    }).catch(() => {});
     return url;
   });
 
