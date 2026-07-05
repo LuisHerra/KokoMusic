@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { useFollowArtist } from '../hooks/useFollowArtist';
 import { BASE } from '../lib/api';
+import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 
 function formatDuration(ms: number): string {
   const m = Math.floor(ms / 60000);
@@ -32,11 +33,52 @@ function ArtistTrackRow({
 }) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   
+  const { swipeStyle, touchHandlers, swipeOffset } = useSwipeToQueue(
+    track,
+    addToQueue,
+    setError
+  );
+  
   return (
-    <div
-      className="track-row artist-track-row"
-      onClick={() => setTrack(track, displayedTracks)}
-    >
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      {swipeOffset > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${swipeOffset}px`,
+            background: 'linear-gradient(90deg, #1db954 0%, var(--bg-highlight) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            paddingLeft: '16px',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            pointerEvents: 'none',
+            borderRadius: '8px',
+            zIndex: 0,
+            opacity: Math.min(1, swipeOffset / 80),
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '8px' }}>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          {swipeOffset > 80 ? 'Soltar para encolar' : 'Arrastra para encolar'}
+        </div>
+      )}
+      <div
+        className="track-row artist-track-row"
+        onClick={() => setTrack(track, displayedTracks)}
+        style={{
+          ...swipeStyle,
+          position: 'relative',
+          zIndex: 1,
+        }}
+        {...touchHandlers}
+      >
       <div className="track-row-num"><span style={{ color: 'var(--text-muted)' }}>{index + 1}</span></div>
       <div className="track-row-info">
         <img className="track-row-cover" src={track.cover} alt={track.title} style={{ width: 40, height: 40 }} />
@@ -112,6 +154,7 @@ function ArtistTrackRow({
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

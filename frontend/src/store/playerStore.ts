@@ -141,19 +141,68 @@ function shuffleArray(array: Track[], currentTrack: Track | null): Track[] {
 
 const savedTransitions = JSON.parse(localStorage.getItem('koko_dj_transitions') || '{}');
 
+const savedCurrentTrack = (() => {
+  try {
+    const t = localStorage.getItem('koko_current_track');
+    return t ? JSON.parse(t) : null;
+  } catch {
+    return null;
+  }
+})();
+
+const savedQueue = (() => {
+  try {
+    const q = localStorage.getItem('koko_queue');
+    return q ? JSON.parse(q) : [];
+  } catch {
+    return [];
+  }
+})();
+
+const savedOriginalQueue = (() => {
+  try {
+    const o = localStorage.getItem('koko_original_queue');
+    return o ? JSON.parse(o) : [];
+  } catch {
+    return [];
+  }
+})();
+
+const savedQueueIndex = (() => {
+  const i = localStorage.getItem('koko_queue_index');
+  return i ? parseInt(i, 10) : 0;
+})();
+
+const savedProgress = (() => {
+  const p = localStorage.getItem('koko_progress');
+  return p ? parseFloat(p) : 0;
+})();
+
+const savedVolume = (() => {
+  const v = localStorage.getItem('koko_volume');
+  return v ? parseFloat(v) : 0.8;
+})();
+
+const savedDuration = (() => {
+  const d = localStorage.getItem('koko_duration');
+  return d ? parseFloat(d) : 0;
+})();
+
+const savedDominantColor = localStorage.getItem('koko_dominant_color') || '#1DB954';
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
-  currentTrack: null,
-  queue: [],
-  originalQueue: [],
-  queueIndex: 0,
+  currentTrack: savedCurrentTrack,
+  queue: savedQueue,
+  originalQueue: savedOriginalQueue,
+  queueIndex: savedQueueIndex,
   isPlaying: false,
-  volume: 0.8,
+  volume: savedVolume,
   isMuted: false,
-  progress: 0,
-  duration: 0,
+  progress: savedProgress,
+  duration: savedDuration,
   isLoading: false,
   error: null,
-  dominantColor: '#1DB954',
+  dominantColor: savedDominantColor,
   isLyricsOpen: false,
   isQueueOpen: false,
   isVideoOpen: false,
@@ -342,15 +391,27 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   addToQueue: (track) => {
-    const { queue, currentTrack } = get();
+    const { queue, originalQueue, currentTrack, queueIndex } = get();
     // Si no hay nada reproduciéndose → reproducir directamente
     if (!currentTrack) {
       if (globalUnlockHandler) globalUnlockHandler();
       set({ currentTrack: track, queue: [track], originalQueue: [track], queueIndex: 0, isPlaying: true, progress: 0, error: null });
       return;
     }
-    // Añadir al final de la cola
-    set({ queue: [...queue, track] });
+    // Insertar justo después de la canción actual en la cola activa (cabeza de la pila)
+    const newQueue = [...queue];
+    newQueue.splice(queueIndex + 1, 0, track);
+
+    // Mantener la coherencia con originalQueue para que funcione con shuffle desactivado
+    const newOriginalQueue = [...originalQueue];
+    const origIndex = originalQueue.findIndex((t) => t.id === currentTrack.id);
+    if (origIndex !== -1) {
+      newOriginalQueue.splice(origIndex + 1, 0, track);
+    } else {
+      newOriginalQueue.push(track);
+    }
+
+    set({ queue: newQueue, originalQueue: newOriginalQueue });
   },
 
   jumpToQueueIndex: (index) => {
@@ -436,3 +497,42 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   jamQueue: [],
   setJamQueue: (q) => set({ jamQueue: q }),
 }));
+
+// Persistencia del reproductor en localStorage al cambiar de estado
+if (typeof window !== 'undefined') {
+  let lastProgressSavedTime = 0;
+  usePlayerStore.subscribe((state) => {
+    try {
+      if (state.currentTrack) {
+        localStorage.setItem('koko_current_track', JSON.stringify(state.currentTrack));
+      } else {
+        localStorage.removeItem('koko_current_track');
+      }
+      localStorage.setItem('koko_queue', JSON.stringify(state.queue));
+      localStorage.setItem('koko_original_queue', JSON.stringify(state.originalQueue));
+      localStorage.setItem('koko_queue_index', String(state.queueIndex));
+      localStorage.setItem('koko_volume', String(state.volume));
+      localStorage.setItem('koko_duration', String(state.duration));
+      localStorage.setItem('koko_dominant_color', state.dominantColor);
+      
+      const now = Date.now();
+      // Guardar el progreso cada 1 segundo máximo para optimizar I/O
+      if (now - lastProgressSavedTime > 1000) {
+        localStorage.setItem('koko_progress', String(state.progress));
+        lastProgressSavedTime = now;
+      }
+    } catch (e) {
+      console.error('Error persisting player state to localStorage:', e);
+    }
+  });
+
+  // Guardar el progreso exacto al cerrar la pestaña o el navegador
+  window.addEventListener('beforeunload', () => {
+    try {
+      const state = usePlayerStore.getState();
+      localStorage.setItem('koko_progress', String(state.progress));
+    } catch (e) {
+      console.error('Error saving progress on beforeunload:', e);
+    }
+  });
+}

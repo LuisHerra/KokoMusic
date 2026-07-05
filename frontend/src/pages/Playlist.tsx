@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylist, getTrack, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, BASE } from '../lib/api';
+import { getPlaylist, getTrack, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, BASE } from '../lib/api';
 import type { Track, Friendship } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useLikedSongs } from '../hooks/useLikedSongs';
@@ -12,6 +12,9 @@ function formatDuration(ms: number) {
   const s = Math.floor((ms % 60000) / 1000);
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
+
+import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
+import { isTrackOffline, saveTrackOffline, deleteOfflineTrack, getAllOfflineTracks } from '../lib/offlineAudio';
 
 function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
   trackId: string; prevTrackId?: string; index: number;
@@ -40,6 +43,48 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
   const isActive = currentTrack?.id === trackId;
   const [isAddingSinfonia, setIsAddingSinfonia] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+
+  const [isOffline, setIsOffline] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (trackId) {
+      isTrackOffline(trackId).then(setIsOffline);
+    }
+  }, [trackId]);
+
+  const handleDownload = async (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    if (!track) return;
+    try {
+      setDownloading(true);
+      if (isOffline) {
+        await deleteOfflineTrack(trackId);
+        setIsOffline(false);
+        setError('Eliminado del dispositivo');
+      } else {
+        await saveTrackOffline(trackId, {
+          title: track.title,
+          artist: track.artist,
+          cover: track.cover,
+          duration: track.duration,
+        });
+        setIsOffline(true);
+        setError('Descargado para escuchar sin conexión');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Error al descargar');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const { swipeStyle, touchHandlers, swipeOffset } = useSwipeToQueue(
+    track || ({} as Track),
+    addToQueue,
+    setError
+  );
 
   const handleAddToSinfonia = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -81,16 +126,51 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
   if (!track) return null;
 
   return (
-    <div 
-      className={`track-row${isActive ? ' playing' : ''}`} 
-      onClick={() => onPlay(track)}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragEnd={onDragEnd}
-      onDrop={onDrop}
-      style={{ cursor: draggable ? 'grab' : 'pointer' }}
-    >
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      {swipeOffset > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${swipeOffset}px`,
+            background: 'linear-gradient(90deg, #1db954 0%, var(--bg-highlight) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            paddingLeft: '16px',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            pointerEvents: 'none',
+            borderRadius: '8px',
+            zIndex: 0,
+            opacity: Math.min(1, swipeOffset / 80),
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '8px' }}>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          {swipeOffset > 80 ? 'Soltar para encolar' : 'Arrastra para encolar'}
+        </div>
+      )}
+      <div 
+        className={`track-row${isActive ? ' playing' : ''}`} 
+        onClick={() => onPlay(track)}
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+        onDrop={onDrop}
+        style={{
+          ...swipeStyle,
+          cursor: draggable ? 'grab' : 'pointer',
+          position: 'relative',
+          zIndex: 1,
+        }}
+        {...touchHandlers}
+      >
       <div className="track-row-num">
         {isActive && isPlaying
           ? <div className="playing-bars"><span /><span /><span /></div>
@@ -183,6 +263,25 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
             <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 12V9l5 3-5 3z" />
           </svg>
         </button>
+        <button 
+          className="ctrl-btn" 
+          style={{ padding: 4, opacity: isOffline ? 1 : 0.4, color: isOffline ? 'var(--accent)' : 'inherit' }}
+          onClick={handleDownload}
+          disabled={downloading}
+          title={downloading ? 'Descargando...' : isOffline ? 'Eliminar descarga de este dispositivo' : 'Descargar para escuchar sin conexión'}
+        >
+          {downloading ? (
+            <div className="spinner" style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.2)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+          ) : isOffline ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+          )}
+        </button>
         <span style={{ width: 40, textAlign: 'right' }}>{formatDuration(track.duration)}</span>
         <button className="ctrl-btn" style={{ padding: 4, opacity: 0.6 }}
           onClick={(e) => { e.stopPropagation(); onRemove(trackId); }}
@@ -239,6 +338,36 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
                 <span>Añadir a la cola</span>
               </button>
 
+              <button 
+                className="track-action-sheet-btn" 
+                onClick={(e) => { 
+                  setIsActionsOpen(false); 
+                  handleDownload(e); 
+                }}
+                disabled={downloading}
+              >
+                {downloading ? (
+                  <>
+                    <div className="spinner" style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.2)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <span>Descargando...</span>
+                  </>
+                ) : isOffline ? (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ color: 'var(--accent)' }}>
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    <span style={{ color: 'var(--accent)' }}>Eliminar descarga</span>
+                  </>
+                ) : (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    <span>Descargar sin conexión</span>
+                  </>
+                )}
+              </button>
+
               {activeJamCode && (
                 <button className="track-action-sheet-btn" onClick={(e) => { setIsActionsOpen(false); handleAddToSinfonia(e); }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
@@ -277,6 +406,7 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
@@ -792,6 +922,7 @@ function ChangeVideoModal({ track, onClose }: { track: Track; onClose: () => voi
 
 export default function Playlist() {
   const { id } = useParams<{ id: string }>();
+  const isVirtualPlaylist = id === 'on-repeat' || id === 'recommended' || id === 'local-downloads';
   const location = useLocation();
   const navigate = useNavigate();
   const isCollabRoute = new URLSearchParams(location.search).get('collab') === 'true';
@@ -809,6 +940,42 @@ export default function Playlist() {
   
   const [localTracks, setLocalTracks] = useState<any[]>([]);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+
+  const [downloadProgress, setDownloadProgress] = useState<{ active: boolean; current: number; total: number } | null>(null);
+
+  const handleDownloadPlaylist = async () => {
+    if (!pl || !pl.tracks || pl.tracks.length === 0) return;
+    try {
+      setDownloadProgress({ active: true, current: 0, total: pl.tracks.length });
+      for (let i = 0; i < pl.tracks.length; i++) {
+        const trackItem = pl.tracks[i];
+        setDownloadProgress(prev => prev ? { ...prev, current: i + 1 } : null);
+        
+        try {
+          const trackData = await getTrack(trackItem.trackId);
+          if (trackData) {
+            const isAlreadyOffline = await isTrackOffline(trackItem.trackId);
+            if (!isAlreadyOffline) {
+              await saveTrackOffline(trackItem.trackId, {
+                title: trackData.title,
+                artist: trackData.artist,
+                cover: trackData.cover,
+                duration: trackData.duration,
+              });
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to download track ${trackItem.trackId} in playlist:`, e);
+        }
+      }
+      qc.invalidateQueries({ queryKey: [isCollabRoute ? 'collabPlaylist' : 'playlist', id] });
+      alert('Playlist descargada con éxito para reproducir sin conexión.');
+    } catch (err: any) {
+      alert('Error al descargar la playlist: ' + (err.message || err));
+    } finally {
+      setDownloadProgress(null);
+    }
+  };
 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -833,6 +1000,78 @@ export default function Playlist() {
     queryKey: [isCollabRoute ? 'collabPlaylist' : 'playlist', id],
     enabled: !!id,
     queryFn: async (): Promise<any> => {
+      if (id === 'local-downloads') {
+        const offlineTracks = await getAllOfflineTracks();
+        return {
+          id: 'local-downloads',
+          name: 'Canciones Descargadas',
+          description: 'Música guardada en este dispositivo para escuchar sin conexión a internet.',
+          cover: '',
+          tracks: offlineTracks.map((t: any, idx: number) => ({
+            trackId: t.id,
+            position: idx + 1,
+            addedAt: new Date().toISOString(),
+            addedBy: 'local'
+          }))
+        };
+      }
+
+      if (id === 'on-repeat') {
+        const playHistoryRaw = localStorage.getItem('koko_play_history');
+        const playHistory = playHistoryRaw ? JSON.parse(playHistoryRaw) : [];
+        const repeatTracks = playHistory
+          .filter((t: any) => t.playCount >= 2)
+          .sort((a: any, b: any) => b.playCount - a.playCount);
+        
+        return {
+          id: 'on-repeat',
+          name: 'En Bucle',
+          description: 'Tus canciones más escuchadas y repetidas en este dispositivo.',
+          cover: '',
+          tracks: repeatTracks.map((t: any, idx: number) => ({
+            trackId: t.id,
+            position: idx + 1,
+            addedAt: new Date(t.lastPlayed || Date.now()).toISOString(),
+            addedBy: 'local'
+          }))
+        };
+      }
+
+      if (id === 'recommended') {
+        const playHistoryRaw = localStorage.getItem('koko_play_history');
+        const playHistory = playHistoryRaw ? JSON.parse(playHistoryRaw) : [];
+        const sortedHistory = [...playHistory].sort((a: any, b: any) => b.playCount - a.playCount);
+        const topTrack = sortedHistory[0];
+
+        let recs: any[] = [];
+        try {
+          recs = await getRecommendations(30, undefined, topTrack?.id);
+        } catch (err) {
+          console.error('Error fetching recommendations for virtual playlist:', err);
+        }
+
+        if (recs.length === 0) {
+          try {
+            recs = await getRecommendations(30);
+          } catch (e) {
+            console.error('Error fetching general recommendations:', e);
+          }
+        }
+
+        return {
+          id: 'recommended',
+          name: 'Recomendadas para ti',
+          description: 'Música recomendada basada en tus reproducciones recientes y gustos.',
+          cover: '',
+          tracks: recs.map((t: any, idx: number) => ({
+            trackId: t.id,
+            position: idx + 1,
+            addedAt: new Date().toISOString(),
+            addedBy: 'recommender'
+          }))
+        };
+      }
+
       if (isCollabRoute) {
         const cp = await getCollabPlaylist(id!);
         return {
@@ -872,6 +1111,7 @@ export default function Playlist() {
 
   // Efecto en segundo plano para "upgradear" tracks de YouTube a iTunes
   useEffect(() => {
+    if (isVirtualPlaylist) return;
     if (!pl?.tracks) return;
 
     const ytTracks = pl.tracks.filter((t: any) => isNaN(Number(t.trackId)) || Number(t.trackId) === 0);
@@ -987,7 +1227,13 @@ export default function Playlist() {
   });
 
   const removeMutation = useMutation<any, Error, string>({
-    mutationFn: (trackId: string) => isCollabRoute ? removeTrackFromCollabPlaylist(pl!.id, trackId) : removeTrackFromPlaylist(id!, trackId),
+    mutationFn: async (trackId: string) => {
+      if (id === 'local-downloads') {
+        await deleteOfflineTrack(trackId);
+        return;
+      }
+      return isCollabRoute ? removeTrackFromCollabPlaylist(pl!.id, trackId) : removeTrackFromPlaylist(id!, trackId);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [isCollabRoute ? 'collabPlaylist' : 'playlist', id] });
       qc.invalidateQueries({ queryKey: [isCollabRoute ? 'collabPlaylists' : 'playlists'] });
@@ -1279,8 +1525,10 @@ export default function Playlist() {
           className="playlist-cover-container"
           style={{
             background: pl.cover ? `url("${pl.cover}") center/cover` : (firstTrack?.cover ? `url("${firstTrack.cover}") center/cover` : `linear-gradient(135deg, ${bgColor}, #0a5c29)`),
+            cursor: isVirtualPlaylist ? 'default' : 'pointer'
           }}
           onClick={() => {
+            if (isVirtualPlaylist) return;
             const choice = window.confirm("¿Quieres subir una imagen desde tu dispositivo?\n(Haz clic en Cancelar para introducir una URL)");
             if (choice) {
               fileInputRef.current?.click();
@@ -1291,19 +1539,21 @@ export default function Playlist() {
               }
             }
           }}
-          title="Cambiar portada"
+          title={isVirtualPlaylist ? undefined : "Cambiar portada"}
         >
           {!pl.cover && !firstTrack?.cover && (
             <svg width="60" height="60" viewBox="0 0 24 24" fill="white" opacity="0.8">
               <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
             </svg>
           )}
-          <div className="playlist-cover-overlay">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-            </svg>
-            <span style={{ fontSize: 12, fontWeight: 'bold', marginTop: 4 }}>Editar</span>
-          </div>
+          {!isVirtualPlaylist && (
+            <div className="playlist-cover-overlay">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+              </svg>
+              <span style={{ fontSize: 12, fontWeight: 'bold', marginTop: 4 }}>Editar</span>
+            </div>
+          )}
         </div>
         <div className="playlist-hero-info">
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8 }}>Playlist</div>
@@ -1324,9 +1574,9 @@ export default function Playlist() {
             ) : (
               <h1 
                 className="playlist-title"
-                style={{ fontWeight: 800, letterSpacing: -1, margin: 0, cursor: 'pointer' }}
-                onClick={() => { setEditName(pl.name); setIsEditingName(true); }}
-                title="Haz clic para renombrar"
+                style={{ fontWeight: 800, letterSpacing: -1, margin: 0, cursor: isVirtualPlaylist ? 'default' : 'pointer' }}
+                onClick={() => { if (!isVirtualPlaylist) { setEditName(pl.name); setIsEditingName(true); } }}
+                title={isVirtualPlaylist ? undefined : "Haz clic para renombrar"}
               >
                 {pl.name}
               </h1>
@@ -1413,7 +1663,7 @@ export default function Playlist() {
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             </button>
             {/* Collab toggle */}
-            {!collabCode && !pl?._isCollab ? (
+            {!isVirtualPlaylist && !collabCode && !pl?._isCollab && (
               <button
                 onClick={handleActivateCollab}
                 disabled={collabActivating}
@@ -1431,7 +1681,8 @@ export default function Playlist() {
                 </svg>
                 {collabActivating ? 'Activando...' : 'Hacer colaborativa'}
               </button>
-            ) : (
+            )}
+            {!isVirtualPlaylist && (collabCode || pl?._isCollab) && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 background: 'rgba(139,92,246,0.13)', border: '1px solid rgba(139,92,246,0.28)',
@@ -1443,33 +1694,73 @@ export default function Playlist() {
                 Colaborativa activa
               </div>
             )}
-
+ 
             {/* Mezcla Inteligente button */}
-            <button
-              onClick={handleSmartReorder}
-              disabled={smartReordering}
-              title="Mezcla Inteligente — Reordena por BPM y transiciones de onda suaves"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                background: 'rgba(29, 185, 84, 0.1)',
-                border: '1px solid rgba(29, 185, 84, 0.3)',
-                borderRadius: 20,
-                padding: '8px 16px',
-                color: 'var(--accent)',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: smartReordering ? 'not-allowed' : 'pointer',
-                opacity: smartReordering ? 0.6 : 1,
-                transition: 'all 0.2s',
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4 6c0-.55-.45-1-1-1s-1 .45-1 1v6c0 .55.45 1 1 1s1-.45 1-1V9zm-4 4c0-.55-.45-1-1-1s-1 .45-1 1v2c0 .55.45 1 1 1s1-.45 1-1v-2zm8-6c0-.55-.45-1-1-1s-1 .45-1 1v8c0 .55.45 1 1 1s1-.45 1-1V7zm-12 8c0-.55-.45-1-1-1s-1 .45-1 1v1c0 .55.45 1 1 1s1-.45 1-1v-1z"/>
-              </svg>
-              {smartReordering ? 'Mezclando...' : 'Mezcla Inteligente'}
-            </button>
+            {!isVirtualPlaylist && (
+              <button
+                onClick={handleSmartReorder}
+                disabled={smartReordering}
+                title="Mezcla Inteligente — Reordena por BPM y transiciones de onda suaves"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(29, 185, 84, 0.1)',
+                  border: '1px solid rgba(29, 185, 84, 0.3)',
+                  borderRadius: 20,
+                  padding: '8px 16px',
+                  color: 'var(--accent)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: smartReordering ? 'not-allowed' : 'pointer',
+                  opacity: smartReordering ? 0.6 : 1,
+                  transition: 'all 0.2s',
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4 6c0-.55-.45-1-1-1s-1 .45-1 1v6c0 .55.45 1 1 1s1-.45 1-1V9zm-4 4c0-.55-.45-1-1-1s-1 .45-1 1v2c0 .55.45 1 1 1s1-.45 1-1v-2zm8-6c0-.55-.45-1-1-1s-1 .45-1 1v8c0 .55.45 1 1 1s1-.45 1-1V7zm-12 8c0-.55-.45-1-1-1s-1 .45-1 1v1c0 .55.45 1 1 1s1-.45 1-1v-1z"/>
+                </svg>
+                {smartReordering ? 'Mezclando...' : 'Mezcla Inteligente'}
+              </button>
+            )}
+
+            {/* Download Playlist Button */}
+            {pl.tracks.length > 0 && id !== 'local-downloads' && (
+              <button
+                onClick={handleDownloadPlaylist}
+                disabled={downloadProgress?.active}
+                title="Descargar toda la playlist para escuchar sin conexión"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(29, 185, 84, 0.1)',
+                  border: '1px solid rgba(29, 185, 84, 0.3)',
+                  borderRadius: 20,
+                  padding: '8px 16px',
+                  color: 'var(--accent)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: downloadProgress?.active ? 'not-allowed' : 'pointer',
+                  opacity: downloadProgress?.active ? 0.6 : 1,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {downloadProgress?.active ? (
+                  <>
+                    <div className="spinner" style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.2)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <span>Descargando ({downloadProgress.current}/{downloadProgress.total})...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    <span>Descargar Todo</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
 
@@ -1554,51 +1845,53 @@ export default function Playlist() {
         )}
 
         {/* Add tracks section */}
-        <div id="add-tracks-section" style={{ borderTop: '1px solid #ffffff10', paddingTop: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Añadir canciones</h3>
-          <form onSubmit={(e) => { e.preventDefault(); setAddQuery(searchQ); }} style={{ marginBottom: 16 }}>
-            <div className="search-bar" style={{ maxWidth: 400 }}>
-              <span className="search-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-                </svg>
-              </span>
-              <input className="search-input" type="text" placeholder="Buscar canciones..."
-                value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
-            </div>
-          </form>
+        {!isVirtualPlaylist && (
+          <div id="add-tracks-section" style={{ borderTop: '1px solid #ffffff10', paddingTop: 24 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Añadir canciones</h3>
+            <form onSubmit={(e) => { e.preventDefault(); setAddQuery(searchQ); }} style={{ marginBottom: 16 }}>
+              <div className="search-bar" style={{ maxWidth: 400 }}>
+                <span className="search-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                  </svg>
+                </span>
+                <input className="search-input" type="text" placeholder="Buscar canciones..."
+                  value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
+              </div>
+            </form>
 
-          {searchResults?.tracks && searchResults.tracks.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {searchResults.tracks.map((track) => {
-                const alreadyIn = pl.tracks.some((t: any) => t.trackId === track.id);
-                return (
-                  <div key={track.id} className="track-row" style={{ cursor: 'default' }}>
-                    <div />
-                    <div className="track-row-info">
-                      <img className="track-row-cover" src={track.cover} alt={track.title} loading="lazy" />
-                      <div>
-                        <div className="track-row-name">{track.title}</div>
-                        <div className="track-row-artist">{track.artist}</div>
+            {searchResults?.tracks && searchResults.tracks.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {searchResults.tracks.map((track) => {
+                  const alreadyIn = pl.tracks.some((t: any) => t.trackId === track.id);
+                  return (
+                    <div key={track.id} className="track-row" style={{ cursor: 'default' }}>
+                      <div />
+                      <div className="track-row-info">
+                        <img className="track-row-cover" src={track.cover} alt={track.title} loading="lazy" />
+                        <div>
+                          <div className="track-row-name">{track.title}</div>
+                          <div className="track-row-artist">{track.artist}</div>
+                        </div>
+                      </div>
+                      <div className="track-row-album">{track.album}</div>
+                      <div style={{ textAlign: 'right' }}>
+                        <button
+                          className={`btn ${alreadyIn ? 'btn-secondary' : 'btn-primary'}`}
+                          style={{ padding: '6px 14px', fontSize: 12 }}
+                          disabled={alreadyIn || addMutation.isPending}
+                          onClick={() => addMutation.mutate(track.id)}
+                        >
+                          {alreadyIn ? 'Añadida' : '+ Añadir'}
+                        </button>
                       </div>
                     </div>
-                    <div className="track-row-album">{track.album}</div>
-                    <div style={{ textAlign: 'right' }}>
-                      <button
-                        className={`btn ${alreadyIn ? 'btn-secondary' : 'btn-primary'}`}
-                        style={{ padding: '6px 14px', fontSize: 12 }}
-                        disabled={alreadyIn || addMutation.isPending}
-                        onClick={() => addMutation.mutate(track.id)}
-                      >
-                        {alreadyIn ? 'Añadida' : '+ Añadir'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {changeVideoTrack && (

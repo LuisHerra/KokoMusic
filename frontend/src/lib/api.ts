@@ -69,7 +69,33 @@ export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube'
   apiFetch<{ tracks: Track[]; source: string }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`);
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
-export const getTrack = (id: string) => apiFetch<Track & { audioReady: boolean }>(`/tracks/${id}`);
+export const getTrack = async (id: string) => {
+  try {
+    return await apiFetch<Track & { audioReady: boolean }>(`/tracks/${id}`);
+  } catch (err) {
+    console.warn(`[API] Failed to fetch track ${id} from network. Checking IndexedDB cache...`, err);
+    try {
+      const { getOfflineTrack } = await import('./offlineAudio');
+      const offline = await getOfflineTrack(id);
+      if (offline) {
+        return {
+          id: offline.id,
+          title: offline.title,
+          artist: offline.artist,
+          cover: offline.cover,
+          duration: offline.duration,
+          album: '',
+          popularity: 0,
+          preview_url: null,
+          audioReady: true,
+        } as Track & { audioReady: boolean };
+      }
+    } catch (offlineErr) {
+      console.error('[API] IndexedDB fallback failed', offlineErr);
+    }
+    throw err;
+  }
+};
 
 export const getStreamUrl = (trackId: string) => {
   const cached = getCachedBaseUrl();
@@ -632,6 +658,10 @@ export const markNotificationsRead = (userId: string) =>
 
 export function resolveImageUrl(url?: string): string | undefined {
   if (!url) return undefined;
+  if (url.startsWith('vi/') || url.startsWith('/vi/')) {
+    const cleanPath = url.startsWith('/') ? url.slice(1) : url;
+    return `https://img.youtube.com/${cleanPath}`;
+  }
   if (url.startsWith('/') && !url.startsWith('//')) {
     const cached = getCachedBaseUrl();
     const domain = cached ?? (import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api').replace('/api', '');

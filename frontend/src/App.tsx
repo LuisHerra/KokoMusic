@@ -104,7 +104,7 @@ function PlayerErrorToast() {
 }
 
 function AppShell() {
-  const { isLyricsOpen, isQueueOpen, isVideoOpen } = usePlayerStore();
+  const { isLyricsOpen, isQueueOpen, isVideoOpen, currentTrack } = usePlayerStore();
   const location = useLocation();
 
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('koko_device_id') || '');
@@ -194,7 +194,7 @@ function AppShell() {
   const isRightPanelOpen = isQueueOpen || isVideoOpen;
 
   return (
-    <div className={`app-shell ${isRightPanelOpen ? 'with-right-panel' : ''} ${isLyricsOpen ? 'lyrics-mode' : ''}`}>
+    <div className={`app-shell ${isRightPanelOpen ? 'with-right-panel' : ''} ${isLyricsOpen ? 'lyrics-mode' : ''} ${currentTrack ? 'has-track' : ''}`}>
       <PlayerErrorToast />
       <Sidebar />
 
@@ -206,7 +206,7 @@ function AppShell() {
           <header className="main-header" style={{ justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', flex: 1 }}>
               {/* Back/forward */}
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div className="hide-on-mobile" style={{ display: 'flex', gap: 8 }}>
                 <button
                   className="ctrl-btn"
                   style={{ width: 32, height: 32, background: '#000000a0', borderRadius: '50%' }}
@@ -229,7 +229,7 @@ function AppShell() {
                 </button>
               </div>
 
-              <GlobalSearch />
+              {location.pathname !== '/search' && <GlobalSearch />}
             </div>
 
             {/* Right side header actions — always visible */}
@@ -238,28 +238,7 @@ function AppShell() {
               {isUUID && (
                 <Link
                   to="/profile"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    textDecoration: 'none',
-                    color: 'var(--text-primary)',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '4px 12px 4px 6px',
-                    borderRadius: 20,
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    transition: 'all 0.2s ease',
-                    cursor: 'pointer',
-                    maxWidth: 180,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                  }}
+                  className="header-profile-link"
                 >
                   {profileData?.profile?.avatar_url ? (
                     <img
@@ -277,7 +256,7 @@ function AppShell() {
                       {cleanName(profileData?.profile?.display_name || profileData?.profile?.username || 'Kokoer').charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <span style={{
+                  <span className="header-profile-username" style={{
                     fontSize: 13,
                     fontWeight: 600,
                     whiteSpace: 'nowrap',

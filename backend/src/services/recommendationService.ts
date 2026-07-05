@@ -1,6 +1,8 @@
 import { cache } from './cacheService';
 import { searchTracks, getTrackById, type TrackMetadata } from './metadataService';
-import { readHistory } from './historyService';
+import { readHistory, type HistoryEntry } from './historyService';
+import { audioExists } from './ytdlpService';
+import { trackExistsInCDN } from './cdnService';
 
 const LFM_KEY = process.env.LASTFM_KEY || '';
 const LFM_BASE = 'https://ws.audioscrobbler.com/2.0/';
@@ -103,6 +105,23 @@ async function resolveSimilarTrack(artist: string, title: string): Promise<Track
  * 3. Filtrado por Mood: Si se solicita un estado de ánimo, refina el set de búsqueda.
  * 4. Fallback: Búsqueda dinámica en YouTube de temas populares o lofi chill.
  */
+function historyTrackToMetadata(h: HistoryEntry): TrackMetadata {
+  return {
+    id: h.trackId,
+    itunesId: 0,
+    artistId: 0,
+    title: h.title,
+    artist: h.artist,
+    album: 'Historial',
+    cover: h.cover || '',
+    duration: 180000, // 3 min default
+    genre: 'Historial',
+    releaseDate: null,
+    popularity: h.playCount,
+    preview_url: null,
+  };
+}
+
 export async function getRecommendations(
   limit = 10,
   userId?: string,
@@ -113,15 +132,26 @@ export async function getRecommendations(
   const cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  let recommendations: TrackMetadata[] = [];
-  const seenIds = new Set<string>();
+  const candidatePool = new Map<string, { track: TrackMetadata; source: string; baseScore: number }>();
 
-  // 1. CAPA 1: Semilla (si el usuario está escuchando un track)
+  // 1. OBTENER HISTORIAL DEL USUARIO Y MAPAS DE PLAYCOUNT
+  const history = readHistory().filter(h => !userId || h.userId === userId);
+  const trackPlayCounts = new Map<string, number>();
+  const artistPlayCounts = new Map<string, number>();
+
+  history.forEach(h => {
+    trackPlayCounts.set(h.trackId, (trackPlayCounts.get(h.trackId) || 0) + (h.playCount || 1));
+    if (h.artist) {
+      const normArtist = h.artist.toLowerCase().trim();
+      artistPlayCounts.set(normArtist, (artistPlayCounts.get(normArtist) || 0) + (h.playCount || 1));
+    }
+  });
+
+  // 2. CAPA 1: Semilla (si el usuario está escuchando un track)
   if (seedTrackId) {
     try {
       const seedTrack = await getTrackById(seedTrackId);
       if (seedTrack) {
-        seenIds.add(seedTrack.id);
         console.log(`[Recommendations] Generando recomendaciones con semilla: "${seedTrack.title}" de ${seedTrack.artist}`);
         
         // Consultar similares de Last.fm
@@ -132,9 +162,8 @@ export async function getRecommendations(
           const resolved = await Promise.all(resolvePromises);
           
           for (const track of resolved) {
-            if (track && !seenIds.has(track.id)) {
-              seenIds.add(track.id);
-              recommendations.push(track);
+            if (track) {
+              candidatePool.set(track.id, { track, source: 'seed_similarity', baseScore: 100 });
             }
           }
         }
@@ -144,55 +173,47 @@ export async function getRecommendations(
     }
   }
 
-  // 2. CAPA 2: Historial del usuario (si no hay suficientes o no hay semilla)
-  if (recommendations.length < limit) {
-    try {
-      const history = readHistory().filter(h => !userId || h.userId === userId);
-      if (history.length > 0) {
-        // Obtener artistas top del usuario
-        const artistCounts: Record<string, number> = {};
-        history.forEach(h => {
-          if (h.artist) {
-            artistCounts[h.artist] = (artistCounts[h.artist] || 0) + (h.playCount || 1);
-          }
-          seenIds.add(h.trackId); // Evitar sugerir lo que ya ha escuchado mucho recientemente
-        });
+  // 3. CAPA 2: Historial del usuario
+  try {
+    if (history.length > 0) {
+      // Agregar los tracks más escuchados del historial directamente
+      const topHistory = [...history]
+        .sort((a, b) => (b.playCount || 1) - (a.playCount || 1))
+        .slice(0, 10);
+      
+      for (const h of topHistory) {
+        const track = historyTrackToMetadata(h);
+        candidatePool.set(track.id, { track, source: 'user_history', baseScore: 80 });
+      }
 
-        const topArtists = Object.entries(artistCounts)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 3)
-          .map(([a]) => a);
+      // Obtener artistas top del usuario para buscar similares
+      const topArtists = [...artistPlayCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([a]) => a);
 
-        if (topArtists.length > 0) {
-          // Tomar un artista top al azar y buscar similares en Last.fm
-          const randomArtist = topArtists[Math.floor(Math.random() * topArtists.length)];
-          console.log(`[Recommendations] Historial activo. Buscando artistas similares a: ${randomArtist}`);
-          const similarArtists = await fetchLastFmSimilarArtists(randomArtist, 5);
-          
-          if (similarArtists.length > 0) {
-            // Buscar una canción popular para cada artista similar
-            const artistPromises = similarArtists.map(async (artName) => {
-              const tracks = await searchTracks(`${artName} top hits`, 3, 'itunes');
-              return tracks;
-            });
-            const artistTrackPools = await Promise.all(artistPromises);
-            for (const pool of artistTrackPools) {
-              for (const track of pool) {
-                if (track && !seenIds.has(track.id)) {
-                  seenIds.add(track.id);
-                  recommendations.push(track);
-                }
+      if (topArtists.length > 0) {
+        const randomArtist = topArtists[Math.floor(Math.random() * topArtists.length)];
+        const similarArtists = await fetchLastFmSimilarArtists(randomArtist, 5);
+        
+        if (similarArtists.length > 0) {
+          const artistPromises = similarArtists.map(artName => searchTracks(`${artName} top hits`, 3, 'itunes'));
+          const artistTrackPools = await Promise.all(artistPromises);
+          for (const pool of artistTrackPools) {
+            for (const track of pool) {
+              if (track && !candidatePool.has(track.id)) {
+                candidatePool.set(track.id, { track, source: 'artist_similarity', baseScore: 60 });
               }
             }
           }
         }
       }
-    } catch (err) {
-      console.error('[Recommendations] Error procesando historial:', err);
     }
+  } catch (err) {
+    console.error('[Recommendations] Error procesando historial:', err);
   }
 
-  // 3. CAPA 3: Palabras clave y Moods (para completar o si el usuario pide mood específico)
+  // 4. CAPA 3: Palabras clave y Moods
   const moodKeywords: Record<string, string[]> = {
     workout: ['workout hits 2026', 'gym motivation electro', 'cardio fitness hits'],
     chill: ['chill vibes lofi', 'relaxing r&b', 'acoustic chill lounge'],
@@ -208,28 +229,76 @@ export async function getRecommendations(
     focus: ['deep focus concentration', 'ambient drone white noise', 'study focus alpha waves']
   };
 
-  if (recommendations.length < limit || mood) {
-    const activeMood = mood?.toLowerCase();
-    const keywords = (activeMood && moodKeywords[activeMood]) ? moodKeywords[activeMood] : ['pop hits 2026', 'lofi chill beats'];
-    const chosenKeyword = keywords[Math.floor(Math.random() * keywords.length)];
-    
-    console.log(`[Recommendations] Usando capa de búsqueda con término: "${chosenKeyword}"`);
-    try {
-      const searchResults = await searchTracks(chosenKeyword, limit * 2, 'itunes');
-      for (const track of searchResults) {
-        if (track && !seenIds.has(track.id)) {
-          seenIds.add(track.id);
-          recommendations.push(track);
-        }
+  const activeMood = mood?.toLowerCase();
+  const keywords = (activeMood && moodKeywords[activeMood]) ? moodKeywords[activeMood] : ['pop hits 2026', 'lofi chill beats'];
+  const chosenKeyword = keywords[Math.floor(Math.random() * keywords.length)];
+  
+  try {
+    const searchResults = await searchTracks(chosenKeyword, limit * 3, 'itunes');
+    for (const track of searchResults) {
+      if (track && !candidatePool.has(track.id)) {
+        candidatePool.set(track.id, { track, source: 'fallback', baseScore: 30 });
       }
-    } catch (err) {
-      console.error('[Recommendations] Error en búsqueda de fallback:', err);
     }
+  } catch (err) {
+    console.error('[Recommendations] Error en búsqueda de fallback:', err);
   }
 
-  // Mezclar un poco y recortar al límite requerido
-  const finalRecs = recommendations
-    .sort(() => 0.5 - Math.random())
+  // Evitar recomendar el track semilla actual
+  if (seedTrackId) {
+    candidatePool.delete(seedTrackId);
+  }
+
+  // 5. EVALUACIÓN Y PRIORIZACIÓN (LOCAL / CDN / PLAYCOUNT) EN PARALELO
+  const candidates = Array.from(candidatePool.values());
+  const checkPromises = candidates.map(async (c) => {
+    const isLocal = audioExists(c.track.id);
+    let isCDN = false;
+    if (!isLocal) {
+      try {
+        isCDN = await trackExistsInCDN(c.track.id);
+      } catch (err) {
+        // Ignorar errores de red
+      }
+    }
+    return { id: c.track.id, isLocal, isCDN };
+  });
+
+  const checkResults = await Promise.all(checkPromises);
+  const cacheMap = new Map(checkResults.map(r => [r.id, r]));
+
+  // 6. CÁLCULO DE SCORE CON JITTER PARA VARIEDAD
+  const scoredCandidates = candidates.map(c => {
+    const track = c.track;
+    const playCount = trackPlayCounts.get(track.id) || 0;
+    
+    const normArtist = track.artist.toLowerCase().trim();
+    const artistPlayCount = artistPlayCounts.get(normArtist) || 0;
+
+    // Aumentar peso por reproducciones de canción y artista (preferencias implícitas)
+    const historyScore = playCount * 25 + artistPlayCount * 5;
+
+    // Aumentar peso si existe localmente o en CDN para descarga instantánea
+    const cacheInfo = cacheMap.get(track.id);
+    let cacheScore = 0;
+    if (cacheInfo?.isLocal) {
+      cacheScore = 150; // Gran prioridad a cache local
+    } else if (cacheInfo?.isCDN) {
+      cacheScore = 100; // Prioridad alta a CDN
+    }
+
+    const totalScore = c.baseScore + historyScore + cacheScore;
+
+    // Aplicar jitter aleatorio para no ser 100% rígidos ("aunque no siempre")
+    const jitteredScore = totalScore * (0.7 + Math.random() * 0.6);
+
+    return { track, score: jitteredScore };
+  });
+
+  // 7. ORDENACIÓN Y RETORNO
+  const finalRecs = scoredCandidates
+    .sort((a, b) => b.score - a.score)
+    .map(sc => sc.track)
     .slice(0, limit);
 
   // Guardar en cache por 10 minutos

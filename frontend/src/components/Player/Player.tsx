@@ -375,7 +375,7 @@ export default function Player() {
                 <IconHeart filled={isLiked(currentTrack.id)} />
               </button>
               <button 
-                className="ctrl-btn flex-add-to-playlist" 
+                className="ctrl-btn flex-add-to-playlist hide-on-mobile" 
                 onClick={() => setShowPlaylistModal(true)}
                 title="Añadir a playlist"
                 style={{ padding: 4, flexShrink: 0 }}
@@ -388,7 +388,7 @@ export default function Player() {
               </button>
               {!autoDownloadYt && (
                 <button 
-                  className={`ctrl-btn ${downloadStatus === 'downloaded' ? 'downloaded' : ''}`}
+                  className={`ctrl-btn hide-on-mobile ${downloadStatus === 'downloaded' ? 'downloaded' : ''}`}
                   onClick={handleDownload}
                   disabled={downloadStatus !== 'none'}
                   title={downloadStatus === 'downloaded' ? "Audio guardado en caché" : downloadStatus === 'downloading' ? "Descargando audio..." : "Descargar audio"}

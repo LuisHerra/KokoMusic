@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import TrackGrid, { TrackCard } from '../components/TrackCard/TrackGrid';
@@ -50,6 +51,7 @@ function getGreeting() {
 export default function Home() {
   const navigate = useNavigate();
   const { currentTrack, isPlaying, setTrack, addToQueue, setError } = usePlayerStore();
+  const [activeCategory, setActiveCategory] = useState<'all' | 'music' | 'podcasts'>('all');
 
   const { data: recommendations, isLoading: isRecLoading, refetch } = useQuery({
     queryKey: ['recommendations'],
@@ -62,119 +64,324 @@ export default function Home() {
     setTrack(track, tracks);
   };
 
+  // Recent items list
+  const recentItems = [
+    {
+      title: 'Tus me gusta',
+      cover: 'linear-gradient(135deg, #450af5, #8e2de2)',
+      isGradient: true,
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+        </svg>
+      ),
+      action: () => navigate('/library')
+    },
+    {
+      title: 'Sinfonía en grupo',
+      cover: 'linear-gradient(135deg, #0d724f, #051811)',
+      isGradient: true,
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+        </svg>
+      ),
+      action: () => navigate('/dj')
+    },
+    {
+      title: 'Estadísticas',
+      cover: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
+      isGradient: true,
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-2V7h2v6zm-4 4h-2V10h2v7zm-4-2H7v-4h2v4z"/>
+        </svg>
+      ),
+      action: () => navigate('/stats')
+    },
+    {
+      title: 'Olivia Dean',
+      cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=150&auto=format&fit=crop&q=60',
+      isGradient: false,
+      action: () => navigate('/artist/Olivia Dean')
+    },
+    {
+      title: 'Chill Vibes',
+      cover: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=150&auto=format&fit=crop&q=60',
+      isGradient: false,
+      action: () => navigate('/search?mood=chill')
+    },
+    {
+      title: 'Billie Eilish',
+      cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=150&auto=format&fit=crop&q=60',
+      isGradient: false,
+      action: () => navigate('/artist/Billie Eilish')
+    }
+  ];
+
+  // Recommended stations
+  const recommendedStations = [
+    { name: 'Rosalía', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=60' },
+    { name: 'Coldplay', image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=150&auto=format&fit=crop&q=60' },
+    { name: 'Daft Punk', image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=150&auto=format&fit=crop&q=60' },
+    { name: 'Billie Eilish', image: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=150&auto=format&fit=crop&q=60' },
+    { name: 'Olivia Dean', image: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=150&auto=format&fit=crop&q=60' },
+    { name: 'Kendrick Lamar', image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=60' }
+  ];
+
+  // Podcasts lists
+  const podcasts = [
+    { title: 'The Wild Project', host: 'Jordi Wild', cover: '#E53E3E', desc: 'El podcast de Jordi Wild. Entrevistas y actualidad.', query: 'the wild project' },
+    { title: 'Leyendas Legendarias', host: 'All Things Comedy', cover: '#805AD5', desc: 'Casos reales, crimen, fenómenos paranormales.', query: 'leyendas legendarias' },
+    { title: 'Entiende tu mente', host: 'Molo Cebrián', cover: '#3182CE', desc: 'Psicología y salud mental explicada de forma sencilla.', query: 'entiende tu mente' },
+    { title: 'Nadie sabe nada', host: 'Andreu Buenafuente y Berto Romero', cover: '#D69E2E', desc: 'Improvisación, humor y preguntas absurdas.', query: 'nadie sabe nada' },
+    { title: 'La Ruina', host: 'Ignasi Taltavull y Tomàs Fuentes', cover: '#4A5568', desc: 'Comedia donde la gente confiesa su peor ruina.', query: 'la ruina' },
+    { title: 'Estirando el chicle', host: 'Podimo', cover: '#ED64A6', desc: 'Humor, feminismo y entrevistas con Victoria y Carolina.', query: 'estirando el chicle' },
+  ];
+
   return (
-    <div className="main-body" style={{ paddingTop: 24 }}>
-      {/* Hero greeting */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1DB95422 0%, #121212 100%)',
-        borderRadius: 'var(--radius-lg)',
-        padding: '32px 28px',
-        marginBottom: 32,
-        border: '1px solid #1DB95420',
-      }}>
-        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: -1, marginBottom: 8 }}>
-          {getGreeting()}
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 15 }}>
-          Busca cualquier canción y empieza a escuchar. La primera vez se descarga; las siguientes se sirven al instante desde la nube.
-        </p>
-        <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
-          {SMART_FILTERS.map((filter) => (
-            <button
-              key={filter.label}
-              onClick={() => navigate(`/search?mood=${encodeURIComponent(filter.icon)}`)}
-              style={{
-                padding: '7px 14px',
-                borderRadius: 'var(--radius-full)',
-                background: `${filter.color}18`,
-                color: 'var(--text-primary)',
-                border: `1px solid ${filter.color}30`,
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-                fontFamily: 'inherit',
-                transition: 'all var(--duration-fast)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = `${filter.color}30`;
-                e.currentTarget.style.borderColor = `${filter.color}60`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = `${filter.color}18`;
-                e.currentTarget.style.borderColor = `${filter.color}30`;
-              }}
-            >
-              <FilterIcon type={filter.icon} />
-              {filter.label}
-            </button>
-          ))}
-        </div>
+    <div className="main-body" style={{ paddingTop: 16 }}>
+      {/* Top filter pills */}
+      <div className="pill-filters">
+        <button
+          onClick={() => setActiveCategory('all')}
+          className={`pill-filter ${activeCategory === 'all' ? 'active' : 'inactive'}`}
+        >
+          Todos
+        </button>
+        <button
+          onClick={() => setActiveCategory('music')}
+          className={`pill-filter ${activeCategory === 'music' ? 'active' : 'inactive'}`}
+        >
+          Música
+        </button>
+        <button
+          onClick={() => setActiveCategory('podcasts')}
+          className={`pill-filter ${activeCategory === 'podcasts' ? 'active' : 'inactive'}`}
+        >
+          Pódcasts
+        </button>
       </div>
 
-      {/* Recomendaciones (Koko-Mix) */}
-      <div style={{ marginBottom: 40 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <div>
-            <h2 className="section-title" style={{ marginBottom: 4 }}>Koko-Mix</h2>
-            <p className="section-subtitle" style={{ marginBottom: 16 }}>Recomendaciones basadas en tu historial de reproducción</p>
-          </div>
-          <button 
-            onClick={() => refetch()}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent)',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }}
-          >
-            Refrescar
-          </button>
-        </div>
-
-        {isRecLoading ? (
+      {activeCategory === 'podcasts' ? (
+        <div style={{ marginBottom: 40, animation: 'fadeIn var(--duration-fast) ease-out' }}>
+          <h2 className="section-title">Pódcasts más escuchados</h2>
+          <p className="section-subtitle" style={{ marginBottom: 20 }}>Tus shows favoritos en KokoMusic</p>
           <div className="tracks-grid">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="track-card" style={{ cursor: 'default' }}>
-                <div className="skeleton" style={{ aspectRatio: '1', borderRadius: 'var(--radius-md)', marginBottom: 12 }} />
-                <div className="skeleton" style={{ height: 14, width: '80%', marginBottom: 8 }} />
-                <div className="skeleton" style={{ height: 12, width: '60%' }} />
+            {podcasts.map((podcast) => (
+              <div 
+                key={podcast.title} 
+                className="track-card"
+                onClick={() => navigate(`/search?q=${encodeURIComponent(podcast.query)}`)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div style={{
+                  aspectRatio: '1',
+                  borderRadius: 'var(--radius-md)',
+                  background: `linear-gradient(135deg, ${podcast.cover}, #1a1a1a)`,
+                  marginBottom: 12,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  padding: 16,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.05)'
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
+                    {podcast.title}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                    Podcast
+                  </div>
+                </div>
+                <div className="track-card-title">{podcast.title}</div>
+                <div className="track-card-artist" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {podcast.host}
+                </div>
               </div>
             ))}
           </div>
-        ) : recommendations && recommendations.length > 0 ? (
-          <div className="tracks-grid">
-            {recommendations.map((track) => (
-              <TrackCard
-                key={track.id}
-                track={track}
-                isPlaying={currentTrack?.id === track.id && isPlaying}
-                onClick={() => handlePlay(track, recommendations)}
-                onAddToQueue={() => {
-                  addToQueue(track);
-                  setError(`Añadido a la cola: ${track.title}`);
-                }}
-              />
+        </div>
+      ) : (
+        <>
+          {/* Greeting Title */}
+          <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 16 }}>
+            {getGreeting()}
+          </h1>
+
+          {/* 2-column quick-access grid */}
+          <div className="recent-grid">
+            {recentItems.map((item, idx) => (
+              <div key={idx} className="recent-card" onClick={item.action}>
+                {item.isGradient ? (
+                  <div style={{
+                    background: item.cover,
+                    width: 56,
+                    height: 56,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ffffff',
+                    flexShrink: 0
+                  }}>
+                    {item.icon}
+                  </div>
+                ) : (
+                  <img src={item.cover} alt={item.title} className="recent-card-cover" />
+                )}
+                <div className="recent-card-info">{item.title}</div>
+                <button
+                  className="recent-card-play"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    item.action();
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
-        ) : (
-          <div className="empty-state" style={{ padding: '24px 0', border: '1px dashed #ffffff15', borderRadius: 8 }}>
-            <p style={{ color: 'var(--text-secondary)' }}>Escucha tus primeras canciones para activar tu Koko-Mix personalizado</p>
-          </div>
-        )}
-      </div>
 
-      {/* Descubrir general */}
-      <h2 className="section-title">Novedades generales</h2>
-      <p className="section-subtitle">Lo más sonado de la temporada</p>
-      <TrackGrid initialQuery="trending hits" showInput={false} />
+          {/* Hero greeting / intro */}
+          {activeCategory === 'all' && (
+            <div style={{
+              background: 'linear-gradient(135deg, #1DB9541a 0%, #121212 100%)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '24px 20px',
+              marginBottom: 32,
+              border: '1px solid #1DB95415',
+            }}>
+              <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>
+                Tu música, sin límites.
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4, margin: 0 }}>
+                Busca cualquier canción y empieza a escuchar. La primera vez se descarga; las siguientes se sirven al instante desde la nube.
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                {SMART_FILTERS.slice(0, 6).map((filter) => (
+                  <button
+                    key={filter.label}
+                    onClick={() => navigate(`/search?mood=${encodeURIComponent(filter.icon)}`)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 'var(--radius-full)',
+                      background: `${filter.color}12`,
+                      color: 'var(--text-primary)',
+                      border: `1px solid ${filter.color}25`,
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      fontFamily: 'inherit',
+                      transition: 'all var(--duration-fast)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = `${filter.color}25`;
+                      e.currentTarget.style.borderColor = `${filter.color}50`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = `${filter.color}12`;
+                      e.currentTarget.style.borderColor = `${filter.color}25`;
+                    }}
+                  >
+                    <FilterIcon type={filter.icon} />
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Emisoras recomendadas */}
+          <div style={{ marginBottom: 32 }}>
+            <h2 className="section-title" style={{ marginBottom: 4 }}>Emisoras recomendadas</h2>
+            <p className="section-subtitle" style={{ marginBottom: 16 }}>Estaciones de radio basadas en tus artistas</p>
+            <div className="stations-row">
+              {recommendedStations.map((station) => (
+                <div
+                  key={station.name}
+                  className="station-card"
+                  onClick={() => navigate(`/search?q=${encodeURIComponent(station.name + ' radio')}`)}
+                >
+                  <div className="station-avatar-container">
+                    <img src={station.image} alt={station.name} className="station-avatar" />
+                  </div>
+                  <div className="station-title">Radio de {station.name}</div>
+                  <div className="station-subtitle">Con {station.name} y más</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recomendaciones (Koko-Mix) */}
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div>
+                <h2 className="section-title" style={{ marginBottom: 4 }}>Koko-Mix</h2>
+                <p className="section-subtitle" style={{ marginBottom: 16 }}>Recomendaciones basadas en tu historial de reproducción</p>
+              </div>
+              <button 
+                onClick={() => refetch()}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+              >
+                Refrescar
+              </button>
+            </div>
+
+            {isRecLoading ? (
+              <div className="tracks-grid">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="track-card" style={{ cursor: 'default' }}>
+                    <div className="skeleton" style={{ aspectRatio: '1', borderRadius: 'var(--radius-md)', marginBottom: 12 }} />
+                    <div className="skeleton" style={{ height: 14, width: '80%', marginBottom: 8 }} />
+                    <div className="skeleton" style={{ height: 12, width: '60%' }} />
+                  </div>
+                ))}
+              </div>
+            ) : recommendations && recommendations.length > 0 ? (
+              <div className="tracks-grid">
+                {recommendations.map((track) => (
+                  <TrackCard
+                    key={track.id}
+                    track={track}
+                    isPlaying={currentTrack?.id === track.id && isPlaying}
+                    onClick={() => handlePlay(track, recommendations)}
+                    onAddToQueue={() => {
+                      addToQueue(track);
+                      setError(`Añadido a la cola: ${track.title}`);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state" style={{ padding: '24px 0', border: '1px dashed #ffffff15', borderRadius: 8 }}>
+                <p style={{ color: 'var(--text-secondary)' }}>Escucha tus primeras canciones para activar tu Koko-Mix personalizado</p>
+              </div>
+            )}
+          </div>
+
+          {/* Descubrir general */}
+          <h2 className="section-title">Novedades generales</h2>
+          <p className="section-subtitle">Lo más sonado de la temporada</p>
+          <TrackGrid initialQuery="trending hits" showInput={false} />
+        </>
+      )}
     </div>
   );
 }

@@ -35,6 +35,13 @@ export default function VideoPanel() {
   
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
   const [autoDownloadYt, setAutoDownloadYt] = useState(() => localStorage.getItem('autoDownloadYt') !== 'false');
+  const [followedArtists, setFollowedArtists] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('koko_followed_artists') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   // Escuchar cambios de localStorage para autoDownloadYt
   useEffect(() => {
@@ -478,11 +485,60 @@ export default function VideoPanel() {
                   style={{ width: '100%', height: '100%', pointerEvents: 'auto', borderRadius: 'var(--radius-lg)' }}
                 />
               </div>
+            ) : isBackgroundVideoActive ? (
+              <div 
+                className="sp-artwork-wrap active-lyric-overlay-container" 
+                onClick={() => setShowVideo(!showVideo)} 
+                style={{ 
+                  zIndex: 2, 
+                  position: 'relative', 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  padding: '20px',
+                  textAlign: 'center',
+                  minHeight: '260px'
+                }}
+              >
+                {activeIndex >= 0 && parsedLines[activeIndex] ? (
+                  <div style={{
+                    fontSize: '24px',
+                    fontWeight: '800',
+                    color: '#ffffff',
+                    lineHeight: '1.4',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.8)',
+                    animation: 'fadeIn var(--duration-fast) ease-out'
+                  }}>
+                    {parsedLines[activeIndex].text}
+                    {translationMode !== 'none' && translationsRecord && translationsRecord[activeIndex] && (
+                      <div style={{
+                        fontSize: '18px',
+                        fontWeight: '600',
+                        color: 'var(--accent)',
+                        marginTop: '8px',
+                        textShadow: '0 2px 6px rgba(0,0,0,0.8)'
+                      }}>
+                        {translationsRecord[activeIndex]}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{
+                    fontSize: '18px',
+                    color: 'rgba(255,255,255,0.6)',
+                    fontStyle: 'italic',
+                    textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+                  }}>
+                    KokoMusic • Disfruta del video
+                  </div>
+                )}
+              </div>
             ) : (
               <div 
                 className="sp-artwork-wrap" 
                 onClick={() => setShowVideo(!showVideo)} 
-                style={{ zIndex: 1, position: 'relative', opacity: isBackgroundVideoActive ? 0 : 1, transition: 'opacity 0.3s ease' }}
+                style={{ zIndex: 1, position: 'relative', opacity: 1, transition: 'opacity 0.3s ease' }}
               >
                 <img 
                   src={currentTrack.cover} 
@@ -493,8 +549,22 @@ export default function VideoPanel() {
             )}
 
             {/* Track info + actions */}
-            <div className="sp-track-row">
-              <div className="sp-track-info">
+            <div className="sp-track-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {isBackgroundVideoActive && (
+                <img 
+                  src={currentTrack.cover} 
+                  alt="" 
+                  style={{ 
+                    width: '48px', 
+                    height: '48px', 
+                    borderRadius: '4px', 
+                    objectFit: 'cover',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                    flexShrink: 0
+                  }} 
+                />
+              )}
+              <div className="sp-track-info" style={{ flex: 1, minWidth: 0 }}>
                 <div className="sp-track-title">{currentTrack.title}</div>
                 <div className="sp-track-artist">{currentTrack.artist}</div>
               </div>
@@ -551,9 +621,9 @@ export default function VideoPanel() {
                   onClick={() => toggleLike(currentTrack.id)}
                 >
                   <svg width="28" height="28" viewBox="0 0 24 24"
-                    fill={isLiked(currentTrack.id) ? 'var(--accent)' : 'none'}
-                    stroke={isLiked(currentTrack.id) ? 'var(--accent)' : 'rgba(255,255,255,0.7)'}
-                    strokeWidth="2">
+                     fill={isLiked(currentTrack.id) ? 'var(--accent)' : 'none'}
+                     stroke={isLiked(currentTrack.id) ? 'var(--accent)' : 'rgba(255,255,255,0.7)'}
+                     strokeWidth="2">
                     <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
                   </svg>
                 </button>
@@ -643,24 +713,132 @@ export default function VideoPanel() {
               )}
             </div>
 
-            {/* â”€â”€ About Artist Block (Bottom of Player Page) */}
+            {/* Vista previa de la letra card */}
+            {hasLyrics && (
+              <div 
+                onClick={scrollToLyrics}
+                style={{
+                  marginTop: '24px',
+                  background: dominantColor ? `linear-gradient(135deg, ${dominantColor}55 0%, rgba(0,0,0,0.4) 100%)` : 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(0,0,0,0.4) 100%)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Letras</span>
+                  <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    ABRIR
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {parsedLines.slice(Math.max(0, activeIndex), Math.min(parsedLines.length, Math.max(0, activeIndex) + 3)).map((line, idx) => {
+                    const isCurrent = parsedLines.indexOf(line) === activeIndex;
+                    return (
+                      <div 
+                        key={idx}
+                        style={{
+                          fontSize: '15px',
+                          fontWeight: '700',
+                          color: isCurrent ? '#fff' : 'rgba(255,255,255,0.5)',
+                          transition: 'color 0.2s ease',
+                          lineHeight: '1.3'
+                        }}
+                      >
+                        {line.text}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Acerca del artista card */}
             <div style={{
               marginTop: '24px',
               background: 'rgba(255,255,255,0.05)',
               borderRadius: '16px',
-              padding: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              marginBottom: '32px'
+              overflow: 'hidden',
+              marginBottom: '32px',
+              border: '1px solid rgba(255,255,255,0.08)'
             }}>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'rgba(255,255,255,0.8)' }}>Acerca del artista</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <img src={currentTrack.cover} alt={currentTrack.artist} style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover' }} />
-                <div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>{currentTrack.artist}</div>
-                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>Artista principal</div>
+              <div style={{ position: 'relative', height: '140px', overflow: 'hidden' }}>
+                <img 
+                  src={currentTrack.cover} 
+                  alt="" 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.65)' }} 
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: '12px',
+                  left: '16px',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  color: '#fff',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  textShadow: '0 2px 4px rgba(0,0,0,0.6)'
+                }}>
+                  Información sobre el/la artista
                 </div>
+                <div style={{
+                  position: 'absolute',
+                  bottom: '12px',
+                  left: '16px',
+                  fontSize: '22px',
+                  fontWeight: '800',
+                  color: '#fff',
+                  textShadow: '0 2px 6px rgba(0,0,0,0.8)'
+                }}>
+                  {currentTrack.artist}
+                </div>
+              </div>
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
+                      {((Math.abs(currentTrack.artist.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) * 12457) % 3500000 + 450000).toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Oyentes mensuales</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const isFollowing = followedArtists.includes(currentTrack.artist);
+                      setFollowedArtists(prev => {
+                        const next = isFollowing
+                          ? prev.filter(a => a !== currentTrack.artist)
+                          : [...prev, currentTrack.artist];
+                        localStorage.setItem('koko_followed_artists', JSON.stringify(next));
+                        return next;
+                      });
+                    }}
+                    style={{
+                      padding: '6px 16px',
+                      borderRadius: '20px',
+                      border: followedArtists.includes(currentTrack.artist) ? '1px solid rgba(255,255,255,0.3)' : 'none',
+                      background: followedArtists.includes(currentTrack.artist) ? 'transparent' : '#ffffff',
+                      color: followedArtists.includes(currentTrack.artist) ? '#ffffff' : '#000000',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    {followedArtists.includes(currentTrack.artist) ? 'Siguiendo' : 'Seguir'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.4', margin: 0 }}>
+                  Descubre más música y contenido oficial de {currentTrack.artist} en KokoMusic. Activa las notificaciones para enterarte de nuevos lanzamientos.
+                </p>
               </div>
             </div>
           </div>

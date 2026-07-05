@@ -504,9 +504,17 @@ export function useAudioPlayer() {
       const playWhenReady = () => {
         const { isPlaying: shouldPlay } = usePlayerStore.getState();
         logToServer('INFO', `[useAudioPlayer] playWhenReady callback fired. shouldPlay: ${shouldPlay}`);
+        
+        const savedProg = usePlayerStore.getState().progress;
+        if (savedProg > 0 && !shouldPlay) {
+          nextAudio.currentTime = savedProg;
+        }
+
         if (shouldPlay) {
           if (rule) {
             nextAudio.currentTime = rule.toTime;
+          } else if (savedProg > 0) {
+            nextAudio.currentTime = savedProg;
           }
 
           try {
@@ -669,11 +677,48 @@ export function useAudioPlayer() {
         myId   // deviceId = same as userId (koko_device_id is device-scoped)
       ).catch((err) => console.error('[PlayLog] Error:', err));
 
+      // Artist history tracking for logical searches
+      try {
+        const artist = currentTrack.artist;
+        const listened = JSON.parse(localStorage.getItem('koko_listened_artists') || '[]');
+        const filtered = listened.filter((a: string) => a.toLowerCase() !== artist.toLowerCase());
+        const updated = [artist, ...filtered].slice(0, 20);
+        localStorage.setItem('koko_listened_artists', JSON.stringify(updated));
+      } catch (e) {
+        console.error('[HistoryLog] Error saving listened artist:', e);
+      }
+
       // ─── Auto-cache logic ───
       const trackId = currentTrack.id;
       const countKey = `koko_play_count_${trackId}`;
       const currentCount = parseInt(localStorage.getItem(countKey) ?? '0') + 1;
       localStorage.setItem(countKey, String(currentCount));
+
+      // Guardar en el historial de reproducción local con metadata
+      try {
+        const playHistoryRaw = localStorage.getItem('koko_play_history');
+        const playHistory: any[] = playHistoryRaw ? JSON.parse(playHistoryRaw) : [];
+        const existingIdx = playHistory.findIndex((t: any) => t.id === currentTrack.id);
+        if (existingIdx !== -1) {
+          playHistory[existingIdx].playCount = currentCount;
+          playHistory[existingIdx].lastPlayed = Date.now();
+          const [item] = playHistory.splice(existingIdx, 1);
+          playHistory.unshift(item);
+        } else {
+          playHistory.unshift({
+            id: currentTrack.id,
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            cover: currentTrack.cover,
+            duration: currentTrack.duration,
+            playCount: currentCount,
+            lastPlayed: Date.now()
+          });
+        }
+        localStorage.setItem('koko_play_history', JSON.stringify(playHistory.slice(0, 100)));
+      } catch (e) {
+        console.error('[HistoryLog] Error saving play history:', e);
+      }
 
       // Trigger storage event to notify components that play counts updated
       window.dispatchEvent(new Event('storage'));

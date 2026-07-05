@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getAlbum } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useLikedSongs } from '../hooks/useLikedSongs';
+import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 
 function formatDuration(ms: number) {
   const m = Math.floor(ms / 60000);
@@ -30,11 +32,52 @@ function AlbumTrackRow({
   const mappedTrack = { ...t, album: album.title, cover: album.cover };
   const isActive = currentTrack?.id === t.id;
 
+  const { swipeStyle, touchHandlers, swipeOffset } = useSwipeToQueue(
+    mappedTrack,
+    addToQueue,
+    setError
+  );
+
   return (
-    <div 
-      className={`track-row album-track-row ${isActive ? 'playing' : ''}`} 
-      onClick={() => setTrack(mappedTrack, tracks.map((tr: any) => ({ ...tr, album: album.title, cover: album.cover })))}
-    >
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      {swipeOffset > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${swipeOffset}px`,
+            background: 'linear-gradient(90deg, #1db954 0%, var(--bg-highlight) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            paddingLeft: '16px',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            pointerEvents: 'none',
+            borderRadius: '8px',
+            zIndex: 0,
+            opacity: Math.min(1, swipeOffset / 80),
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '8px' }}>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          {swipeOffset > 80 ? 'Soltar para encolar' : 'Arrastra para encolar'}
+        </div>
+      )}
+      <div 
+        className={`track-row album-track-row ${isActive ? 'playing' : ''}`} 
+        onClick={() => setTrack(mappedTrack, tracks.map((tr: any) => ({ ...tr, album: album.title, cover: album.cover })))}
+        style={{
+          ...swipeStyle,
+          position: 'relative',
+          zIndex: 1,
+        }}
+        {...touchHandlers}
+      >
       <div className="track-row-num">
         {isActive && isPlaying
           ? <div className="playing-bars"><span /><span /><span /></div>
@@ -129,10 +172,9 @@ function AlbumTrackRow({
         </div>
       )}
     </div>
+    </div>
   );
 }
-
-import { useState } from 'react';
 
 export default function Album() {
   const { id } = useParams<{ id: string }>();

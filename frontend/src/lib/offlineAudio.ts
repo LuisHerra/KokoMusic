@@ -154,6 +154,28 @@ export async function getOfflineTrack(trackId: string): Promise<OfflineTrack | n
   }
 }
 
+export async function getAllOfflineTracks(): Promise<OfflineTrack[]> {
+  try {
+    const db = await initOfflineDB();
+    return new Promise<OfflineTrack[]>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        resolve(request.result || []);
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+    });
+  } catch (err) {
+    console.error('[OfflineDB] Error al obtener todos los tracks offline:', err);
+    return [];
+  }
+}
+
 export async function deleteOfflineTrack(trackId: string): Promise<void> {
   const db = await initOfflineDB();
   return new Promise((resolve, reject) => {
