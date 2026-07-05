@@ -3824,5 +3824,73 @@
       }
     ],
     "userId": "4ebb4a3b-5c90-44d9-a0cb-ccdf456f9bd2"
+  },
+  {
+    "trackId": "1846141517",
+    "title": "MON BÉBÉ",
+    "artist": "RnBoi",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/91/63/d2916340-6d83-9522-1644-62f339a8b54c/5056556170693_cover.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-05T09:10:46.014Z",
+    "plays": [
+      "2026-07-05T09:10:46.014Z"
+    ],
+    "userId": "4ebb4a3b-5c90-44d9-a0cb-ccdf456f9bd2",
+    "minutesBySession": [
+      {
+        "date": "2026-07-05T09:11:03.296Z",
+        "seconds": 27
+      },
+      {
+        "date": "2026-07-05T09:11:18.521Z",
+        "seconds": 15
+      },
+      {
+        "date": "2026-07-05T09:12:01.871Z",
+        "seconds": 38
+      }
+    ]
+  },
+  {
+    "trackId": "1876323260",
+    "title": "MON BÉBÉ (feat. Ayra Starr)",
+    "artist": "RnBoi & Ayra Starr",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/bd/a8/5e/bda85e57-34dc-50fa-a77d-a35e9f9e3d66/5056556174882_cover.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-05T09:12:29.997Z",
+    "plays": [
+      "2026-07-05T09:12:29.997Z"
+    ],
+    "userId": "4ebb4a3b-5c90-44d9-a0cb-ccdf456f9bd2",
+    "minutesBySession": [
+      {
+        "date": "2026-07-05T09:12:34.216Z",
+        "seconds": 14
+      },
+      {
+        "date": "2026-07-05T09:12:42.021Z",
+        "seconds": 8
+      },
+      {
+        "date": "2026-07-05T09:12:48.313Z",
+        "seconds": 6
+      },
+      {
+        "date": "2026-07-05T09:13:04.853Z",
+        "seconds": 17
+      },
+      {
+        "date": "2026-07-05T09:13:10.182Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-05T09:13:16.296Z",
+        "seconds": 6
+      },
+      {
+        "date": "2026-07-05T09:13:55.884Z",
+        "seconds": 40
+      }
+    ]
   }
 ]

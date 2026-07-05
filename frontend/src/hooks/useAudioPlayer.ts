@@ -14,6 +14,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore, type CrossfadeCurve } from '../store/playerStore';
 import { getStreamUrl, logTrackPlay } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
+import { getApiUrl } from '../lib/backendResolver';
 
 let currentBlobUrl: string | null = null;
 
@@ -359,7 +360,8 @@ export function useAudioPlayer() {
       if (!useYtPlayer) return false;
 
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/stream/${currentTrack.id}/status`);
+        const API_BASE = await getApiUrl();
+        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
         if (res.ok) {
           const data = await res.json();
           if (data.youtubeId) {

@@ -57,7 +57,20 @@ async function resolveBackend(): Promise<string> {
     console.warn(`[BackendResolver] ⚠️  Override ${base} no responde — ignorado`);
   }
 
-  // 2. Local (residential IP — sin bloqueo YouTube)
+  // 2. Origen actual del navegador (si el frontend es servido por el backend o proxy)
+  if (typeof window !== 'undefined' && window.location) {
+    const originBase = window.location.origin;
+    const isViteDev = originBase.includes(':5173') || originBase.includes(':3000'); // Puertos típicos de dev
+    if (!isViteDev) {
+      const ok = await probe(originBase);
+      if (ok) {
+        console.info(`[BackendResolver] ✅ Origen actual es backend: ${originBase}`);
+        return originBase;
+      }
+    }
+  }
+
+  // 3. Local (residential IP — sin bloqueo YouTube)
   const localBase = LOCAL_URL.replace(/\/api$/, '');
   if (await probe(localBase)) {
     console.info('[BackendResolver] ✅ Backend local detectado');
