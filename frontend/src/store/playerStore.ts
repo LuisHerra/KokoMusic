@@ -8,6 +8,12 @@ import { create } from 'zustand';
 import type { Track } from '../lib/api';
 import { getApiUrl } from '../lib/backendResolver';
 
+let globalUnlockHandler: (() => void) | null = null;
+
+export function registerUnlockHandler(handler: () => void) {
+  globalUnlockHandler = handler;
+}
+
 type RepeatMode = 'off' | 'all' | 'one';
 
 export type CrossfadeCurve = 'linear' | 'exponential' | 'logarithmic' | 's-curve';
@@ -182,6 +188,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   }),
 
   setTrack: (track, queue) => {
+    if (globalUnlockHandler) globalUnlockHandler();
     const { isShuffle } = get();
     const newOriginal = queue ?? get().originalQueue;
     let newQueue: Track[];
@@ -209,10 +216,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setQueue: (tracks, startIndex = 0) =>
     set({ queue: tracks, originalQueue: tracks, queueIndex: startIndex }),
 
-  togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
+  togglePlay: () => {
+    if (globalUnlockHandler) globalUnlockHandler();
+    set((s) => ({ isPlaying: !s.isPlaying }));
+  },
   setIsPlaying: (v) => set({ isPlaying: v }),
 
   nextTrack: async () => {
+    if (globalUnlockHandler) globalUnlockHandler();
     const { queue, queueIndex, repeatMode, currentTrack, autoplayEnabled } = get();
 
     if (repeatMode === 'one') {
@@ -267,6 +278,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   prevTrack: () => {
+    if (globalUnlockHandler) globalUnlockHandler();
     const { queue, queueIndex, progress } = get();
     // Si llevamos >3s en la canción → volver al inicio; si no → track anterior
     if (progress > 3) {
@@ -328,6 +340,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { queue, currentTrack } = get();
     // Si no hay nada reproduciéndose → reproducir directamente
     if (!currentTrack) {
+      if (globalUnlockHandler) globalUnlockHandler();
       set({ currentTrack: track, queue: [track], originalQueue: [track], queueIndex: 0, isPlaying: true, progress: 0, error: null });
       return;
     }
@@ -336,6 +349,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   jumpToQueueIndex: (index) => {
+    if (globalUnlockHandler) globalUnlockHandler();
     const { queue } = get();
     if (index < 0 || index >= queue.length) return;
     set({

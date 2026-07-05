@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { usePlayerStore, type CrossfadeCurve } from '../store/playerStore';
+import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler } from '../store/playerStore';
 import { getStreamUrl, logTrackPlay } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
@@ -182,6 +182,52 @@ export function setAudioPlaybackRate(rate: number) {
   audio1.playbackRate = rate;
   audio2.playbackRate = rate;
 }
+
+/**
+ * Unlocks the Web Audio API AudioContext and the HTML5 Audio elements on mobile browsers.
+ * Must be called synchronously within a user interaction handler.
+ */
+export function unlockAudio() {
+  try {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  } catch (e) {
+    console.warn('[Player] Error resuming AudioContext:', e);
+  }
+
+  // Play a silent short sound to unlock audio1 and audio2
+  const silentSrc = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+  
+  [audio1, audio2].forEach((audio) => {
+    try {
+      if (!audio.src || audio.src.startsWith('data:')) {
+        audio.src = silentSrc;
+        audio.play()
+          .then(() => {
+            audio.pause();
+            audio.src = '';
+          })
+          .catch((err) => {
+            console.warn('[Player] Silent play failed:', err);
+          });
+      } else {
+        const active = getActiveAudio();
+        if (audio === active && audio.paused) {
+          audio.play().catch((err) => {
+            console.warn('[Player] Sync play of active audio failed:', err);
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[Player] Error unlocking audio element:', e);
+    }
+  });
+}
+
+// Register the unlock handler with the store
+registerUnlockHandler(unlockAudio);
 
 /**
  * Función global de seek — úsala en cualquier componente sin instanciar el hook.
