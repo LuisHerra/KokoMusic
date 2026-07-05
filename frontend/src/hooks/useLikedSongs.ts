@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPlaylist, removeTrackFromPlaylist } from '../lib/api';
-
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
+import { getApiUrl } from '../lib/backendResolver';
 
 /** Adds a track to a playlist, silently ignoring 409 (already exists). */
 async function addTrackSafe(playlistId: string, trackId: string): Promise<void> {
-  const res = await fetch(`${BASE}/playlists/${playlistId}/tracks`, {
+  const apiBase = await getApiUrl();
+  const res = await fetch(`${apiBase}/playlists/${playlistId}/tracks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ trackId }),

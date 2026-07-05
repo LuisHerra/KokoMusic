@@ -11,9 +11,13 @@ if (typeof window !== 'undefined' && !localStorage.getItem('koko_device_id')) {
 }
 
 // Fallback síncrono mientras el resolver aún no ha completado
-export const BASE = getCachedBaseUrl()
+export let BASE = getCachedBaseUrl()
   ? `${getCachedBaseUrl()}/api`
   : (import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api');
+
+getApiUrl().then((url) => {
+  BASE = url;
+}).catch(() => {});
 
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -67,7 +71,11 @@ export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube'
 // ── Tracks ────────────────────────────────────────────────────────────────────
 export const getTrack = (id: string) => apiFetch<Track & { audioReady: boolean }>(`/tracks/${id}`);
 
-export const getStreamUrl = (trackId: string) => `${BASE}/stream/${trackId}`;
+export const getStreamUrl = (trackId: string) => {
+  const cached = getCachedBaseUrl();
+  const apiBase = cached ? `${cached}/api` : BASE;
+  return `${apiBase}/stream/${trackId}`;
+};
 
 export interface Lyrics {
   id: number;

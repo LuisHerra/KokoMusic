@@ -6,6 +6,8 @@ import { useVideoSync } from '../../hooks/useVideoSync';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
 import { seekAudio } from '../../hooks/useAudioPlayer';
 import PlaylistModal from './PlaylistModal';
+import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
+import { getApiUrl } from '../../lib/backendResolver';
 
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { useResizableRightPanel } from '../../hooks/useResizable';
@@ -30,6 +32,90 @@ export default function VideoPanel() {
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isLyricsPageActive, setIsLyricsPageActive] = useState(false);
+  
+  const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
+  const [autoDownloadYt, setAutoDownloadYt] = useState(() => localStorage.getItem('autoDownloadYt') !== 'false');
+
+  // Escuchar cambios de localStorage para autoDownloadYt
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setAutoDownloadYt(localStorage.getItem('autoDownloadYt') !== 'false');
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Verificar y hacer polling al estado de descarga cuando cambie currentTrack.id o status
+  useEffect(() => {
+    if (!currentTrack) return;
+    
+    let isMounted = true;
+    let pollInterval: any = null;
+
+    const checkStatus = async () => {
+      try {
+        // Primero verificar IndexedDB local
+        const isOffline = await isTrackOffline(currentTrack.id);
+        if (isOffline) {
+          if (isMounted) setDownloadStatus('downloaded');
+          if (pollInterval) clearInterval(pollInterval);
+          return;
+        }
+
+        const API_BASE = await getApiUrl();
+        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isMounted) return;
+
+        if (data.downloaded) {
+          setDownloadStatus('downloaded');
+          if (pollInterval) clearInterval(pollInterval);
+        } else if (data.status === 'downloading') {
+          setDownloadStatus('downloading');
+          if (!pollInterval) {
+            pollInterval = setInterval(checkStatus, 3000);
+          }
+        } else {
+          setDownloadStatus('none');
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    checkStatus();
+
+    return () => {
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [currentTrack?.id]);
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentTrack || downloadStatus !== 'none') return;
+
+    setDownloadStatus('downloading');
+
+    try {
+      // Intentar guardar offline localmente en IndexedDB
+      await saveTrackOffline(currentTrack.id, {
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        cover: currentTrack.cover || '',
+        duration: currentTrack.duration
+      });
+      setDownloadStatus('downloaded');
+    } catch (offlineErr: any) {
+      console.error('[VideoPanel] Error al descargar y guardar offline localmente:', offlineErr);
+      setDownloadStatus('none');
+    }
+  };
   const [videoFormat, setVideoFormat] = useState<'vertical' | 'rectangular'>(() => {
     return (localStorage.getItem('koko_video_format') as 'vertical' | 'rectangular') || 'vertical';
   });
@@ -412,7 +498,54 @@ export default function VideoPanel() {
                 <div className="sp-track-title">{currentTrack.title}</div>
                 <div className="sp-track-artist">{currentTrack.artist}</div>
               </div>
-              <div className="sp-track-actions">
+              <div className="sp-track-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                {!autoDownloadYt && (
+                  <button
+                    className={`sp-icon-btn sp-download-btn ${downloadStatus === 'downloaded' ? 'active' : ''}`}
+                    onClick={handleDownload}
+                    disabled={downloadStatus !== 'none'}
+                    title={
+                      downloadStatus === 'downloaded'
+                        ? 'Audio guardado en caché'
+                        : downloadStatus === 'downloading'
+                        ? 'Descargando audio...'
+                        : 'Descargar audio'
+                    }
+                    style={{
+                      color: downloadStatus === 'downloaded' ? 'var(--accent)' : 'rgba(255, 255, 255, 0.7)',
+                      opacity: downloadStatus === 'downloading' ? 0.6 : 1,
+                    }}
+                  >
+                    {downloadStatus === 'downloaded' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                    {downloadStatus === 'downloading' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ display: 'block' }}>
+                        <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.15)" />
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--accent)">
+                          <animateTransform
+                            attributeName="transform"
+                            type="rotate"
+                            from="0 12 12"
+                            to="360 12 12"
+                            dur="1s"
+                            repeatCount="indefinite"
+                          />
+                        </path>
+                      </svg>
+                    )}
+                    {downloadStatus === 'none' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+                
                 <button
                   className={`sp-icon-btn sp-heart-btn ${isLiked(currentTrack.id) ? 'active' : ''}`}
                   onClick={() => toggleLike(currentTrack.id)}

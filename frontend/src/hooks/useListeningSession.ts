@@ -10,8 +10,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '../store/playerStore';
-
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
+import { getCachedBaseUrl } from '../lib/backendResolver';
 
 interface SessionEntry {
   trackId: string;
@@ -96,7 +95,9 @@ export function useListeningSession() {
       params.set('userId', myId);
       params.set('deviceId', myId); // device_id = koko_device_id for this installation
     }
-    const url = `${BASE}/tracks/history/session?${params.toString()}`;
+    const cached = getCachedBaseUrl();
+    const apiBase = cached ? `${cached}/api` : (import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api');
+    const url = `${apiBase}/tracks/history/session?${params.toString()}`;
 
     // sendBeacon works even when the page is unloading
     if (typeof navigator.sendBeacon === 'function') {

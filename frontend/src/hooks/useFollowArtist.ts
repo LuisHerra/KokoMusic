@@ -5,8 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
+import { getApiUrl } from '../lib/backendResolver';
 
 interface UseFollowArtistResult {
   isFollowing: boolean;
@@ -28,17 +27,20 @@ export function useFollowArtist(
 
     let cancelled = false;
     const userId = localStorage.getItem('koko_device_id') || '';
-    fetch(`${BASE}/artist/${artistId}/follow-status`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(userId ? { 'x-user-id': userId } : {})
-      }
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) setIsFollowing(data.following ?? false);
+    getApiUrl().then((apiBase) => {
+      if (cancelled) return;
+      fetch(`${apiBase}/artist/${artistId}/follow-status`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userId ? { 'x-user-id': userId } : {})
+        }
       })
-      .catch(() => {});
+        .then((r) => r.json())
+        .then((data) => {
+          if (!cancelled) setIsFollowing(data.following ?? false);
+        })
+        .catch(() => {});
+    });
 
     return () => { cancelled = true; };
   }, [artistId]);
@@ -53,7 +55,8 @@ export function useFollowArtist(
 
     try {
       const userId = localStorage.getItem('koko_device_id') || '';
-      const res = await fetch(`${BASE}/artist/${artistId}/follow`, {
+      const apiBase = await getApiUrl();
+      const res = await fetch(`${apiBase}/artist/${artistId}/follow`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

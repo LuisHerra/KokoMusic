@@ -166,6 +166,7 @@ function IconVideo() {
 
 import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
 import { resolveImageUrl } from '../../lib/api';
+import { getApiUrl } from '../../lib/backendResolver';
 
 export default function Player() {
   const {
@@ -200,12 +201,12 @@ export default function Player() {
   useEffect(() => {
     if (!currentTrack) return;
     
-    const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
     let isMounted = true;
     let pollInterval: any = null;
 
     const checkStatus = async () => {
       try {
+        const API_BASE = await getApiUrl();
         // Primero verificar IndexedDB local
         const isOffline = await isTrackOffline(currentTrack.id);
         if (isOffline) {

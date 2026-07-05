@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import type { Track } from '../lib/api';
+import { getApiUrl } from '../lib/backendResolver';
 
 type RepeatMode = 'off' | 'all' | 'one';
 
@@ -234,8 +235,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           'Content-Type': 'application/json',
           ...(userId ? { 'x-user-id': userId } : {}),
         };
+        const apiBase = await getApiUrl();
         const res = await fetch(
-          `${import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api'}/tracks/recommendations?seedTrackId=${currentTrack.id}&limit=5`,
+          `${apiBase}/tracks/recommendations?seedTrackId=${currentTrack.id}&limit=5`,
           { headers }
         );
         if (!res.ok) throw new Error();

@@ -4,6 +4,8 @@
  * reproducirlas sin latencia de red. Elimina automáticamente archivos no escuchados tras 2 días.
  */
 
+import { getApiUrl } from './backendResolver';
+
 const DB_NAME = 'KokoOfflineDB';
 const STORE_NAME = 'tracks';
 const DB_VERSION = 1;
@@ -71,7 +73,7 @@ export async function saveTrackOffline(
   metadata: { title: string; artist: string; cover: string; duration: number }
 ): Promise<void> {
   const db = await initOfflineDB();
-  const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api';
+  const API_BASE = await getApiUrl();
   
   // 1. Descargar el stream desde el backend forzando la transmisión (evitando embedMode) y desactivando la descarga en background para el CDN
   const res = await fetch(`${API_BASE}/stream/${trackId}?forceStream=true&autoDownload=false`);
