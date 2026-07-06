@@ -670,4 +670,29 @@ export function resolveImageUrl(url?: string): string | undefined {
   return url;
 }
 
+// ── Personalization & Algorithmic Onboarding ───────────────────────────────────
+
+export const getPersonalizedRecommendations = (limit = 30) =>
+  apiFetch<{ tracks: Track[]; source: string; cached: boolean; elapsedMs: number }>(
+    `/recommendations?limit=${limit}`
+  );
+
+export const submitOnboarding = (genres: string[], artists: string[]) =>
+  apiFetch<{ success: boolean; message: string }>('/recommendations/onboarding', {
+    method: 'POST',
+    body: JSON.stringify({ genres, artists }),
+  });
+
+export const importSpotifyHistory = (history: any[]) =>
+  apiFetch<{
+    success: boolean;
+    totalPlaysImported: number;
+    uniqueTracksImported: number;
+    tracksResolved: number;
+  }>('/import/spotify-history', {
+    method: 'POST',
+    body: JSON.stringify({ history }),
+  });
+
+
 

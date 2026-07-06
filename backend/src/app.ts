@@ -158,7 +158,7 @@ startBackgroundJobs(); // Starts charts pre-fetcher + recommendation pipeline sc
 import { updateYtDlp } from './services/ytdlpService';
 updateYtDlp(); // Run yt-dlp updater asynchronously on startup
 
-import { backfillLocalHistoryToCloud } from './services/historyService';
+import { backfillLocalHistoryToCloud, hydrateLocalHistoryFromCloud } from './services/historyService';
 
 app.listen(PORT, () => {
   console.log(`\n🎵 KokoMusic Backend corriendo en http://localhost:${PORT}`);
@@ -172,17 +172,20 @@ app.listen(PORT, () => {
   }
 
   console.log(`   Docs: GET http://localhost:${PORT}/api/health\n`);
-  
-  // Asynchronously backfill local user history to Supabase play_events table
+
+  // 1. Hydrate local JSON from cloud user_history (runs after every git checkout / restart)
+  hydrateLocalHistoryFromCloud()
+    .then(() => console.log('[History] Hydration from cloud complete.'))
+    .catch((err) => console.error('[History] Hydration error:', err));
+
+  // 2. Backfill any pre-existing local plays into Supabase play_events
   backfillLocalHistoryToCloud()
     .then((res) => {
       if (res.success && res.inserted > 0) {
-        console.log(`[Backfill] Completado con éxito. Se insertaron ${res.inserted} reproducciones históricas en Supabase.`);
+        console.log(`[Backfill] Completado: ${res.inserted} reproducciones insertadas en Supabase.`);
       }
     })
-    .catch((err) => {
-      console.error('[Backfill] Error en la migración de historial a Supabase:', err);
-    });
+    .catch((err) => console.error('[Backfill] Error:', err));
 });
 
 export default app;

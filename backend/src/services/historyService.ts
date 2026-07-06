@@ -79,10 +79,112 @@ export function readHistory(): HistoryEntry[] {
   }
 }
 
+// ── Supabase user_history sync ───────────────────────────────────────────────
+
 /**
- * Resolves the history log for a user.
- * Attempts to load from Supabase first (to support cross-device/social/fresh login).
- * Falls back to local JSON cache if Supabase is unavailable or returns no rows.
+ * Upsert an aggregated history row into kokomusic.user_history.
+ * Called non-blocking (fire-and-forget) after every play / session save.
+ * This table is the durable mirror of user_history.json so data survives
+ * git commits and server restarts.
+ */
+async function upsertCloudHistory(
+  userId: string,
+  trackId: string,
+  trackInfo: { title: string; artist: string; cover: string },
+  playedAt: string,
+  sessionSeconds?: number
+): Promise<void> {
+  if (!supabase || !userId) return;
+  try {
+    // Read current row (if any) to merge plays array
+    const { data: existing } = await supabase
+      .schema('kokomusic')
+      .from('user_history')
+      .select('play_count, plays, session_data, last_played')
+      .eq('user_id', userId)
+      .eq('track_id', trackId)
+      .maybeSingle();
+
+    const currentPlays: string[] = (existing as any)?.plays ?? [];
+    const currentSessions: { date: string; seconds: number }[] = (existing as any)?.session_data ?? [];
+    const currentCount: number = (existing as any)?.play_count ?? 0;
+    const currentLast: string = (existing as any)?.last_played ?? playedAt;
+
+    const newPlays = sessionSeconds === undefined
+      ? [...currentPlays, playedAt]   // new play event
+      : currentPlays;                  // session update only
+
+    const newSessions =
+      sessionSeconds !== undefined && sessionSeconds >= 5
+        ? [...currentSessions, { date: playedAt, seconds: Math.round(sessionSeconds) }]
+        : currentSessions;
+
+    const newCount = sessionSeconds === undefined ? currentCount + 1 : currentCount;
+    const newLast =
+      new Date(playedAt) > new Date(currentLast) ? playedAt : currentLast;
+
+    await supabase
+      .schema('kokomusic')
+      .from('user_history')
+      .upsert(
+        {
+          user_id:      userId,
+          track_id:     trackId,
+          title:        trackInfo.title,
+          artist:       trackInfo.artist,
+          cover:        trackInfo.cover || '',
+          play_count:   newCount,
+          last_played:  newLast,
+          plays:        newPlays,
+          session_data: newSessions,
+        },
+        { onConflict: 'user_id,track_id' }
+      );
+  } catch (err) {
+    console.error('[History] upsertCloudHistory error:', err);
+  }
+}
+
+/**
+ * Loads the aggregated user_history from Supabase and writes it to the
+ * local JSON cache. Called once at server startup so the local file
+ * is always up-to-date even after a fresh git checkout.
+ */
+export async function hydrateLocalHistoryFromCloud(): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data, error } = await supabase
+      .schema('kokomusic')
+      .from('user_history')
+      .select('user_id, track_id, title, artist, cover, play_count, last_played, plays, session_data')
+      .order('last_played', { ascending: false })
+      .limit(5000);
+
+    if (error || !data || data.length === 0) return;
+
+    const hydrated: HistoryEntry[] = (data as any[]).map((row) => ({
+      trackId:         row.track_id  as string,
+      title:           row.title     as string,
+      artist:          row.artist    as string,
+      cover:           (row.cover    as string) || '',
+      playCount:       (row.play_count as number) || 1,
+      lastPlayed:      row.last_played as string,
+      plays:           (row.plays    as string[]) || [],
+      minutesBySession: (row.session_data as { date: string; seconds: number }[]) || [],
+      userId:          row.user_id   as string,
+    }));
+
+    writeHistory(hydrated);
+    console.log(`[History] Hydrated ${hydrated.length} entries from cloud user_history`);
+  } catch (err) {
+    console.error('[History] hydrateLocalHistoryFromCloud error:', err);
+  }
+}
+
+/**
+ * Resolves the aggregated history for a user.
+ * Priority: kokomusic.user_history (fast, aggregated) → play_events (detail) → local JSON.
+ * Date filtering is supported via play_events when startDate/endDate are provided.
  */
 export async function getHistoryForUser(
   userId?: string,
@@ -90,11 +192,40 @@ export async function getHistoryForUser(
   endDate?: Date
 ): Promise<HistoryEntry[]> {
   if (!userId) {
-    // If no userId, return full local history (legacy/anonymous device behavior)
     return readHistory();
   }
 
   if (supabase) {
+    // Fast path: use user_history (aggregated) when no date range is needed
+    if (!startDate && !endDate) {
+      try {
+        const { data, error } = await supabase
+          .schema('kokomusic')
+          .from('user_history')
+          .select('track_id, title, artist, cover, play_count, last_played, plays, session_data')
+          .eq('user_id', userId)
+          .order('last_played', { ascending: false })
+          .limit(2000);
+
+        if (!error && data && data.length > 0) {
+          return (data as any[]).map((row) => ({
+            trackId:          row.track_id as string,
+            title:            row.title    as string,
+            artist:           row.artist   as string,
+            cover:            (row.cover   as string) || '',
+            playCount:        (row.play_count as number) || 1,
+            lastPlayed:       row.last_played as string,
+            plays:            (row.plays    as string[]) || [],
+            minutesBySession: (row.session_data as { date: string; seconds: number }[]) || [],
+            userId,
+          }));
+        }
+      } catch (err) {
+        console.error('[History] user_history cloud read failed, falling back to play_events:', err);
+      }
+    }
+
+    // Detailed path: use play_events when date range is requested
     try {
       const query = supabase
         .schema('kokomusic')
@@ -109,19 +240,16 @@ export async function getHistoryForUser(
         query.lte('played_at', endDate.toISOString());
       }
 
-      // Order by played_at descending and limit to protect memory/performance (5000 limit)
       const { data, error } = await query
         .order('played_at', { ascending: false })
         .limit(5000);
 
       if (!error && data && data.length > 0) {
         const historyMap: Record<string, HistoryEntry> = {};
-
         for (const row of data) {
           const tid = row.track_id as string;
           const playedAt = row.played_at as string;
           const seconds = (row.seconds_listened as number) || 0;
-
           if (!historyMap[tid]) {
             historyMap[tid] = {
               trackId: tid,
@@ -132,33 +260,26 @@ export async function getHistoryForUser(
               lastPlayed: playedAt,
               plays: [],
               minutesBySession: [],
-              userId
+              userId,
             };
           }
-
           historyMap[tid].playCount++;
           (historyMap[tid].plays ??= []).push(playedAt);
-
           if (seconds > 0) {
-            (historyMap[tid].minutesBySession ??= []).push({
-              date: playedAt,
-              seconds
-            });
+            (historyMap[tid].minutesBySession ??= []).push({ date: playedAt, seconds });
           }
-
-          if (new Date(playedAt).getTime() > new Date(historyMap[tid].lastPlayed).getTime()) {
+          if (new Date(playedAt) > new Date(historyMap[tid].lastPlayed)) {
             historyMap[tid].lastPlayed = playedAt;
           }
         }
-
         return Object.values(historyMap);
       }
     } catch (err) {
-      console.error('[History] Error loading user history from Supabase, falling back to local JSON:', err);
+      console.error('[History] play_events read failed, falling back to local JSON:', err);
     }
   }
 
-  // Fallback to local JSON
+  // Final fallback: local JSON
   return readHistory().filter((h) => h.userId === userId);
 }
 
@@ -317,7 +438,8 @@ async function updateEventSeconds(
 
 /**
  * Log a track play (called when progress >= 10s).
- * Writes to Supabase first (primary), then updates local JSON cache.
+ * Writes to Supabase play_events (event log) + user_history (aggregated),
+ * then updates local JSON cache.
  */
 export function logTrackPlay(
   trackId: string,
@@ -352,15 +474,12 @@ export function logTrackPlay(
   }
   writeHistory(history);
 
-  // Supabase write (non-blocking — fire and forget)
+  // Supabase writes (non-blocking — fire and forget)
   if (userId) {
-    insertPlayEvent(
-      userId,
-      deviceId || 'unknown',
-      trackId,
-      trackInfo,
-      now
-    ).catch(() => {});
+    // 1. Append detailed event to play_events (source of truth for stats)
+    insertPlayEvent(userId, deviceId || 'unknown', trackId, trackInfo, now).catch(() => {});
+    // 2. Upsert aggregated row in user_history (survives git commits)
+    upsertCloudHistory(userId, trackId, trackInfo, now).catch(() => {});
   }
 
   return entry;
@@ -393,8 +512,8 @@ export async function saveSessionMinutes(
       userId
     );
 
-    // 2. Update Supabase (find matching play event and write real seconds)
     if (userId) {
+      // 2. Update play_events with real seconds_listened
       await updateEventSeconds(
         userId,
         deviceId || 'unknown',
@@ -402,6 +521,14 @@ export async function saveSessionMinutes(
         playedAt,
         roundedSecs
       );
+      // 3. Append session seconds to user_history (aggregated, durable)
+      upsertCloudHistory(
+        userId,
+        session.trackId,
+        { title: session.title, artist: session.artist, cover: session.cover },
+        playedAt,
+        roundedSecs
+      ).catch(() => {});
     }
   }
 }

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import TrackGrid, { TrackCard } from '../components/TrackCard/TrackGrid';
-import { getRecommendations } from '../lib/api';
+import { getRecommendations, getPersonalizedRecommendations } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
+import OnboardingModal from '../components/OnboardingModal';
+
 
 // SVG icons for each filter category
 function FilterIcon({ type }: { type: string }) {
@@ -52,13 +54,27 @@ export default function Home() {
   const navigate = useNavigate();
   const { currentTrack, isPlaying, setTrack, addToQueue, setError } = usePlayerStore();
   const [activeCategory, setActiveCategory] = useState<'all' | 'music' | 'podcasts'>('all');
+  
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [hasAutoOpenedOnboarding, setHasAutoOpenedOnboarding] = useState(false);
 
-  const { data: recommendations, isLoading: isRecLoading, refetch } = useQuery({
-    queryKey: ['recommendations'],
-    queryFn: () => getRecommendations(8),
+  const { data: recData, isLoading: isRecLoading, refetch } = useQuery({
+    queryKey: ['personalized-recommendations'],
+    queryFn: () => getPersonalizedRecommendations(12),
     refetchOnWindowFocus: false,
     staleTime: 60_000, // 1 min cache
   });
+
+  const recommendations = recData?.tracks ?? [];
+  const recSource = recData?.source;
+
+  useEffect(() => {
+    if (recSource === 'cold_start' && !hasAutoOpenedOnboarding) {
+      setIsOnboardingOpen(true);
+      setHasAutoOpenedOnboarding(true);
+    }
+  }, [recSource, hasAutoOpenedOnboarding]);
+
 
   const handlePlay = (track: any, tracks: any[]) => {
     setTrack(track, tracks);
@@ -210,7 +226,54 @@ export default function Home() {
             {getGreeting()}
           </h1>
 
+          {/* Banner de inicio frío/onboarding si no hay historial previo */}
+          {recSource === 'cold_start' && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(29, 185, 84, 0.15) 0%, rgba(10, 122, 53, 0.05) 100%)',
+              border: '1px solid rgba(29, 185, 84, 0.25)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '20px 24px',
+              marginBottom: 28,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+              animation: 'fadeIn var(--duration-base) ease-out'
+            }}>
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, color: '#fff' }}>
+                  ¡Sintoniza tu KokoMusic! 🎵
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                  Tu recomendador está usando la configuración inicial por defecto. Personaliza tus gustos o importa tu historial de Spotify para recibir sugerencias a tu medida.
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsOnboardingOpen(true)}
+                style={{
+                  background: 'var(--accent)',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: 'var(--radius-full)',
+                  padding: '10px 20px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 12px rgba(29, 185, 84, 0.2)',
+                  transition: 'transform 0.15s ease'
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                Personalizar
+              </button>
+            </div>
+          )}
+
           {/* 2-column quick-access grid */}
+
           <div className="recent-grid">
             {recentItems.map((item, idx) => (
               <div key={idx} className="recent-card" onClick={item.action}>
@@ -326,23 +389,42 @@ export default function Home() {
                 <h2 className="section-title" style={{ marginBottom: 4 }}>Koko-Mix</h2>
                 <p className="section-subtitle" style={{ marginBottom: 16 }}>Recomendaciones basadas en tu historial de reproducción</p>
               </div>
-              <button 
-                onClick={() => refetch()}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--accent)',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 13,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4
-                }}
-              >
-                Refrescar
-              </button>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <button
+                  onClick={() => setIsOnboardingOpen(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                >
+                  ⚙️ Configurar
+                </button>
+                <button 
+                  onClick={() => refetch()}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--accent)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                >
+                  Refrescar
+                </button>
+              </div>
             </div>
+
 
             {isRecLoading ? (
               <div className="tracks-grid">
@@ -382,6 +464,14 @@ export default function Home() {
           <TrackGrid initialQuery="trending hits" showInput={false} />
         </>
       )}
+
+      {/* Modal de Onboarding y Carga de Historial */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 }
+

@@ -152,8 +152,32 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
 
   // Fallback: local JSON cache
   const history: HistoryEntry[] = readHistory().filter((h) => h.userId === userId);
+  const trackIds = [...new Set(history.map(h => h.trackId))];
+  const numericIds = trackIds.map(Number).filter(n => !isNaN(n) && n > 0);
+  const metaMap: Record<string, { genre: string; artistId: number }> = {};
+
+  if (supabase && numericIds.length > 0) {
+    try {
+      const { data: metas } = await supabase
+        .schema('kokomusic')
+        .from('tracks_meta')
+        .select('itunes_id, genre, artist_id')
+        .in('itunes_id', numericIds);
+
+      for (const m of (metas || [])) {
+        metaMap[String((m as any).itunes_id)] = {
+          genre: (m as any).genre || 'Otros',
+          artistId: (m as any).artist_id || 0,
+        };
+      }
+    } catch (e) {
+      console.error('[TasteProfile] Error fetching metadata for local history fallback:', e);
+    }
+  }
+
   for (const h of history) {
     const plays = h.plays?.length ? h.plays : [h.lastPlayed];
+    const meta = metaMap[h.trackId] || { genre: 'Otros', artistId: 0 };
     for (const p of plays) {
       const session = h.minutesBySession?.find((s) => {
         return Math.abs(new Date(s.date).getTime() - new Date(p).getTime()) < 3_600_000;
@@ -161,8 +185,8 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
       enriched.push({
         trackId: h.trackId,
         artist: h.artist,
-        artistId: 0, // unknown from local cache
-        genre: 'Otros',
+        artistId: meta.artistId,
+        genre: meta.genre,
         durationMs: DEFAULT_DURATION_MS,
         timestamp: p,
         secondsListened: session?.seconds || 0,

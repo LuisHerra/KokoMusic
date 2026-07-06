@@ -24,10 +24,10 @@ import { readHistory } from './historyService';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const EXPLOIT_RATIO = 0.80;           // 80% from taste-aligned sources
-const DISCOVERY_RATIO = 0.20;         // 20% from charts (new discoveries)
-const EXCLUDE_RECENT_DAYS = 7;        // skip tracks heard in the last N days
-const EXCLUDE_EXCESS_PLAYS_MONTH = 8; // skip tracks with >N plays in last 30 days
+const EXPLOIT_RATIO = 0.65;           // 65% from taste-aligned sources
+const DISCOVERY_RATIO = 0.35;         // 35% from charts (new discoveries)
+const EXCLUDE_RECENT_DAYS = 3;        // skip tracks heard in the last N days (was 7)
+const EXCLUDE_EXCESS_PLAYS_MONTH = 10; // skip tracks with >N plays in last 30 days (was 8)
 const MAX_CANDIDATES = 100;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
