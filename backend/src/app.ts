@@ -175,7 +175,18 @@ app.listen(PORT, () => {
 
   // 1. Hydrate local JSON from cloud user_history (runs after every git checkout / restart)
   hydrateLocalHistoryFromCloud()
-    .then(() => console.log('[History] Hydration from cloud complete.'))
+    .then(() => {
+      console.log('[History] Hydration from cloud complete.');
+      // Pre-trigger recommendation pipeline for Koko profiles
+      setTimeout(() => {
+        const KOKO_IDS = ['9847b87c-04e7-4595-af2f-3c02448ebf67', '773d55a4-0cd3-4504-a4e4-04c2b0b80052', '2cd6438b-2ce9-4f5f-8b82-c41896009981'];
+        console.log('[Startup] Pre-triggering recommendation pipelines for Koko profiles...');
+        const { triggerUserPipeline } = require('./services/backgroundJobRunner');
+        for (const id of KOKO_IDS) {
+          triggerUserPipeline(id);
+        }
+      }, 2000);
+    })
     .catch((err) => console.error('[History] Hydration error:', err));
 
   // 2. Backfill any pre-existing local plays into Supabase play_events

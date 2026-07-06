@@ -32,6 +32,7 @@ export default function VideoPanel() {
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isLyricsPageActive, setIsLyricsPageActive] = useState(false);
+  const [activeTab, setActiveTab] = useState<'player' | 'lyrics' | 'artist' | 'video'>('player');
   
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
   const [autoDownloadYt, setAutoDownloadYt] = useState(() => localStorage.getItem('autoDownloadYt') !== 'false');
@@ -133,7 +134,6 @@ export default function VideoPanel() {
     localStorage.setItem('koko_video_format', videoFormat);
   }, [videoFormat]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const lyricsPageRef = useRef<HTMLDivElement | null>(null);
   const lyricsScrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -142,12 +142,13 @@ export default function VideoPanel() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Resetear posición de scroll al cambiar de canción
+  // Resetear posición de scroll y pestaña al cambiar de canción
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
     setIsLyricsPageActive(false);
+    setActiveTab('player');
   }, [currentTrack?.id]);
 
   // Forzar formato rectangular si es modo embed de YouTube largo
@@ -341,30 +342,6 @@ export default function VideoPanel() {
     }
   }, [activeIndex, isMobile, isLyricsPageActive]);
 
-  // Manejar el scroll del contenedor para activar/desactivar la pÃ¡gina de letras
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const scrollTop = e.currentTarget.scrollTop;
-    const clientHeight = e.currentTarget.clientHeight;
-    setIsLyricsPageActive(scrollTop >= clientHeight * 0.4);
-  };
-
-  // Scroll navigation helpers
-  const scrollToLyrics = () => {
-    if (lyricsPageRef.current) {
-      lyricsPageRef.current.scrollIntoView({ behavior: 'smooth' });
-      setIsLyricsPageActive(true);
-    }
-  };
-
-  const scrollToPlayer = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
-      setIsLyricsPageActive(false);
-    }
-  };
 
   // Cargar datos de video (ID de youtube y relacionados)
   const { data: videoData, isLoading, error } = useQuery<VideoData>({
@@ -409,7 +386,7 @@ export default function VideoPanel() {
           pointerEvents: 'none',
           zIndex: -1000
         } : { 
-          background: dominantColor ? `linear-gradient(175deg, ${dominantColor}cc 0%, #111111 45%)` : '#121212' 
+          background: dominantColor ? `linear-gradient(175deg, ${dominantColor}d9 0%, #0c0c0c 70%)` : '#0c0c0c' 
         }}
       >
 
@@ -423,8 +400,6 @@ export default function VideoPanel() {
               frameBorder="0"
               allow="autoplay; encrypted-media"
               style={{
-                // Fill portrait screen: video is 16:9, screen is taller than wide.
-                // Set width to 177.78vh so at full screen height the video covers full width.
                 position: 'absolute',
                 width: '177.78vh',
                 height: '100vh',
@@ -436,7 +411,7 @@ export default function VideoPanel() {
                 pointerEvents: 'none',
               }}
             />
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)' }} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.65)' }} />
           </div>
         )}
 
@@ -444,594 +419,595 @@ export default function VideoPanel() {
         <div className="sp-mobile-bg" style={{ opacity: (isBackgroundVideoActive && !isEmbedMode) ? 0 : 1 }}>
           <img src={currentTrack.cover} alt="" className="sp-mobile-bg-img" />
         </div>
-        <div className="sp-mobile-bg-overlay" style={{ background: (isBackgroundVideoActive && !isEmbedMode) ? 'rgba(0,0,0,0.4)' : undefined }} />
+        <div className="sp-mobile-bg-overlay" style={{ background: (isBackgroundVideoActive && !isEmbedMode) ? 'rgba(0,0,0,0.45)' : undefined }} />
 
-        {/* â”€â”€ Scroll container: page 1 = controls, page 2 = lyrics */}
-        <div className="sp-scroll" ref={scrollContainerRef} onScroll={handleScroll}>
-
-          {/* â”€â”€ PAGE 1: Main player controls */}
-          <div className="sp-page sp-page-player">
-
-            {/* Header */}
-            <div className="sp-header">
-              <button className="sp-icon-btn sp-chevron-down" onClick={toggleVideo} title="Cerrar">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-              <div className="sp-header-center">
-                <span className="sp-header-label">REPRODUCIENDO</span>
-                {isBackgroundVideoActive && (
-                  <span className="sp-header-source">Video</span>
-                )}
-              </div>
-              <button className="sp-icon-btn" onClick={() => setShowPlaylistModal(true)} title="Opciones">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* Cover / Video art / YouTube Embed */}
-            {isEmbedMode && embedYoutubeId ? (
-              <div className="sp-artwork-wrap embed-active" style={{ zIndex: 5, position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius-lg)', aspectRatio: '16/9' }}>
-                <iframe
-                  ref={setIframeEl}
-                  src={`https://www.youtube.com/embed/${embedYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
-                  title="Reproductor YouTube Embed Mobile"
-                  frameBorder="0"
-                  allow="autoplay; encrypted-media; fullscreen"
-                  allowFullScreen
-                  style={{ width: '100%', height: '100%', pointerEvents: 'auto', borderRadius: 'var(--radius-lg)' }}
-                />
-              </div>
-            ) : isBackgroundVideoActive ? (
-              <div 
-                className="sp-artwork-wrap active-lyric-overlay-container" 
-                onClick={() => setShowVideo(!showVideo)} 
-                style={{ 
-                  zIndex: 2, 
-                  position: 'relative', 
-                  display: 'flex', 
-                  flexDirection: 'column',
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  padding: '20px',
-                  textAlign: 'center',
-                  minHeight: '260px'
-                }}
+        {/* Main layout wrapper */}
+        <div className="sp-mobile-layout">
+          
+          {/* Header */}
+          <div className="sp-header">
+            <button className="sp-icon-btn sp-chevron-down" onClick={toggleVideo} title="Cerrar">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            
+            {/* Tab switch controller */}
+            <div className="sp-mobile-tabs">
+              <button 
+                className={`sp-mobile-tab-btn ${activeTab === 'player' ? 'active' : ''}`}
+                onClick={() => setActiveTab('player')}
               >
-                {activeIndex >= 0 && parsedLines[activeIndex] ? (
-                  <div style={{
-                    fontSize: '24px',
-                    fontWeight: '800',
-                    color: '#ffffff',
-                    lineHeight: '1.4',
-                    textShadow: '0 2px 8px rgba(0,0,0,0.8)',
-                    animation: 'fadeIn var(--duration-fast) ease-out'
-                  }}>
-                    {parsedLines[activeIndex].text}
-                    {translationMode !== 'none' && translationsRecord && translationsRecord[activeIndex] && (
-                      <div style={{
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: 'var(--accent)',
-                        marginTop: '8px',
-                        textShadow: '0 2px 6px rgba(0,0,0,0.8)'
-                      }}>
-                        {translationsRecord[activeIndex]}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{
-                    fontSize: '18px',
-                    color: 'rgba(255,255,255,0.6)',
-                    fontStyle: 'italic',
-                    textShadow: '0 2px 4px rgba(0,0,0,0.8)'
-                  }}>
-                    KokoMusic • Disfruta del video
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div 
-                className="sp-artwork-wrap" 
-                onClick={() => setShowVideo(!showVideo)} 
-                style={{ zIndex: 1, position: 'relative', opacity: 1, transition: 'opacity 0.3s ease' }}
-              >
-                <img 
-                  src={currentTrack.cover} 
-                  alt={currentTrack.title} 
-                  className="sp-cover-art" 
-                />
-              </div>
-            )}
-
-            {/* Track info + actions */}
-            <div className="sp-track-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {isBackgroundVideoActive && (
-                <img 
-                  src={currentTrack.cover} 
-                  alt="" 
-                  style={{ 
-                    width: '48px', 
-                    height: '48px', 
-                    borderRadius: '4px', 
-                    objectFit: 'cover',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                    flexShrink: 0
-                  }} 
-                />
-              )}
-              <div className="sp-track-info" style={{ flex: 1, minWidth: 0 }}>
-                <div className="sp-track-title">{currentTrack.title}</div>
-                <div className="sp-track-artist">{currentTrack.artist}</div>
-              </div>
-              <div className="sp-track-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                {!autoDownloadYt && (
-                  <button
-                    className={`sp-icon-btn sp-download-btn ${downloadStatus === 'downloaded' ? 'active' : ''}`}
-                    onClick={handleDownload}
-                    disabled={downloadStatus !== 'none'}
-                    title={
-                      downloadStatus === 'downloaded'
-                        ? 'Audio guardado en caché'
-                        : downloadStatus === 'downloading'
-                        ? 'Descargando audio...'
-                        : 'Descargar audio'
-                    }
-                    style={{
-                      color: downloadStatus === 'downloaded' ? 'var(--accent)' : 'rgba(255, 255, 255, 0.7)',
-                      opacity: downloadStatus === 'downloading' ? 0.6 : 1,
-                    }}
-                  >
-                    {downloadStatus === 'downloaded' && (
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                    {downloadStatus === 'downloading' && (
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ display: 'block' }}>
-                        <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.15)" />
-                        <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--accent)">
-                          <animateTransform
-                            attributeName="transform"
-                            type="rotate"
-                            from="0 12 12"
-                            to="360 12 12"
-                            dur="1s"
-                            repeatCount="indefinite"
-                          />
-                        </path>
-                      </svg>
-                    )}
-                    {downloadStatus === 'none' && (
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
-                    )}
-                  </button>
-                )}
-                
-                <button
-                  className={`sp-icon-btn sp-heart-btn ${isLiked(currentTrack.id) ? 'active' : ''}`}
-                  onClick={() => toggleLike(currentTrack.id)}
-                >
-                  <svg width="28" height="28" viewBox="0 0 24 24"
-                     fill={isLiked(currentTrack.id) ? 'var(--accent)' : 'none'}
-                     stroke={isLiked(currentTrack.id) ? 'var(--accent)' : 'rgba(255,255,255,0.7)'}
-                     strokeWidth="2">
-                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Progress bar */}
-            <div className="sp-progress-section">
-              <div className="sp-progress-bar" onClick={handleProgressClick}>
-                <div className="sp-progress-bg" />
-                <div className="sp-progress-fill" style={{ width: `${progressPct}%` }}>
-                  <div className="sp-progress-thumb" />
-                </div>
-              </div>
-              <div className="sp-progress-times">
-                <span>{formatTime(progress)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-
-            {/* Playback controls */}
-            <div className="sp-controls">
-              <button
-                className={`sp-icon-btn sp-ctrl-secondary ${isShuffle ? 'active' : ''}`}
-                onClick={toggleShuffle}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
-                  <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
-                  <line x1="4" y1="4" x2="9" y2="9" />
-                </svg>
+                Canción
               </button>
-
-              <button className="sp-icon-btn sp-ctrl-prev" onClick={prevTrack}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
-                </svg>
-              </button>
-
-              <button className="sp-play-btn" onClick={togglePlay}>
-                {isPlaying ? (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                  </svg>
-                ) : (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 3 }}>
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
-                )}
-              </button>
-
-              <button className="sp-icon-btn sp-ctrl-next" onClick={nextTrack}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M6 18l8.5-6L6 6v12zm2.5-6 5.5 4V8l-5.5 4zm7.5-6h2v12h-2z"/>
-                </svg>
-              </button>
-
-              <button
-                className={`sp-icon-btn sp-ctrl-secondary ${repeatMode !== 'off' ? 'active' : ''}`}
-                onClick={cycleRepeat}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                  <polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </svg>
-                {repeatMode === 'one' && <span className="sp-repeat-one-dot" />}
-              </button>
-            </div>
-
-            {/* Footer row: device + queue + lyrics */}
-            <div className="sp-footer-row">
-              <button className="sp-icon-btn sp-footer-btn" onClick={toggleQueue} title="Cola">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-              </button>
-
               {hasLyrics && (
-                <button className="sp-footer-lyrics-btn" onClick={scrollToLyrics}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-                  </svg>
-                  <span>Letras</span>
+                <button 
+                  className={`sp-mobile-tab-btn ${activeTab === 'lyrics' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('lyrics')}
+                >
+                  Letras
+                </button>
+              )}
+              <button 
+                className={`sp-mobile-tab-btn ${activeTab === 'artist' ? 'active' : ''}`}
+                onClick={() => setActiveTab('artist')}
+              >
+                Artista
+              </button>
+              {activeYoutubeId && (
+                <button 
+                  className={`sp-mobile-tab-btn ${activeTab === 'video' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('video')}
+                >
+                  Video
                 </button>
               )}
             </div>
 
-            {/* Vista previa de la letra card */}
-            {hasLyrics && (
-              <div 
-                onClick={scrollToLyrics}
-                style={{
-                  marginTop: '24px',
-                  background: dominantColor ? `linear-gradient(135deg, ${dominantColor}55 0%, rgba(0,0,0,0.4) 100%)` : 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(0,0,0,0.4) 100%)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Letras</span>
-                  <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                    ABRIR
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {parsedLines.slice(Math.max(0, activeIndex), Math.min(parsedLines.length, Math.max(0, activeIndex) + 3)).map((line, idx) => {
-                    const isCurrent = parsedLines.indexOf(line) === activeIndex;
-                    return (
-                      <div 
-                        key={idx}
-                        style={{
-                          fontSize: '15px',
-                          fontWeight: '700',
-                          color: isCurrent ? '#fff' : 'rgba(255,255,255,0.5)',
-                          transition: 'color 0.2s ease',
-                          lineHeight: '1.3'
-                        }}
-                      >
-                        {line.text}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Acerca del artista card */}
-            <div style={{
-              marginTop: '24px',
-              background: 'rgba(255,255,255,0.05)',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              marginBottom: '32px',
-              border: '1px solid rgba(255,255,255,0.08)'
-            }}>
-              <div style={{ position: 'relative', height: '140px', overflow: 'hidden' }}>
-                <img 
-                  src={currentTrack.cover} 
-                  alt="" 
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.65)' }} 
-                />
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '16px',
-                  fontSize: '12px',
-                  fontWeight: '800',
-                  color: '#fff',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  textShadow: '0 2px 4px rgba(0,0,0,0.6)'
-                }}>
-                  Información sobre el/la artista
-                </div>
-                <div style={{
-                  position: 'absolute',
-                  bottom: '12px',
-                  left: '16px',
-                  fontSize: '22px',
-                  fontWeight: '800',
-                  color: '#fff',
-                  textShadow: '0 2px 6px rgba(0,0,0,0.8)'
-                }}>
-                  {currentTrack.artist}
-                </div>
-              </div>
-              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
-                      {((Math.abs(currentTrack.artist.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) * 12457) % 3500000 + 450000).toLocaleString()}
-                    </span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Oyentes mensuales</span>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const isFollowing = followedArtists.includes(currentTrack.artist);
-                      setFollowedArtists(prev => {
-                        const next = isFollowing
-                          ? prev.filter(a => a !== currentTrack.artist)
-                          : [...prev, currentTrack.artist];
-                        localStorage.setItem('koko_followed_artists', JSON.stringify(next));
-                        return next;
-                      });
-                    }}
-                    style={{
-                      padding: '6px 16px',
-                      borderRadius: '20px',
-                      border: followedArtists.includes(currentTrack.artist) ? '1px solid rgba(255,255,255,0.3)' : 'none',
-                      background: followedArtists.includes(currentTrack.artist) ? 'transparent' : '#ffffff',
-                      color: followedArtists.includes(currentTrack.artist) ? '#ffffff' : '#000000',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    {followedArtists.includes(currentTrack.artist) ? 'Siguiendo' : 'Seguir'}
-                  </button>
-                </div>
-                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.4', margin: 0 }}>
-                  Descubre más música y contenido oficial de {currentTrack.artist} en KokoMusic. Activa las notificaciones para enterarte de nuevos lanzamientos.
-                </p>
-              </div>
-            </div>
+            <button className="sp-icon-btn" onClick={() => setShowPlaylistModal(true)} title="Opciones">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+              </svg>
+            </button>
           </div>
 
-          {/* â”€â”€ PAGE 2: Full-screen lyrics */}
-          {hasLyrics && (
-            <div className="sp-page sp-page-lyrics" ref={lyricsPageRef}>
-              <div className="sp-lyrics-header">
-                <div className="sp-lyrics-thumb">
-                  <img src={currentTrack.cover} alt="" />
-                </div>
-                <div className="sp-lyrics-song-info">
-                  <span className="sp-lyrics-song-title">{currentTrack.title}</span>
-                  <span className="sp-lyrics-song-artist">{currentTrack.artist}</span>
-                </div>
-                <button 
-                  className="sp-icon-btn" 
-                  onClick={() => setShowMobileSettings(prev => !prev)}
-                  title="Ajustes de Letras"
-                  style={{ marginRight: '8px' }}
-                >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={showMobileSettings ? "var(--accent)" : "currentColor"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
-                </button>
-                <button className="sp-icon-btn" onClick={scrollToPlayer} title="Volver">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Mobile Lyrics Settings panel */}
-              {showMobileSettings && (
-                <div style={{
-                  background: 'rgba(20, 20, 20, 0.95)',
-                  backdropFilter: 'blur(20px)',
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
-                  padding: '16px 20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '16px',
-                  zIndex: 10,
-                  position: 'relative'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff' }}>Apariencia de Letras</span>
-                    <button 
-                      onClick={() => setShowMobileSettings(false)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
-                    >
-                      Listo
-                    </button>
-                  </div>
-
-                  {/* Tamaño de Letra */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tamaño</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.06)', borderRadius: '20px', padding: '4px 12px' }}>
-                      <button onClick={() => setMobileBaseSize(p => Math.max(16, p - 2))} style={{ padding: '4px 8px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>A-</button>
-                      <span style={{ fontSize: '13px', width: '24px', textAlign: 'center', fontWeight: 'bold' }}>{mobileBaseSize}</span>
-                      <button onClick={() => setMobileBaseSize(p => Math.min(48, p + 2))} style={{ padding: '4px 8px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>A+</button>
+          {/* Active Tab Screen Content */}
+          <div className="sp-mobile-body">
+            
+            {/* TAB 1: PLAYER SCREEN */}
+            {activeTab === 'player' && (
+              <div className="sp-tab-content sp-tab-player">
+                <div className="sp-player-main-viewport">
+                  {/* Artwork / Video mode preview */}
+                  {isEmbedMode && embedYoutubeId ? (
+                    <div className="sp-artwork-wrap embed-active">
+                      <iframe
+                        ref={setIframeEl}
+                        src={`https://www.youtube.com/embed/${embedYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                        title="Reproductor YouTube Embed Mobile"
+                        frameBorder="0"
+                        allow="autoplay; encrypted-media; fullscreen"
+                        allowFullScreen
+                        style={{ width: '100%', height: '100%', pointerEvents: 'auto', borderRadius: '12px' }}
+                      />
                     </div>
-                  </div>
+                  ) : isBackgroundVideoActive ? (
+                    <div className="sp-artwork-wrap active-lyric-overlay-container" onClick={() => setShowVideo(!showVideo)}>
+                      {activeIndex >= 0 && parsedLines[activeIndex] ? (
+                        <div className="sp-bg-lyrics-overlay">
+                          {parsedLines[activeIndex].text}
+                          {translationMode !== 'none' && translationsRecord?.[activeIndex] && (
+                            <div className="sp-bg-lyrics-translation">
+                              {translationsRecord[activeIndex]}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="sp-bg-lyrics-empty">
+                          KokoMusic • Disfruta del video
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="sp-artwork-wrap" onClick={() => setShowVideo(!showVideo)}>
+                      <img 
+                        src={currentTrack.cover} 
+                        alt={currentTrack.title} 
+                        className="sp-cover-art" 
+                      />
+                    </div>
+                  )}
 
-                  {/* Modo Karaoke */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Modo Karaoke</span>
-                    <button 
-                      onClick={toggleKaraoke} 
-                      style={{ 
-                        background: isKaraokeMode ? 'var(--accent)' : 'rgba(255,255,255,0.06)', 
-                        color: isKaraokeMode ? '#000' : '#fff',
-                        borderRadius: '20px', 
-                        padding: '6px 14px', 
-                        fontSize: '12px', 
-                        border: 'none', 
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {isKaraokeMode ? 'ACTIVADO' : 'DESACTIVADO'}
-                    </button>
-                  </div>
-
-                  {/* Modo Traducción */}
-                  <div>
-                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Traducción</span>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                      {(['none', 'both', 'replace'] as const).map(mode => (
-                        <button 
-                          key={mode} 
-                          onClick={() => setTranslationMode(mode)} 
-                          style={{
-                            padding: '8px', 
-                            borderRadius: '8px', 
-                            border: 'none', 
-                            cursor: 'pointer',
-                            background: translationMode === mode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)',
-                            color: '#fff', 
-                            fontSize: '12px',
-                            fontWeight: translationMode === mode ? 'bold' : 'normal'
-                          }}
+                  {/* Track Row */}
+                  <div className="sp-track-row">
+                    {isBackgroundVideoActive && (
+                      <img 
+                        src={currentTrack.cover} 
+                        alt="" 
+                        className="sp-track-mini-cover"
+                      />
+                    )}
+                    <div className="sp-track-info">
+                      <div className="sp-track-title">{currentTrack.title}</div>
+                      <div className="sp-track-artist">{currentTrack.artist}</div>
+                    </div>
+                    <div className="sp-track-actions">
+                      {!autoDownloadYt && (
+                        <button
+                          className={`sp-icon-btn sp-download-btn ${downloadStatus === 'downloaded' ? 'active' : ''}`}
+                          onClick={handleDownload}
+                          disabled={downloadStatus !== 'none'}
+                          title={
+                            downloadStatus === 'downloaded'
+                              ? 'Audio guardado en caché'
+                              : downloadStatus === 'downloading'
+                              ? 'Descargando audio...'
+                              : 'Descargar audio'
+                          }
                         >
-                          {mode === 'none' ? 'Apagado' : mode === 'both' ? 'Ambas' : 'Reemplazar'}
+                          {downloadStatus === 'downloaded' && (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                          {downloadStatus === 'downloading' && (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.15)" />
+                              <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--accent)">
+                                <animateTransform
+                                  attributeName="transform"
+                                  type="rotate"
+                                  from="0 12 12"
+                                  to="360 12 12"
+                                  dur="1s"
+                                  repeatCount="indefinite"
+                                />
+                              </path>
+                            </svg>
+                          )}
+                          {downloadStatus === 'none' && (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="7 10 12 15 17 10" />
+                              <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                          )}
                         </button>
-                      ))}
-                    </div>
-
-                    {translationMode !== 'none' && (
-                      <select 
-                        value={translationLang} 
-                        onChange={e => setTranslationLang(e.target.value)}
-                        style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none', cursor: 'pointer', fontSize: '13px' }}
+                      )}
+                      
+                      <button
+                        className={`sp-icon-btn sp-heart-btn ${isLiked(currentTrack.id) ? 'active' : ''}`}
+                        onClick={() => toggleLike(currentTrack.id)}
                       >
-                        <option value="es" style={{ color: '#000' }}>Español</option>
-                        <option value="en" style={{ color: '#000' }}>Inglés</option>
-                        <option value="fr" style={{ color: '#000' }}>Francés</option>
-                        <option value="de" style={{ color: '#000' }}>Alemán</option>
-                        <option value="it" style={{ color: '#000' }}>Italiano</option>
-                        <option value="pt" style={{ color: '#000' }}>Portugués</option>
-                        <option value="ja" style={{ color: '#000' }}>Japonés</option>
-                        <option value="ko" style={{ color: '#000' }}>Coreano</option>
-                      </select>
+                        <svg width="28" height="28" viewBox="0 0 24 24"
+                           fill={isLiked(currentTrack.id) ? 'var(--accent)' : 'none'}
+                           stroke={isLiked(currentTrack.id) ? 'var(--accent)' : 'rgba(255,255,255,0.7)'}
+                           strokeWidth="2">
+                          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="sp-progress-section">
+                    <div className="sp-progress-bar" onClick={handleProgressClick}>
+                      <div className="sp-progress-bg" />
+                      <div className="sp-progress-fill" style={{ width: `${progressPct}%` }}>
+                        <div className="sp-progress-thumb" />
+                      </div>
+                    </div>
+                    <div className="sp-progress-times">
+                      <span>{formatTime(progress)}</span>
+                      <span>{formatTime(duration)}</span>
+                    </div>
+                  </div>
+
+                  {/* Playback controls */}
+                  <div className="sp-controls">
+                    <button
+                      className={`sp-icon-btn sp-ctrl-secondary ${isShuffle ? 'active' : ''}`}
+                      onClick={toggleShuffle}
+                    >
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+                        <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
+                        <line x1="4" y1="4" x2="9" y2="9" />
+                      </svg>
+                    </button>
+
+                    <button className="sp-icon-btn sp-ctrl-prev" onClick={prevTrack}>
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
+                      </svg>
+                    </button>
+
+                    <button className="sp-play-btn" onClick={togglePlay}>
+                      {isPlaying ? (
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                        </svg>
+                      ) : (
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 3 }}>
+                          <path d="M8 5v14l11-7z"/>
+                        </svg>
+                      )}
+                    </button>
+
+                    <button className="sp-icon-btn sp-ctrl-next" onClick={nextTrack}>
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6 18l8.5-6L6 6v12zm2.5-6 5.5 4V8l-5.5 4zm7.5-6h2v12h-2z"/>
+                      </svg>
+                    </button>
+
+                    <button
+                      className={`sp-icon-btn sp-ctrl-secondary ${repeatMode !== 'off' ? 'active' : ''}`}
+                      onClick={cycleRepeat}
+                    >
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                        <polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                      </svg>
+                      {repeatMode === 'one' && <span className="sp-repeat-one-dot" />}
+                    </button>
+                  </div>
+
+                  {/* Footer Buttons Row */}
+                  <div className="sp-footer-row">
+                    <button className="sp-icon-btn sp-footer-btn" onClick={toggleQueue} title="Cola">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" />
+                        <line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" />
+                        <line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+                      </svg>
+                    </button>
+
+                    {hasLyrics && (
+                      <button className="sp-footer-lyrics-btn" onClick={() => setActiveTab('lyrics')}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+                        </svg>
+                        <span>Letras</span>
+                      </button>
                     )}
                   </div>
                 </div>
-              )}
 
-              <div className="sp-lyrics-scroll" ref={lyricsScrollContainerRef}>
-                {parsedLines.length > 0 ? (
-                  <div className="sp-lyrics-lines">
-                    {parsedLines.map((line, idx) => {
-                      const isActive = idx === activeIndex;
-                      const isPast = idx < activeIndex;
-                      return (
-                        <div
-                          key={idx}
-                          className={`sp-lyric-line ${isActive ? 'active' : ''} ${isPast ? 'past' : ''}`}
-                          onClick={() => seekAudio(line.time)}
-                          style={{ fontSize: `${mobileBaseSize}px` }}
-                        >
-                          <span style={{ display: 'block' }}>
-                            {isActive && isKaraokeMode
-                              ? (() => {
-                                  const text = translationMode === 'replace' && translationsRecord?.[idx]
-                                    ? translationsRecord[idx]
-                                    : line.text;
-                                  const words = text.split(' ');
-                                  const revealedCount = Math.floor(words.length * karaokeRatio);
-                                  return words.map((word, wIdx) => (
-                                    <span
-                                      key={wIdx}
-                                      style={{
-                                        display: 'inline',
-                                        opacity: wIdx < revealedCount ? 1 : 0.25,
-                                        transition: 'opacity 0.15s ease',
-                                        marginRight: wIdx < words.length - 1 ? '0.25em' : 0,
-                                        color: wIdx < revealedCount ? undefined : 'rgba(255,255,255,0.25)',
-                                      }}
-                                    >
-                                      {word}
-                                    </span>
-                                  ));
-                                })()
-                              : (translationMode === 'replace' && translationsRecord?.[idx]
-                                  ? translationsRecord[idx]
-                                  : line.text)
-                            }
+                <div className="sp-player-previews">
+                  {/* Lyrics Preview Card */}
+                  {hasLyrics && (
+                    <div 
+                      className="sp-preview-card lyrics-preview"
+                      onClick={() => setActiveTab('lyrics')}
+                    >
+                      <div className="sp-preview-card-header">
+                        <span className="sp-preview-title">Letras</span>
+                        <span className="sp-preview-action">
+                          VER TODO
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        </span>
+                      </div>
+                      <div className="sp-preview-lines">
+                        {parsedLines.slice(Math.max(0, activeIndex), Math.min(parsedLines.length, Math.max(0, activeIndex) + 3)).map((line, idx) => {
+                          const isCurrent = parsedLines.indexOf(line) === activeIndex;
+                          return (
+                            <div 
+                              key={idx}
+                              className={`sp-preview-line ${isCurrent ? 'active' : ''}`}
+                            >
+                              {line.text}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Artist Preview Card */}
+                  <div 
+                    className="sp-preview-card artist-preview"
+                    onClick={() => setActiveTab('artist')}
+                  >
+                    <div className="sp-artist-card-cover">
+                      <img 
+                        src={currentTrack.cover} 
+                        alt="" 
+                      />
+                      <div className="sp-artist-card-overlay">
+                        <span className="sp-artist-subtitle">Artista</span>
+                        <span className="sp-artist-name">{currentTrack.artist}</span>
+                      </div>
+                    </div>
+                    <div className="sp-artist-card-body">
+                      <div className="sp-artist-stats">
+                        <div className="sp-artist-stat-col">
+                          <span className="sp-stat-val">
+                            {((Math.abs(currentTrack.artist.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) * 12457) % 3500000 + 450000).toLocaleString()}
                           </span>
-                          {translationMode === 'both' && translationsRecord?.[idx] && (
-                            <span style={{ 
-                              display: 'block', 
-                              fontSize: '0.65em', 
-                              opacity: isActive ? 0.8 : 0.5, 
-                              marginTop: '4px',
-                              fontWeight: 500
-                            }}>
-                              {translationsRecord[idx]}
-                            </span>
-                          )}
+                          <span className="sp-stat-lbl">Oyentes mensuales</span>
                         </div>
-                      );
-                    })}
+                        <button
+                          className={`sp-follow-btn ${followedArtists.includes(currentTrack.artist) ? 'following' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const isFollowing = followedArtists.includes(currentTrack.artist);
+                            setFollowedArtists(prev => {
+                              const next = isFollowing
+                                ? prev.filter(a => a !== currentTrack.artist)
+                                : [...prev, currentTrack.artist];
+                              localStorage.setItem('koko_followed_artists', JSON.stringify(next));
+                              return next;
+                            });
+                          }}
+                        >
+                          {followedArtists.includes(currentTrack.artist) ? 'Siguiendo' : 'Seguir'}
+                        </button>
+                      </div>
+                      <p className="sp-artist-bio">
+                        Descubre más música y contenido oficial de {currentTrack.artist} en KokoMusic.
+                      </p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="sp-lyrics-plain">{lyrics!.plainLyrics}</div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: LYRICS SCREEN */}
+            {activeTab === 'lyrics' && hasLyrics && (
+              <div className="sp-tab-content sp-tab-lyrics">
+                <div className="sp-lyrics-header">
+                  <div className="sp-lyrics-thumb">
+                    <img src={currentTrack.cover} alt="" />
+                  </div>
+                  <div className="sp-lyrics-song-info">
+                    <span className="sp-lyrics-song-title">{currentTrack.title}</span>
+                    <span className="sp-lyrics-song-artist">{currentTrack.artist}</span>
+                  </div>
+                  <button 
+                    className="sp-icon-btn" 
+                    onClick={() => setShowMobileSettings(prev => !prev)}
+                    title="Ajustes de Letras"
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={showMobileSettings ? "var(--accent)" : "currentColor"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Mobile Lyrics Settings panel */}
+                {showMobileSettings && (
+                  <div className="sp-lyrics-settings-panel">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4.5px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff' }}>Apariencia de Letras</span>
+                      <button 
+                        onClick={() => setShowMobileSettings(false)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                      >
+                        Listo
+                      </button>
+                    </div>
+
+                    {/* Tamaño de Letra */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tamaño</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.06)', borderRadius: '20px', padding: '4px 12px' }}>
+                        <button onClick={() => setMobileBaseSize(p => Math.max(16, p - 2))} style={{ padding: '4px 8px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>A-</button>
+                        <span style={{ fontSize: '13px', width: '24px', textAlign: 'center', fontWeight: 'bold' }}>{mobileBaseSize}</span>
+                        <button onClick={() => setMobileBaseSize(p => Math.min(48, p + 2))} style={{ padding: '4px 8px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>A+</button>
+                      </div>
+                    </div>
+
+                    {/* Modo Karaoke */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Modo Karaoke</span>
+                      <button 
+                        onClick={toggleKaraoke} 
+                        style={{ 
+                          background: isKaraokeMode ? 'var(--accent)' : 'rgba(255,255,255,0.06)', 
+                          color: isKaraokeMode ? '#000' : '#fff',
+                          borderRadius: '20px', 
+                          padding: '6px 14px', 
+                          fontSize: '12px', 
+                          border: 'none', 
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {isKaraokeMode ? 'ACTIVADO' : 'DESACTIVADO'}
+                      </button>
+                    </div>
+
+                    {/* Modo Traducción */}
+                    <div>
+                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Traducción</span>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                        {(['none', 'both', 'replace'] as const).map(mode => (
+                          <button 
+                            key={mode} 
+                            onClick={() => setTranslationMode(mode)} 
+                            style={{
+                              padding: '8px', 
+                              borderRadius: '8px', 
+                              border: 'none', 
+                              cursor: 'pointer',
+                              background: translationMode === mode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)',
+                              color: '#fff', 
+                              fontSize: '12px',
+                              fontWeight: translationMode === mode ? 'bold' : 'normal'
+                            }}
+                          >
+                            {mode === 'none' ? 'Apagado' : mode === 'both' ? 'Ambas' : 'Reemplazar'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {translationMode !== 'none' && (
+                        <select 
+                          value={translationLang} 
+                          onChange={e => setTranslationLang(e.target.value)}
+                          style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none', cursor: 'pointer', fontSize: '13px' }}
+                        >
+                          <option value="es" style={{ color: '#000' }}>Español</option>
+                          <option value="en" style={{ color: '#000' }}>Inglés</option>
+                          <option value="fr" style={{ color: '#000' }}>Francés</option>
+                          <option value="de" style={{ color: '#000' }}>Alemán</option>
+                          <option value="it" style={{ color: '#000' }}>Italiano</option>
+                          <option value="pt" style={{ color: '#000' }}>Portugués</option>
+                          <option value="ja" style={{ color: '#000' }}>Japonés</option>
+                          <option value="ko" style={{ color: '#000' }}>Coreano</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Lyrics Lines scroll container */}
+                <div className="sp-lyrics-scroll" ref={lyricsScrollContainerRef}>
+                  {parsedLines.length > 0 ? (
+                    <div className="sp-lyrics-lines">
+                      {parsedLines.map((line, idx) => {
+                        const isActive = idx === activeIndex;
+                        const isPast = idx < activeIndex;
+                        return (
+                          <div
+                            key={idx}
+                            className={`sp-lyric-line ${isActive ? 'active' : ''} ${isPast ? 'past' : ''}`}
+                            onClick={() => seekAudio(line.time)}
+                            style={{ fontSize: `${mobileBaseSize}px` }}
+                          >
+                            <span style={{ display: 'block' }}>
+                              {isActive && isKaraokeMode
+                                ? (() => {
+                                    const text = translationMode === 'replace' && translationsRecord?.[idx]
+                                      ? translationsRecord[idx]
+                                      : line.text;
+                                    const words = text.split(' ');
+                                    const revealedCount = Math.floor(words.length * karaokeRatio);
+                                    return words.map((word, wIdx) => (
+                                      <span
+                                        key={wIdx}
+                                        style={{
+                                          display: 'inline',
+                                          opacity: wIdx < revealedCount ? 1 : 0.25,
+                                          transition: 'opacity 0.15s ease',
+                                          marginRight: wIdx < words.length - 1 ? '0.25em' : 0,
+                                          color: wIdx < revealedCount ? undefined : 'rgba(255,255,255,0.25)',
+                                        }}
+                                      >
+                                        {word}
+                                      </span>
+                                    ));
+                                  })()
+                                : (translationMode === 'replace' && translationsRecord?.[idx]
+                                    ? translationsRecord[idx]
+                                    : line.text)
+                              }
+                            </span>
+                            {translationMode === 'both' && translationsRecord?.[idx] && (
+                              <span style={{ 
+                                display: 'block', 
+                                fontSize: '0.65em', 
+                                opacity: isActive ? 0.8 : 0.5, 
+                                marginTop: '4px',
+                                fontWeight: 500
+                              }}>
+                                {translationsRecord[idx]}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="sp-lyrics-plain">{lyrics!.plainLyrics}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: ARTISTA (ARTIST) SCREEN */}
+            {activeTab === 'artist' && (
+              <div className="sp-tab-content sp-tab-artist">
+                <div className="sp-artist-header">
+                  <div className="sp-artist-bg-blur">
+                    <img src={currentTrack.cover} alt="" />
+                  </div>
+                  <img src={currentTrack.cover} alt="" className="sp-artist-main-img" />
+                  <h2 className="sp-artist-title">{currentTrack.artist}</h2>
+                  <span className="sp-artist-sub">Artista Oficial de KokoMusic</span>
+                </div>
+                <div className="sp-artist-details">
+                  <div className="sp-artist-card-row">
+                    <div className="sp-artist-info-col">
+                      <span className="sp-info-num">
+                        {((Math.abs(currentTrack.artist.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) * 12457) % 3500000 + 450000).toLocaleString()}
+                      </span>
+                      <span className="sp-info-txt">Oyentes mensuales en todo el mundo</span>
+                    </div>
+                    <button
+                      className={`sp-follow-btn-large ${followedArtists.includes(currentTrack.artist) ? 'following' : ''}`}
+                      onClick={() => {
+                        const isFollowing = followedArtists.includes(currentTrack.artist);
+                        setFollowedArtists(prev => {
+                          const next = isFollowing
+                            ? prev.filter(a => a !== currentTrack.artist)
+                            : [...prev, currentTrack.artist];
+                          localStorage.setItem('koko_followed_artists', JSON.stringify(next));
+                          return next;
+                        });
+                      }}
+                    >
+                      {followedArtists.includes(currentTrack.artist) ? 'Siguiendo' : 'Seguir Artista'}
+                    </button>
+                  </div>
+                  <div className="sp-artist-bio-section">
+                    <h3>Biografía del Artista</h3>
+                    <p>
+                      {currentTrack.artist} es uno de los artistas más escuchados en la plataforma, con una presencia icónica en las listas de reproducción de KokoMusic. Sus sonidos únicos definen tendencias globales.
+                    </p>
+                    <p>
+                      Conecta inmersivamente con sus canciones habilitando las notificaciones y guardando sus temas offline directamente desde KokoMusic.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: VIDEO SCREEN */}
+            {activeTab === 'video' && activeYoutubeId && (
+              <div className="sp-tab-content sp-tab-video">
+                <div className="sp-video-player-wrap">
+                  <iframe
+                    ref={setIframeEl}
+                    src={`https://www.youtube.com/embed/${activeYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                    title="YouTube Video Player Tab"
+                    frameBorder="0"
+                    allow="autoplay; encrypted-media; fullscreen"
+                    allowFullScreen
+                    className="sp-tab-video-iframe"
+                  />
+                </div>
+                <div className="sp-video-track-info">
+                  <h3>{currentTrack.title}</h3>
+                  <p>{currentTrack.artist} • Video Musical Oficial</p>
+                </div>
+                {/* Overlay lines in real-time */}
+                {activeIndex >= 0 && parsedLines[activeIndex] && (
+                  <div className="sp-video-lyric-card">
+                    <span className="sp-video-lyric-text">{parsedLines[activeIndex].text}</span>
+                    {translationMode !== 'none' && translationsRecord?.[activeIndex] && (
+                      <span className="sp-video-lyric-translation">{translationsRecord[activeIndex]}</span>
+                    )}
+                  </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+
+          </div>
         </div>
 
         <PlaylistModal

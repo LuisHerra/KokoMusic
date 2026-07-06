@@ -118,6 +118,23 @@ function applyDiversityFilter(candidates: EnrichedCandidate[]): EnrichedCandidat
 
 // ── GET /api/recommendations ──────────────────────────────────────────────────
 
+function mapCandidatesToTracks(candidates: EnrichedCandidate[]) {
+  return candidates.map((c) => ({
+    id: c.trackId,
+    trackId: c.trackId,
+    title: c.title,
+    artist: c.artist,
+    artistId: c.artistId,
+    cover: c.cover,
+    duration: c.durationMs,
+    durationMs: c.durationMs,
+    genre: c.genre,
+    releaseDate: c.releaseDate,
+    popularity: 50,
+    preview_url: null,
+  }));
+}
+
 router.get('/', async (req: Request, res: Response) => {
   const start = Date.now();
   const userId = (req.headers['x-user-id'] || 'default') as string;
@@ -135,7 +152,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       const elapsed = Date.now() - start;
       return res.json({
-        tracks: coldCandidates.slice(0, limit),
+        tracks: mapCandidatesToTracks(coldCandidates.slice(0, limit)),
         source: 'cold_start',
         cached: false,
         elapsedMs: elapsed,
@@ -173,7 +190,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       const elapsed = Date.now() - start;
       return res.json({
-        tracks: diverse.slice(0, limit),
+        tracks: mapCandidatesToTracks(diverse.slice(0, limit)),
         source: fresh ? 'cache_fresh' : 'cache_stale',
         cached: true,
         stale: !fresh,
@@ -189,7 +206,7 @@ router.get('/', async (req: Request, res: Response) => {
     const coldCandidates = await getColdStartCandidates(limit);
     const elapsed = Date.now() - start;
     return res.json({
-      tracks: coldCandidates.slice(0, limit),
+      tracks: mapCandidatesToTracks(coldCandidates.slice(0, limit)),
       source: 'cache_miss_cold_start',
       cached: false,
       elapsedMs: elapsed,

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import TrackGrid, { TrackCard } from '../components/TrackCard/TrackGrid';
-import { getRecommendations, getPersonalizedRecommendations } from '../lib/api';
+import { getPersonalizedRecommendations } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import OnboardingModal from '../components/OnboardingModal';
 

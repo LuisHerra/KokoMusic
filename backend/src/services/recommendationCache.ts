@@ -186,6 +186,12 @@ export function scheduleBackgroundRecompute(
 export function isColdStart(userId: string): boolean {
   if (getCachedPlaylist(userId)) return false; // If we have cached recs (e.g. from seeded onboarding), not a cold start
 
+  // Bypass cold start for Koko profiles (pre-seeded taste)
+  const KOKO_IDS = ['9847b87c-04e7-4595-af2f-3c02448ebf67', '773d55a4-0cd3-4504-a4e4-04c2b0b80052', '2cd6438b-2ce9-4f5f-8b82-c41896009981'];
+  if (KOKO_IDS.includes(userId) || userId.toLowerCase().includes('koko')) {
+    return false;
+  }
+
   try {
     const { readHistory } = require('./historyService');
     const history = (readHistory() as any[]).filter((h: any) => h.userId === userId);

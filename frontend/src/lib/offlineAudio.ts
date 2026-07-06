@@ -48,6 +48,7 @@ export function initOfflineDB(): Promise<IDBDatabase> {
 }
 
 export async function isTrackOffline(trackId: string): Promise<boolean> {
+  if (!trackId) return false;
   try {
     const db = await initOfflineDB();
     return new Promise((resolve) => {
@@ -72,6 +73,7 @@ export async function saveTrackOffline(
   trackId: string,
   metadata: { title: string; artist: string; cover: string; duration: number }
 ): Promise<void> {
+  if (!trackId) throw new Error('No trackId specified for saving offline');
   const db = await initOfflineDB();
   const API_BASE = await getApiUrl();
   
@@ -123,6 +125,7 @@ export async function saveTrackOffline(
 }
 
 export async function getOfflineTrack(trackId: string): Promise<OfflineTrack | null> {
+  if (!trackId) return null;
   try {
     const db = await initOfflineDB();
     const track = await new Promise<OfflineTrack | null>((resolve, reject) => {
@@ -177,6 +180,7 @@ export async function getAllOfflineTracks(): Promise<OfflineTrack[]> {
 }
 
 export async function deleteOfflineTrack(trackId: string): Promise<void> {
+  if (!trackId) return;
   const db = await initOfflineDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');

@@ -3,6 +3,11 @@ import { searchTracks, getTrackById, type TrackMetadata } from './metadataServic
 import { readHistory, type HistoryEntry } from './historyService';
 import { audioExists } from './ytdlpService';
 import { trackExistsInCDN } from './cdnService';
+import { getTrendingTracks, getTrendingGenres } from './trendingService';
+
+function normalizeStr(s: string): string {
+  return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+}
 
 const LFM_KEY = process.env.LASTFM_KEY || '';
 const LFM_BASE = 'https://ws.audioscrobbler.com/2.0/';
@@ -383,14 +388,26 @@ export async function getRecommendations(
     // ignore
   }
 
+  const trendTracks = await getTrendingTracks();
+  const trendGenres = await getTrendingGenres();
+
+  // Inject trending tracks directly as discovery candidates
+  for (const track of trendTracks) {
+    if (!exploitPool.has(track.id) && !discoverPool.has(track.id)) {
+      discoverPool.set(track.id, { track, source: 'trending', baseScore: 40 });
+    }
+  }
+
   const activeMood = mood?.toLowerCase();
   const moodWords = (activeMood && moodKeywords[activeMood]) ? moodKeywords[activeMood] : [];
 
-  // Discovery queries pool (rotating for variety)
+  // Discovery queries pool (rotating for variety, incorporating trending genres)
+  const trendGenreQueries = trendGenres.slice(0, 3).map(g => `${g} hits`);
   const globalDiscovery = ['trending hits 2025', 'new music releases', 'viral songs 2025', 'top charts global'];
   const discoveryPool = [
     ...moodWords,
     ...adjacentKeywords,
+    ...trendGenreQueries,
     ...globalDiscovery,
   ];
 
@@ -459,7 +476,15 @@ export async function getRecommendations(
     const cacheInfo = cacheMap.get(track.id);
     const cacheBonus = cacheInfo?.isLocal ? 25 : cacheInfo?.isCDN ? 15 : 0;
 
-    const totalScore = c.baseScore + rawHistoryScore + noveltyBonus + cacheBonus;
+    // Trending track boost (global / local trends)
+    const isTrendingTrack = trendTracks.some(t => t.id === track.id || normalizeStr(`${t.title}-${t.artist}`) === normalizeStr(`${track.title}-${track.artist}`));
+    const trendingTrackBonus = isTrendingTrack ? 30 : 0;
+
+    // Trending genre boost
+    const isTrendingGenre = trendGenres.some(g => g.toLowerCase().trim() === track.genre?.toLowerCase().trim());
+    const trendingGenreBonus = isTrendingGenre ? 15 : 0;
+
+    const totalScore = c.baseScore + rawHistoryScore + noveltyBonus + cacheBonus + trendingTrackBonus + trendingGenreBonus;
 
     // Calibrated jitter: ±15% (was ±43%) — enough variety without chaos
     const jitter = 0.85 + Math.random() * 0.30;

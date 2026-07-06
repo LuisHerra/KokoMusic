@@ -21,6 +21,8 @@
 import { supabase } from './supabaseService';
 import type { TasteProfile } from './tasteProfileBuilder';
 import { readHistory } from './historyService';
+import { getTrendingTracks } from './trendingService';
+
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -232,59 +234,49 @@ async function fetchFollowCandidates(
     .slice(0, limit);
 }
 
-/** Fetch discovery candidates from the external charts cache. */
+/** Fetch discovery candidates from trending tracks (local + global). */
 async function fetchChartCandidates(
   profile: TasteProfile,
   exclude: Set<string>,
   limit: number
 ): Promise<EnrichedCandidate[]> {
-  if (!supabase) return [];
+  try {
+    const trendTracks = await getTrendingTracks();
+    if (!trendTracks || trendTracks.length === 0) return [];
 
-  const { data: cacheRows, error } = await supabase
-    .schema('kokomusic')
-    .from('external_charts_cache')
-    .select('source, region, payload_json, fetched_at')
-    .order('fetched_at', { ascending: false })
-    .limit(4);
+    const candidates: EnrichedCandidate[] = [];
 
-  if (error || !cacheRows || cacheRows.length === 0) return [];
-
-  const candidates: EnrichedCandidate[] = [];
-
-  for (const row of cacheRows as any[]) {
-    const payload = (row.payload_json as any[]) || [];
-    for (const item of payload) {
-      const trackId = String(item.trackId || item.id || item.track_id || '');
+    for (const item of trendTracks) {
+      const trackId = item.id;
       if (!trackId || exclude.has(trackId)) continue;
-
-      const title = String(item.title || item.trackName || item.name || '');
-      const artist = String(item.artist || item.artistName || item.artist_name || '');
-      const genre = String(item.genre || 'Otros');
 
       candidates.push({
         trackId,
-        title,
-        artist,
-        artistId: Number(item.artistId || item.artist_id || 0),
-        cover: String(item.cover || item.coverUrl || item.cover_url || item.image || ''),
-        durationMs: Number(item.durationMs || item.duration_ms || 180_000),
-        genre,
-        releaseDate: item.releaseDate || item.release_date || null,
-        affinityScore: computeAffinity(genre, artist, profile),
+        title: item.title,
+        artist: item.artist,
+        artistId: item.artistId || 0,
+        cover: item.cover || '',
+        durationMs: item.duration || 180_000,
+        genre: item.genre || 'Otros',
+        releaseDate: item.releaseDate || null,
+        affinityScore: computeAffinity(item.genre, item.artist, profile),
         isNewFromFollowedArtist: false,
         source: 'charts' as const,
-        bpmEstimate: estimateBpm(title, artist),
-        energyEstimate: estimateEnergy(title, artist),
+        bpmEstimate: estimateBpm(item.title, item.artist),
+        energyEstimate: estimateEnergy(item.title, item.artist),
       });
 
       if (candidates.length >= limit * 3) break;
     }
-  }
 
-  return candidates
-    .filter((c, idx, arr) => arr.findIndex((x) => x.trackId === c.trackId) === idx) // dedup
-    .sort(() => Math.random() - 0.5) // shuffle for variety
-    .slice(0, limit);
+    return candidates
+      .filter((c, idx, arr) => arr.findIndex((x) => x.trackId === c.trackId) === idx) // dedup
+      .sort(() => Math.random() - 0.5) // shuffle for variety
+      .slice(0, limit);
+  } catch (err) {
+    console.error('[CandidateGen] Error fetching chart candidates from trendingService:', err);
+    return [];
+  }
 }
 
 // ── Main exported function ────────────────────────────────────────────────────
@@ -348,54 +340,43 @@ export async function generateCandidates(
 
 /**
  * Cold-start candidate list for users with no taste profile.
- * Reads directly from external_charts_cache and returns enriched candidates.
+ * Reads from trending tracks (local + global) and returns enriched candidates.
  */
 export async function getColdStartCandidates(limit = 30): Promise<EnrichedCandidate[]> {
-  if (!supabase) return [];
+  try {
+    const trendTracks = await getTrendingTracks();
+    if (!trendTracks || trendTracks.length === 0) return [];
 
-  const { data: cacheRows, error } = await supabase
-    .schema('kokomusic')
-    .from('external_charts_cache')
-    .select('payload_json')
-    .order('fetched_at', { ascending: false })
-    .limit(2);
+    const candidates: EnrichedCandidate[] = [];
+    const seenIds = new Set<string>();
 
-  if (error || !cacheRows || cacheRows.length === 0) return [];
-
-  const candidates: EnrichedCandidate[] = [];
-  const seenIds = new Set<string>();
-
-  for (const row of cacheRows as any[]) {
-    const payload = (row.payload_json as any[]) || [];
-    for (const item of payload) {
-      const trackId = String(item.trackId || item.id || item.track_id || '');
+    for (const item of trendTracks) {
+      const trackId = item.id;
       if (!trackId || seenIds.has(trackId)) continue;
       seenIds.add(trackId);
 
-      const title = String(item.title || item.trackName || item.name || '');
-      const artist = String(item.artist || item.artistName || item.artist_name || '');
-      const genre = String(item.genre || 'Otros');
-
       candidates.push({
         trackId,
-        title,
-        artist,
-        artistId: Number(item.artistId || item.artist_id || 0),
-        cover: String(item.cover || item.coverUrl || item.cover_url || item.image || ''),
-        durationMs: Number(item.durationMs || item.duration_ms || 180_000),
-        genre,
-        releaseDate: item.releaseDate || item.release_date || null,
+        title: item.title,
+        artist: item.artist,
+        artistId: item.artistId || 0,
+        cover: item.cover || '',
+        durationMs: item.duration || 180_000,
+        genre: item.genre || 'Otros',
+        releaseDate: item.releaseDate || null,
         affinityScore: 0,
         isNewFromFollowedArtist: false,
         source: 'charts' as const,
-        bpmEstimate: estimateBpm(title, artist),
-        energyEstimate: estimateEnergy(title, artist),
+        bpmEstimate: estimateBpm(item.title, item.artist),
+        energyEstimate: estimateEnergy(item.title, item.artist),
       });
 
       if (candidates.length >= limit) break;
     }
-    if (candidates.length >= limit) break;
-  }
 
-  return candidates;
+    return candidates;
+  } catch (err) {
+    console.error('[CandidateGen] Error getting cold start candidates:', err);
+    return [];
+  }
 }

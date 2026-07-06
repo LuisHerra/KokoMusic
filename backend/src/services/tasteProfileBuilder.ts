@@ -235,6 +235,89 @@ export function applyArtistCap(
   return capped;
 }
 
+/** Helper to check if a user is "Koko" based on static IDs or display_name in DB */
+export async function checkIsKoko(userId: string): Promise<boolean> {
+  const KOKO_IDS = ['9847b87c-04e7-4595-af2f-3c02448ebf67', '773d55a4-0cd3-4504-a4e4-04c2b0b80052', '2cd6438b-2ce9-4f5f-8b82-c41896009981'];
+  if (KOKO_IDS.includes(userId)) return true;
+  if (userId.toLowerCase().includes('koko')) return true;
+
+  if (!supabase) return false;
+  try {
+    const { data } = await supabase
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .select('display_name')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (data && data.display_name) {
+      const name = String(data.display_name).toLowerCase();
+      return name === 'koko' || name.includes('koko') || name.includes('limit.koko.business');
+    }
+  } catch (err) {
+    console.error('[TasteProfile] checkIsKoko error:', err);
+  }
+  return false;
+}
+
+/** Generates the biased preset taste profile for user "Koko" */
+export function getKokoSyntheticPrior(userId: string): TasteProfile {
+  const genreAffinity: Record<string, number> = {
+    'Reggaeton': 0.35,
+    'Phonk Brasileño': 0.20,
+    'Trap': 0.15,
+    'R&B': 0.10,
+    'Hip-Hop': 0.10,
+    'Pop': 0.10
+  };
+  
+  const artists = [
+    { name: 'Feid', weight: 0.15 },
+    { name: 'Quevedo', weight: 0.12 },
+    { name: 'Bad Bunny', weight: 0.12 },
+    { name: 'Trueno', weight: 0.20 }, // bastante escuchado (highly listened)
+    { name: 'Morad', weight: 0.08 },
+    { name: 'JC Reyes', weight: 0.06 },
+    { name: 'Samurai Jay', weight: 0.06 },
+    { name: 'Charlie Puth', weight: 0.04 },
+    { name: 'KeBlack', weight: 0.04 },
+    { name: 'RnBoi', weight: 0.04 },
+    { name: 'Omar Courtz', weight: 0.05 },
+    { name: 'Danyl', weight: 0.04 },
+    { name: 'GIMS', weight: 0.04 },
+    { name: 'Naza', weight: 0.04 },
+    { name: 'Dr Yaro', weight: 0.04 },
+    { name: 'Rvssian', weight: 0.04 },
+    { name: 'Myke Towers', weight: 0.05 },
+    { name: 'Mauvais Djo', weight: 0.04 },
+    { name: 'Oasis', weight: 0.04 },
+    { name: 'Tayc', weight: 0.04 },
+    { name: 'PLK', weight: 0.04 },
+    { name: 'Ninho', weight: 0.04 },
+    { name: 'Tiakola', weight: 0.04 },
+    { name: 'Santiago', weight: 0.04 },
+    { name: 'Alonzo', weight: 0.04 },
+    { name: 'Fred de Palma', weight: 0.04 }
+  ];
+
+  const totalArtistWeight = artists.reduce((s, a) => s + a.weight, 0);
+  const topArtists = artists.map(a => ({
+    artistId: 0,
+    name: a.name,
+    weight: a.weight / (totalArtistWeight || 1)
+  }));
+
+  return {
+    userId,
+    genreAffinity,
+    topArtists,
+    hourlyDistribution: new Array(24).fill(1 / 24),
+    dowDistribution: new Array(7).fill(1 / 7),
+    totalWeight: 100, // Strong prior for Koko
+    computedAt: new Date().toISOString()
+  };
+}
+
 // ── Main exported function ────────────────────────────────────────────────────
 
 /**
@@ -246,7 +329,34 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
   const nowMs = Date.now();
 
   const plays = await fetchEnrichedPlays(userId);
-  const existing = await loadTasteProfileStale(userId);
+  let existing = await loadTasteProfileStale(userId);
+
+  const isKoko = await checkIsKoko(userId);
+  if (isKoko) {
+    const kokoPrior = getKokoSyntheticPrior(userId);
+    if (!existing) {
+      console.log(`[TasteProfile] Pre-seeding Koko synthetic prior for user: ${userId}`);
+      existing = kokoPrior;
+    } else {
+      console.log(`[TasteProfile] Merging Koko synthetic prior into existing profile for user: ${userId}`);
+      // Ensure genreAffinity is blended
+      for (const [g, w] of Object.entries(kokoPrior.genreAffinity)) {
+        existing.genreAffinity[g] = ((existing.genreAffinity[g] || 0) + w) / 2;
+      }
+      // Ensure topArtists are blended
+      for (const a of kokoPrior.topArtists) {
+        const found = existing.topArtists.find(ea => ea.name.toLowerCase() === a.name.toLowerCase());
+        if (found) {
+          found.weight = (found.weight + a.weight) / 2;
+        } else {
+          existing.topArtists.push(a);
+        }
+      }
+      // Re-normalize topArtists weights
+      const sumWeights = existing.topArtists.reduce((acc, a) => acc + a.weight, 0) || 1;
+      existing.topArtists.forEach(a => a.weight = a.weight / sumWeights);
+    }
+  }
 
   if (plays.length === 0 && !existing) {
     console.log(`[TasteProfile] No play history for ${userId}. Skipping.`);

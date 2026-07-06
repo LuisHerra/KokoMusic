@@ -410,7 +410,7 @@ export function useAudioPlayer() {
   }, [handleEnded, setDuration, setError, setIsPlaying, setLoading, setProgress, nextTrack, repeatMode]);
 
   useEffect(() => {
-    if (!currentTrack) return;
+    if (!currentTrack || !currentTrack.id) return;
     if (globalLastLoadedTrackId === currentTrack.id) return;
 
     const prevTrackId = globalLastLoadedTrackId;
