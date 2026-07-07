@@ -2,12 +2,12 @@ import { useCallback, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '../../store/playerStore';
 
-function IconDownload() {
+function IconCloudDownload() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
+      <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
+      <polyline points="8 16 12 20 16 16" />
+      <line x1="12" y1="20" x2="12" y2="10" />
     </svg>
   );
 }
@@ -186,16 +186,7 @@ export default function Player() {
   const [showEq, setShowEq] = useState(false);
 
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
-  const [autoDownloadYt, setAutoDownloadYt] = useState(() => localStorage.getItem('autoDownloadYt') !== 'false');
 
-  // Escuchar cambios de localStorage para autoDownloadYt
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setAutoDownloadYt(localStorage.getItem('autoDownloadYt') !== 'false');
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
 
   // Verificar y hacer polling al estado de descarga cuando cambie currentTrack.id o status
   useEffect(() => {
@@ -386,31 +377,30 @@ export default function Player() {
                   <line x1="8" y1="12" x2="16" y2="12" />
                 </svg>
               </button>
-              {!autoDownloadYt && (
-                <button 
-                  className={`ctrl-btn hide-on-mobile ${downloadStatus === 'downloaded' ? 'downloaded' : ''}`}
-                  onClick={handleDownload}
-                  disabled={downloadStatus !== 'none'}
-                  title={downloadStatus === 'downloaded' ? "Audio guardado en caché" : downloadStatus === 'downloading' ? "Descargando audio..." : "Descargar audio"}
-                  style={{ 
-                    padding: 4, 
-                    flexShrink: 0,
-                    color: downloadStatus === 'downloaded' ? 'var(--accent)' : 'var(--text-secondary)',
-                    opacity: downloadStatus === 'downloading' ? 0.6 : 1,
-                    cursor: downloadStatus === 'none' ? 'pointer' : 'default',
-                    background: 'transparent',
-                    border: 'none'
-                  }}
-                >
-                  {downloadStatus === 'downloaded' ? (
-                    <IconCheck />
-                  ) : downloadStatus === 'downloading' ? (
-                    <IconLoadingSpinner />
-                  ) : (
-                    <IconDownload />
-                  )}
-                </button>
-              )}
+              <button 
+                className={`ctrl-btn ${downloadStatus === 'downloaded' ? 'downloaded' : ''}`}
+                onClick={handleDownload}
+                disabled={downloadStatus !== 'none'}
+                title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión" : downloadStatus === 'downloading' ? "Guardando..." : "Guardar sin conexión"}
+                style={{ 
+                  padding: 4, 
+                  flexShrink: 0,
+                  color: downloadStatus === 'downloaded' ? 'var(--accent)' : 'var(--text-secondary)',
+                  opacity: downloadStatus === 'downloading' ? 0.6 : 1,
+                  cursor: downloadStatus === 'none' ? 'pointer' : 'default',
+                  background: 'transparent',
+                  border: 'none'
+                }}
+              >
+                {downloadStatus === 'downloaded' ? (
+                  <IconCheck />
+                ) : downloadStatus === 'downloading' ? (
+                  <IconLoadingSpinner />
+                ) : (
+                  <IconCloudDownload />
+                )}
+              </button>
+
             </div>
           </>
         ) : (

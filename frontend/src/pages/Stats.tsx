@@ -92,11 +92,23 @@ export default function Stats() {
     areaPath = `${linePath} L ${chartPoints[chartPoints.length - 1].x} 120 L ${chartPoints[0].x} 120 Z`;
   }
 
+  const handlePeriodChange = (val: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('period', val);
+    setSearchParams(params);
+  };
+
+  const handleShareClick = () => {
+    const params = new URLSearchParams(searchParams);
+    params.set('share', 'true');
+    setSearchParams(params);
+  };
+
   return (
     <div className="main-body" style={{ paddingTop: 24, paddingBottom: 64, position: 'relative' }}>
       
       {/* Page Title Header */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.5px' }}>
           Tus Estadísticas
         </h1>
@@ -105,10 +117,81 @@ export default function Stats() {
         </p>
       </div>
 
+      {/* Mobile-only Header Controls */}
+      <div className="show-on-mobile-flex" style={{ display: 'none', gap: 12, alignItems: 'center', marginBottom: 28, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 140 }}>
+          <select
+            value={period}
+            onChange={(e) => handlePeriodChange(e.target.value)}
+            style={{
+              width: '100%',
+              appearance: 'none',
+              padding: '10px 36px 10px 36px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(255,255,255,0.06)',
+              color: 'var(--text-primary)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              outline: 'none',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            <option value="all" style={{ background: '#1f1f1f', color: '#ffffff' }}>Siempre</option>
+            <option value="day" style={{ background: '#1f1f1f', color: '#ffffff' }}>Últimas 24 horas</option>
+            <option value="week" style={{ background: '#1f1f1f', color: '#ffffff' }}>Última semana</option>
+            <option value="month" style={{ background: '#1f1f1f', color: '#ffffff' }}>Último mes</option>
+            <option value="year" style={{ background: '#1f1f1f', color: '#ffffff' }}>Último año</option>
+          </select>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none', display: 'flex' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </span>
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none', display: 'flex' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+            </svg>
+          </span>
+        </div>
+
+        <button
+          onClick={handleShareClick}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            background: 'var(--accent)',
+            color: '#000000',
+            border: 'none',
+            borderRadius: 'var(--radius-full)',
+            padding: '10px 20px',
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: 'pointer',
+            flex: 1,
+            minWidth: 120,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          Compartir
+        </button>
+      </div>
+
       {/* Row 1: Summary Cards Grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
         gap: 20,
         marginBottom: 32
       }}>
@@ -359,7 +442,7 @@ export default function Stats() {
           borderRadius: 'var(--radius-lg)',
           padding: 24,
           border: '1px solid rgba(255,255,255,0.05)',
-        }}>
+        }} className="stats-card-responsive">
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Tu Perfil Musical</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4, marginBottom: 24 }}>
             Análisis de géneros y estilos basado en tu historial de reproducción
@@ -373,7 +456,7 @@ export default function Stats() {
                 Distribución por género
               </h3>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
                 {/* Donut graphic */}
                 <div style={{ position: 'relative', width: 110, height: 110, flexShrink: 0 }}>
                   <svg width="110" height="110" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
@@ -551,7 +634,7 @@ export default function Stats() {
           border: '1px solid rgba(255,255,255,0.05)',
           display: 'flex',
           flexDirection: 'column'
-        }}>
+        }} className="stats-card-responsive">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Estado de ánimo</h2>
             <a href="#more-moods" style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
@@ -638,7 +721,7 @@ export default function Stats() {
           padding: 24,
           border: '1px solid rgba(255,255,255,0.05)',
           overflow: 'hidden'
-        }}>
+        }} className="stats-card-responsive">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Canciones más escuchadas</h2>
             <a href="#all-songs" style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
@@ -737,7 +820,7 @@ export default function Stats() {
           borderRadius: 'var(--radius-lg)',
           padding: 24,
           border: '1px solid rgba(255,255,255,0.05)',
-        }}>
+        }} className="stats-card-responsive">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Artistas Top</h2>
             <a href="#all-artists" style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
@@ -821,7 +904,7 @@ export default function Stats() {
           borderRadius: 'var(--radius-lg)',
           padding: 24,
           border: '1px solid rgba(255,255,255,0.05)',
-        }}>
+        }} className="stats-card-responsive">
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0, marginBottom: 20 }}>
             Momentos destacados
           </h2>
@@ -948,7 +1031,7 @@ export default function Stats() {
           borderRadius: 'var(--radius-lg)',
           padding: 24,
           border: '1px solid rgba(255,255,255,0.05)',
-        }}>
+        }} className="stats-card-responsive">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Actividad reciente</h2>
             <a href="#all-activity" style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
@@ -1005,7 +1088,7 @@ export default function Stats() {
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: 20
-      }}>
+      }} className="stats-card-responsive">
         <div style={{ maxWidth: 500 }}>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

@@ -290,6 +290,47 @@ async function fetchChartCandidates(
  * @param profile — pre-computed TasteProfile for the user
  * @returns Array of EnrichedCandidate, sorted by affinity descending
  */
+// Helper to cap artist and genre representation in candidate pools
+function applyDiversityCap(
+  candidates: EnrichedCandidate[],
+  maxSlots: number,
+  maxArtistRatio = 0.15, // max 15% per artist
+  maxGenreRatio = 0.25   // max 25% per genre
+): EnrichedCandidate[] {
+  const maxPerArtist = Math.max(1, Math.ceil(maxSlots * maxArtistRatio));
+  const maxPerGenre = Math.max(2, Math.ceil(maxSlots * maxGenreRatio));
+
+  const artistCount: Record<string, number> = {};
+  const genreCount: Record<string, number> = {};
+  const result: EnrichedCandidate[] = [];
+
+  for (const c of candidates) {
+    const artistKey = c.artist.toLowerCase().trim();
+    const genreKey = c.genre.toLowerCase().trim();
+
+    const aCount = artistCount[artistKey] || 0;
+    const gCount = genreCount[genreKey] || 0;
+
+    if (aCount < maxPerArtist && gCount < maxPerGenre) {
+      artistCount[artistKey] = aCount + 1;
+      genreCount[genreKey] = gCount + 1;
+      result.push(c);
+    }
+  }
+  return result;
+}
+
+// ── Main exported function ────────────────────────────────────────────────────
+
+/**
+ * Generates a fully-enriched list of recommendation candidates for a user.
+ * Combines exploitation (taste + follows) and discovery (charts) at 80/20.
+ * Never calls external APIs — only reads from DB caches.
+ *
+ * @param userId
+ * @param profile — pre-computed TasteProfile for the user
+ * @returns Array of EnrichedCandidate, sorted by affinity descending
+ */
 export async function generateCandidates(
   userId: string,
   profile: TasteProfile
@@ -326,16 +367,72 @@ export async function generateCandidates(
     }
   }
 
+  // ── Apply Artist Recency Cooldowns ──────────────────────────────────────────
+  const history = readHistory().filter((h) => h.userId === userId);
+  const artistLastPlayed = new Map<string, number>();
+  for (const h of history) {
+    if (h.artist && h.lastPlayed) {
+      const norm = h.artist.toLowerCase().trim();
+      const lastPlayedMs = new Date(h.lastPlayed).getTime();
+      const existing = artistLastPlayed.get(norm) || 0;
+      if (lastPlayedMs > existing) {
+        artistLastPlayed.set(norm, lastPlayedMs);
+      }
+    }
+  }
+
+  const nowMs = Date.now();
+  const applyCooldown = (c: EnrichedCandidate) => {
+    const artistNorm = c.artist.toLowerCase().trim();
+    const lastPlayedMs = artistLastPlayed.get(artistNorm);
+    if (lastPlayedMs) {
+      const elapsedHours = (nowMs - lastPlayedMs) / (1000 * 60 * 60);
+      let penalty = 0;
+      if (elapsedHours < 2) penalty = 0.8;      // Played in last 2h -> major penalty (affinity score decreases by 0.8)
+      else if (elapsedHours < 12) penalty = 0.4; // Played in last 12h -> medium penalty (affinity score decreases by 0.4)
+      else if (elapsedHours < 48) penalty = 0.15; // Played in last 2 days -> minor penalty
+      
+      c.affinityScore = Math.max(0, c.affinityScore - penalty);
+    }
+  };
+
+  exploitation.forEach(applyCooldown);
+  discovery.forEach(applyCooldown);
+
+  // Sort again based on updated affinity scores
+  exploitation.sort((a, b) => {
+    if (a.isNewFromFollowedArtist !== b.isNewFromFollowedArtist) {
+      return a.isNewFromFollowedArtist ? -1 : 1;
+    }
+    return b.affinityScore - a.affinityScore;
+  });
+  discovery.sort((a, b) => b.affinityScore - a.affinityScore);
+
   const merged = [
     ...exploitation.slice(0, exploitLimit),
     ...discovery.slice(0, discoverLimit),
   ];
 
+  // Apply diversity capping to the final recommendations candidate pool
+  const cappedCandidates = applyDiversityCap(merged, MAX_CANDIDATES, 0.15, 0.25);
+
+  // If diversity capping makes the pool too small, backfill from original merged list
+  let finalCandidates = cappedCandidates;
+  if (finalCandidates.length < 50) {
+    const backfillSeenIds = new Set(finalCandidates.map(c => c.trackId));
+    for (const c of merged) {
+      if (!backfillSeenIds.has(c.trackId)) {
+        finalCandidates.push(c);
+        if (finalCandidates.length >= 70) break;
+      }
+    }
+  }
+
   console.log(
-    `[CandidateGen] ${merged.length} candidates generated (${exploitation.length} exploit, ${discovery.length} discover, ${exclude.size} excluded)`
+    `[CandidateGen] ${finalCandidates.length} candidates generated (${exploitation.length} exploit, ${discovery.length} discover, ${exclude.size} excluded)`
   );
 
-  return merged;
+  return finalCandidates;
 }
 
 /**

@@ -18,7 +18,7 @@ import {
 } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
-import { getAllOfflineTracks } from '../lib/offlineAudio';
+import { getAllOfflineTracks, deleteOfflineTrack } from '../lib/offlineAudio';
 
 function getDeviceId(): string {
   const k = 'koko_device_id';
@@ -177,6 +177,148 @@ function LibraryTrackRow({
   );
 }
 
+function LibraryOfflineTrackRow({
+  track,
+  setTrack,
+  offlineTracks,
+  addToQueue,
+  setError,
+  setSelectedTrackForPlaylist,
+  onRemove,
+}: {
+  track: Track;
+  setTrack: (t: Track, list: Track[]) => void;
+  offlineTracks: Track[];
+  addToQueue: (t: Track) => void;
+  setError: (msg: string) => void;
+  setSelectedTrackForPlaylist: (t: Track | null) => void;
+  onRemove: (trackId: string) => void;
+}) {
+  const { swipeStyle, touchHandlers, swipeOffset } = useSwipeToQueue(
+    track,
+    addToQueue,
+    setError
+  );
+
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      {swipeOffset > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${swipeOffset}px`,
+            background: 'linear-gradient(90deg, #1db954 0%, var(--bg-highlight) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            paddingLeft: '16px',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            pointerEvents: 'none',
+            borderRadius: '8px',
+            zIndex: 0,
+            opacity: Math.min(1, swipeOffset / 80),
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '8px' }}>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          {swipeOffset > 80 ? 'Soltar para encolar' : 'Arrastra para encolar'}
+        </div>
+      )}
+      <div
+        className="track-row"
+        onClick={() => setTrack(track, offlineTracks)}
+        style={{
+          ...swipeStyle,
+          position: 'relative',
+          zIndex: 1,
+          padding: '8px 12px',
+          borderRadius: 8,
+          cursor: 'pointer',
+          transition: 'background-color 0.2s',
+        }}
+        {...touchHandlers}
+      >
+        <div className="track-row-info">
+          <img className="track-row-cover" src={track.cover} alt={track.title} style={{ width: 40, height: 40, borderRadius: 4, objectFit: 'cover' }} />
+          <div style={{ minWidth: 0 }}>
+            <div className="track-row-name" style={{ fontSize: 14, fontWeight: 600 }}>{track.title}</div>
+            <div className="track-row-artist" style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{track.artist}</span>
+              {track.album && (
+                <>
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span>{track.album}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', background: 'rgba(29,185,84,0.12)', padding: '2px 8px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+            Local
+          </span>
+
+          <button
+            className="ctrl-btn"
+            style={{ padding: 6, opacity: 0.7 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              addToQueue(track);
+              setError(`Añadido a la cola: ${track.title}`);
+            }}
+            title="Añadir a la cola"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+
+          <button
+            className="ctrl-btn"
+            style={{ padding: 6, opacity: 0.7 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedTrackForPlaylist(track);
+            }}
+            title="Añadir a playlist"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>
+          </button>
+
+          <button
+            className="ctrl-btn"
+            style={{ padding: 6, opacity: 0.7 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm(`¿Eliminar "${track.title}" del dispositivo?`)) {
+                onRemove(track.id);
+              }
+            }}
+            title="Eliminar descarga"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Library() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -184,16 +326,51 @@ export default function Library() {
   const displayName = getDisplayName();
   const { setTrack, addToQueue, setError } = usePlayerStore();
 
-  const [activeTab, setActiveTab] = useState<'playlists' | 'custom'>('playlists');
+  const [activeTab, setActiveTab] = useState<'playlists' | 'custom' | 'offline'>('playlists');
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [offlineTracksCount, setOfflineTracksCount] = useState(0);
+  const [offlineTracks, setOfflineTracks] = useState<Track[]>([]);
 
   useEffect(() => {
     getAllOfflineTracks().then((tracks) => {
       setOfflineTracksCount(tracks.length);
+      const mapped: Track[] = tracks.map(t => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: 'Descargado',
+        cover: t.cover,
+        duration: t.duration,
+        popularity: 100,
+        preview_url: null
+      }));
+      setOfflineTracks(mapped);
     }).catch(err => console.error(err));
   }, [activeTab]);
+
+  const handleRemoveOffline = async (trackId: string) => {
+    try {
+      await deleteOfflineTrack(trackId);
+      const updated = await getAllOfflineTracks();
+      setOfflineTracksCount(updated.length);
+      const mapped: Track[] = updated.map(t => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: 'Descargado',
+        cover: t.cover,
+        duration: t.duration,
+        popularity: 100,
+        preview_url: null
+      }));
+      setOfflineTracks(mapped);
+      setError('Descarga eliminada correctamente');
+    } catch (err: any) {
+      console.error(err);
+      setError('Error al eliminar la descarga');
+    }
+  };
 
   // Join collab playlist
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -411,7 +588,7 @@ export default function Library() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 24, gap: 24 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 24, gap: 20, overflowX: 'auto', whiteSpace: 'nowrap' }}>
         <button
           onClick={() => setActiveTab('playlists')}
           style={{
@@ -427,6 +604,22 @@ export default function Library() {
           }}
         >
           Playlists
+        </button>
+        <button
+          onClick={() => setActiveTab('offline')}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: activeTab === 'offline' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontSize: 15,
+            fontWeight: 700,
+            padding: '12px 4px',
+            cursor: 'pointer',
+            borderBottom: activeTab === 'offline' ? '2px solid var(--accent)' : '2px solid transparent',
+            transition: 'all 0.2s',
+          }}
+        >
+          Descargas ({offlineTracksCount})
         </button>
         <button
           onClick={() => setActiveTab('custom')}
@@ -555,6 +748,62 @@ export default function Library() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                   </button>
                 </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {/* Offline Tab */}
+      {activeTab === 'offline' && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>Canciones en este dispositivo</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Música disponible sin conexión</p>
+            </div>
+            {offlineTracks.length > 0 && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setTrack(offlineTracks[0], offlineTracks)}
+                style={{ borderRadius: 20, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                Reproducir Todo
+              </button>
+            )}
+          </div>
+
+          {offlineTracks.length === 0 ? (
+            <div className="empty-state" style={{ padding: '40px 20px', textAlign: 'center' }}>
+              <div className="empty-state-icon" style={{ marginBottom: 12 }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </div>
+              <p style={{ margin: '0 0 16px 0', fontSize: 14, color: 'var(--text-secondary)' }}>No tienes música descargada</p>
+              <button 
+                onClick={() => navigate('/search')}
+                className="btn btn-primary"
+                style={{ borderRadius: 20, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}
+              >
+                Buscar música para descargar
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 32 }}>
+              {offlineTracks.map((track) => (
+                <LibraryOfflineTrackRow
+                  key={track.id}
+                  track={track}
+                  setTrack={setTrack}
+                  offlineTracks={offlineTracks}
+                  addToQueue={addToQueue}
+                  setError={setError}
+                  setSelectedTrackForPlaylist={setSelectedTrackForPlaylist}
+                  onRemove={handleRemoveOffline}
+                />
               ))}
             </div>
           )}

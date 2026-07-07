@@ -6,6 +6,10 @@ import { seekAudio } from '../../hooks/useAudioPlayer';
 import { useQuery } from '@tanstack/react-query';
 import { getLyrics, resolveImageUrl, type Lyrics } from '../../lib/api';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
+import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
+import { getApiUrl } from '../../lib/backendResolver';
+import { useVideoSync } from '../../hooks/useVideoSync';
+import AudioVisualizer from './AudioVisualizer';
 
 function formatTime(secs: number): string {
   if (!secs || isNaN(secs)) return '0:00';
@@ -26,16 +30,26 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     isShuffle, toggleShuffle,
     repeatMode, cycleRepeat,
     dominantColor,
-    isLyricsOpen, toggleLyrics,
+    isLyricsOpen,
+    isEmbedMode, embedYoutubeId,
   } = usePlayerStore();
 
   const { isLiked, toggleLike } = useLikedSongs();
-  const [showLyrics, setShowLyrics] = useState(false);
+  
+  // Navigation layout state
+  const [playerView, setPlayerView] = useState<'cover' | 'lyrics' | 'visualizer'>('cover');
   const [isDragging, setIsDragging] = useState(false);
   const [dragProgress, setDragProgress] = useState(0);
   const progressRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Video sync for embed mode
+  const [iframeEl, setIframeEl] = useState<HTMLIFrameElement | null>(null);
+  useVideoSync(iframeEl, isEmbedMode ? embedYoutubeId : null);
+
+  // Offline track download status
+  const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
 
   // Touch-to-dismiss gesture state
   const touchStartY = useRef(0);
@@ -50,11 +64,82 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
-      setShowLyrics(false);
+      setPlayerView('cover');
       setTranslateY(0);
     }
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
+
+  // Check and poll offline status
+  useEffect(() => {
+    if (!currentTrack) return;
+    
+    let isMounted = true;
+    let pollInterval: any = null;
+
+    const checkStatus = async () => {
+      try {
+        const API_BASE = await getApiUrl();
+        // First check IndexedDB local
+        const isOffline = await isTrackOffline(currentTrack.id);
+        if (isOffline) {
+          if (isMounted) setDownloadStatus('downloaded');
+          if (pollInterval) clearInterval(pollInterval);
+          return;
+        }
+
+        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isMounted) return;
+
+        if (data.downloaded) {
+          setDownloadStatus('downloaded');
+          if (pollInterval) clearInterval(pollInterval);
+        } else if (data.status === 'downloading') {
+          setDownloadStatus('downloading');
+          if (!pollInterval) {
+            pollInterval = setInterval(checkStatus, 3000);
+          }
+        } else {
+          setDownloadStatus('none');
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    checkStatus();
+
+    return () => {
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [currentTrack?.id]);
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentTrack || downloadStatus !== 'none') return;
+
+    setDownloadStatus('downloading');
+
+    try {
+      await saveTrackOffline(currentTrack.id, {
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        cover: currentTrack.cover || '',
+        duration: currentTrack.duration
+      });
+      setDownloadStatus('downloaded');
+    } catch (offlineErr: any) {
+      console.error('[MobilePlayer] Error al descargar y guardar offline localmente:', offlineErr);
+      setDownloadStatus('none');
+    }
+  };
 
   // Lyrics query
   const { data: lyrics } = useQuery<Lyrics>({
@@ -82,10 +167,10 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
   // Auto-scroll lyrics to active line
   useEffect(() => {
-    if (!showLyrics || !lyricsContainerRef.current) return;
+    if (playerView !== 'lyrics' || !lyricsContainerRef.current) return;
     const el = lyricsContainerRef.current.querySelector('.mfp-lyric.active');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activeIndex, showLyrics]);
+  }, [activeIndex, playerView]);
 
   // Progress bar drag handlers
   const handleProgressMouseDown = (e: React.MouseEvent) => {
@@ -200,8 +285,8 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         </div>
         <button
           className="mfp-header-btn"
-          onClick={() => setShowLyrics(!showLyrics)}
-          style={{ color: showLyrics ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
+          onClick={() => setPlayerView(prev => prev === 'lyrics' ? 'cover' : 'lyrics')}
+          style={{ color: playerView === 'lyrics' ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
           title="Letras"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -210,9 +295,9 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         </button>
       </div>
 
-      {/* Main content — flips between cover art and lyrics */}
+      {/* Main content — flips between cover, lyrics, and visualizer */}
       <div className="mfp-body" ref={containerRef}>
-        {showLyrics ? (
+        {playerView === 'lyrics' ? (
           /* ── Lyrics view ── */
           <div className="mfp-lyrics-wrap" ref={lyricsContainerRef}>
             {!lyrics ? (
@@ -249,16 +334,35 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
               <div className="mfp-lyrics-empty">Letras no disponibles</div>
             )}
           </div>
+        ) : playerView === 'visualizer' ? (
+          /* ── Visualizer view ── */
+          <div className="mfp-visualizer-wrap" style={{ flex: 1, width: '100%', height: '100%', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+            <AudioVisualizer />
+          </div>
         ) : (
-          /* ── Cover art view ── */
+          /* ── Cover art / Embed view ── */
           <div className="mfp-cover-wrap">
-            <div className="mfp-cover-container">
-              <img
-                className="mfp-cover"
-                src={resolveImageUrl(currentTrack?.cover || '') || ''}
-                alt={currentTrack?.title}
-              />
-            </div>
+            {isEmbedMode && embedYoutubeId ? (
+              <div className="mfp-cover-container embed-active" style={{ width: '100%', aspectRatio: '16/9', overflow: 'hidden', borderRadius: 'var(--radius-lg)' }}>
+                <iframe
+                  ref={setIframeEl}
+                  src={`https://www.youtube.com/embed/${embedYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                  title="Reproductor YouTube Embed Mobile"
+                  frameBorder="0"
+                  allow="autoplay; encrypted-media; fullscreen"
+                  allowFullScreen
+                  style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-lg)' }}
+                />
+              </div>
+            ) : (
+              <div className="mfp-cover-container">
+                <img
+                  className="mfp-cover"
+                  src={resolveImageUrl(currentTrack?.cover || '') || ''}
+                  alt={currentTrack?.title}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -279,17 +383,61 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
             {currentTrack?.artist}
           </Link>
         </div>
-        <button
-          className="mfp-like-btn"
-          onClick={() => currentTrack && toggleLike(currentTrack.id)}
-          style={{ color: isLiked(currentTrack?.id || '') ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24"
-            fill={isLiked(currentTrack?.id || '') ? 'currentColor' : 'none'}
-            stroke="currentColor" strokeWidth="2">
-            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-          </svg>
-        </button>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Caching/Offline Button */}
+          <button
+            className={`mfp-download-btn ${downloadStatus === 'downloaded' ? 'active' : ''}`}
+            onClick={handleDownload}
+            disabled={downloadStatus !== 'none'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: downloadStatus === 'downloaded' ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
+              opacity: downloadStatus === 'downloading' ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 8,
+              cursor: downloadStatus === 'none' ? 'pointer' : 'default',
+            }}
+            title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión" : downloadStatus === 'downloading' ? "Guardando..." : "Guardar sin conexión"}
+          >
+            {downloadStatus === 'downloaded' ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : downloadStatus === 'downloading' ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.15)" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor">
+                  <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite" />
+                </path>
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
+                <polyline points="8 16 12 20 16 16" />
+                <line x1="12" y1="20" x2="12" y2="10" />
+              </svg>
+            )}
+          </button>
+
+
+
+          {/* Like Button */}
+          <button
+            className="mfp-like-btn"
+            onClick={() => currentTrack && toggleLike(currentTrack.id)}
+            style={{ color: isLiked(currentTrack?.id || '') ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24"
+              fill={isLiked(currentTrack?.id || '') ? 'currentColor' : 'none'}
+              stroke="currentColor" strokeWidth="2">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -370,21 +518,22 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
       <div className="mfp-extras">
         <button
           className="mfp-extra-btn"
-          onClick={() => { setShowLyrics(!showLyrics); }}
-          style={{ color: showLyrics ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+          onClick={() => setPlayerView(prev => prev === 'lyrics' ? 'cover' : 'lyrics')}
+          style={{ color: playerView === 'lyrics' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17.3 11c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
           </svg>
           <span>Letras</span>
         </button>
+        
         <button
           className="mfp-extra-btn"
-          onClick={toggleLyrics}
-          style={{ color: 'rgba(255,255,255,0.5)' }}
+          onClick={() => setPlayerView(prev => prev === 'visualizer' ? 'cover' : 'visualizer')}
+          style={{ color: playerView === 'visualizer' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3v18M17 7v10M7 6v12M22 10v4M2 9v6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
           </svg>
           <span>Visualización</span>
         </button>

@@ -10,6 +10,7 @@ import { getApiUrl } from '../lib/backendResolver';
 import { logToServer } from '../lib/logger';
 
 let globalUnlockHandler: (() => void) | null = null;
+let queueReplenishLock = false; // prevent concurrent replenishment fetches
 
 export function registerUnlockHandler(handler: () => void) {
   globalUnlockHandler = handler;
@@ -280,7 +281,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { queue, queueIndex, repeatMode, currentTrack, autoplayEnabled } = get();
 
     if (repeatMode === 'one') {
-      // Repeat one: reiniciar la canción actual
       set({ progress: 0 });
       return;
     }
@@ -288,8 +288,48 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const next = queueIndex + 1;
     if (next < queue.length) {
       set({ currentTrack: queue[next], queueIndex: next, progress: 0, error: null, isPlaying: true });
-    } else if (repeatMode === 'all' && queue.length > 0) {
-      // Volver al inicio de la cola
+
+      // ── Proactive queue replenishment ──────────────────────────────────────
+      // If we're within 3 tracks of the end of the queue, silently fetch more
+      // recommendations and append them so the user never hits a dead end.
+      const remaining = queue.length - next - 1;
+      if (remaining <= 3 && autoplayEnabled && currentTrack && !queueReplenishLock) {
+        queueReplenishLock = true;
+        (async () => {
+          try {
+            const userId = localStorage.getItem('koko_device_id') || '';
+            const headers: HeadersInit = {
+              'Content-Type': 'application/json',
+              ...(userId ? { 'x-user-id': userId } : {}),
+            };
+            const apiBase = await getApiUrl();
+            const res = await fetch(
+              `${apiBase}/tracks/recommendations?seedTrackId=${queue[next].id}&limit=10`,
+              { headers }
+            );
+            if (!res.ok) return;
+            const recs = await res.json() as Track[];
+            if (recs && recs.length > 0) {
+              const { queue: currentQueue } = get();
+              const existingIds = new Set(currentQueue.map(t => t.id));
+              const fresh = recs.filter(t => !existingIds.has(t.id));
+              if (fresh.length > 0) {
+                const extended = [...currentQueue, ...fresh];
+                set({ queue: extended, originalQueue: extended });
+                console.log(`[playerStore] Queue replenished: +${fresh.length} tracks (${extended.length} total)`);
+              }
+            }
+          } catch (err) {
+            console.error('[playerStore] Queue replenishment failed:', err);
+          } finally {
+            queueReplenishLock = false;
+          }
+        })();
+      }
+      return;
+    }
+
+    if (repeatMode === 'all' && queue.length > 0) {
       set({ currentTrack: queue[0], queueIndex: 0, progress: 0, error: null, isPlaying: true });
     } else if (autoplayEnabled && currentTrack) {
       try {
@@ -301,18 +341,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         };
         const apiBase = await getApiUrl();
         const res = await fetch(
-          `${apiBase}/tracks/recommendations?seedTrackId=${currentTrack.id}&limit=5`,
+          `${apiBase}/tracks/recommendations?seedTrackId=${currentTrack.id}&limit=10`,
           { headers }
         );
         if (!res.ok) throw new Error();
         const recs = await res.json() as Track[];
         if (recs && recs.length > 0) {
-          const newQueue = [...queue, ...recs];
+          const existingIds = new Set(queue.map(t => t.id));
+          const fresh = recs.filter(t => !existingIds.has(t.id));
+          const newQueue = [...queue, ...fresh];
           set({
             queue: newQueue,
             originalQueue: newQueue,
             queueIndex: next,
-            currentTrack: recs[0],
+            currentTrack: fresh[0] ?? recs[0],
             progress: 0,
             error: null,
             isPlaying: true,
@@ -325,7 +367,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       set({ isPlaying: false, isLoading: false });
     } else {
-      // No hay más canciones, parar
       set({ isPlaying: false });
     }
   },

@@ -1815,11 +1815,34 @@ export default function Playlist() {
         )}
 
         {pl.tracks.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" opacity="0.4"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
-            <p>Esta playlist está vacía</p>
-            <small>Añade canciones buscando abajo</small>
-          </div>
+          id === 'local-downloads' ? (
+            <div className="empty-state" style={{ padding: '60px 20px', textAlign: 'center' }}>
+              <div className="empty-state-icon" style={{ marginBottom: 16 }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </div>
+              <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: 'white' }}>No hay descargas locales</h3>
+              <p style={{ color: 'var(--text-secondary)', maxWidth: 400, margin: '0 auto 24px auto', fontSize: 14, lineHeight: 1.5 }}>
+                Escucha tus temas favoritos sin conexión. Explora y descarga canciones haciendo clic en el icono de descarga <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'inline', verticalAlign: 'middle', color: 'var(--accent)' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> en el reproductor.
+              </p>
+              <button 
+                onClick={() => navigate('/search')}
+                className="btn btn-primary"
+                style={{ borderRadius: 20, padding: '10px 24px', fontWeight: 600 }}
+              >
+                Buscar canciones para descargar
+              </button>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" opacity="0.4"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+              <p>Esta playlist está vacía</p>
+              <small>Añade canciones buscando abajo</small>
+            </div>
+          )
         ) : (
           <div className="track-list" style={{ marginBottom: 32 }}>
             {localTracks.map((t: any, i: number) => (

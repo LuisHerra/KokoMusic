@@ -5463,6 +5463,14 @@ input:checked + .autoplay-slider:before {
     grid-template-columns: 1fr !important;
     gap: 20px !important;
   }
+  
+  .show-on-mobile-flex {
+    display: flex !important;
+  }
+  
+  .stats-card-responsive {
+    padding: 16px !important;
+  }
 
 /* ── Tabbed Mobile Layout Additions */
 .sp-mobile-layout {

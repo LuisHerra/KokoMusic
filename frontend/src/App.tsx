@@ -22,6 +22,7 @@ import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useListeningSession } from './hooks/useListeningSession';
 import { usePlayerStore } from './store/playerStore';
 import VideoPanel from './components/Player/VideoPanel';
+import MobileFullPlayer from './components/Player/MobileFullPlayer';
 import QueuePanel from './components/Player/QueuePanel';
 import ImmersiveLyrics from './components/Player/ImmersiveLyrics';
 import NotificationBell from './components/NotificationBell';
@@ -104,7 +105,7 @@ function PlayerErrorToast() {
 }
 
 function AppShell() {
-  const { isLyricsOpen, isQueueOpen, isVideoOpen, currentTrack } = usePlayerStore();
+  const { isLyricsOpen, isQueueOpen, isVideoOpen, toggleVideo, currentTrack } = usePlayerStore();
   const location = useLocation();
 
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('koko_device_id') || '');
@@ -272,7 +273,7 @@ function AppShell() {
 
             {/* Stats Page Specific Header Controls */}
             {location.pathname === '/stats' && (
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div className="hide-on-mobile" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={{ position: 'relative' }}>
                   <select
                     value={period}
@@ -364,6 +365,7 @@ function AppShell() {
       )}
 
       <VideoPanel />
+      <MobileFullPlayer isOpen={isVideoOpen} onClose={toggleVideo} />
       <QueuePanel />
       <Player />
       <BottomNav />

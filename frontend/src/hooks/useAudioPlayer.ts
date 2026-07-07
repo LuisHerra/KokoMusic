@@ -111,6 +111,19 @@ function getAudioContext(): AudioContext {
   return audioCtx;
 }
 
+let analyserNode: AnalyserNode | null = null;
+
+export function getAudioAnalyser(): AnalyserNode | null {
+  if (typeof window === 'undefined') return null;
+  const ctx = getAudioContext();
+  if (!analyserNode) {
+    analyserNode = ctx.createAnalyser();
+    analyserNode.fftSize = 256;
+    analyserNode.connect(ctx.destination);
+  }
+  return analyserNode;
+}
+
 function getOrCreateChain(audio: HTMLAudioElement): AudioChain {
   if (chains.has(audio)) return chains.get(audio)!;
 
@@ -127,13 +140,19 @@ function getOrCreateChain(audio: HTMLAudioElement): AudioChain {
   const gain = ctx.createGain();
   gain.gain.value = 1;
 
-  // Chain: source → filter[0] → ... → filter[n] → gain → destination
+  // Chain: source → filter[0] → ... → filter[n] → gain → analyser/destination
   source.connect(filters[0]);
   for (let i = 0; i < filters.length - 1; i++) {
     filters[i].connect(filters[i + 1]);
   }
   filters[filters.length - 1].connect(gain);
-  gain.connect(ctx.destination);
+  
+  const analyser = getAudioAnalyser();
+  if (analyser) {
+    gain.connect(analyser);
+  } else {
+    gain.connect(ctx.destination);
+  }
 
   const chain = { source, filters, gain };
   chains.set(audio, chain);

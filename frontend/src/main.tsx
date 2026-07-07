@@ -8,11 +8,22 @@ getApiUrl().then(url => console.info(`[KokoMusic] Backend: ${url}`))
 
 // Registrar Service Worker para PWA
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
-      // En dev con HMR el SW no es crítico
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+        // En dev con HMR el SW no es crítico
+      });
     });
-  });
+  } else {
+    // Desregistrar activamente el service worker en desarrollo para evitar conflictos con HMR y manifest.json
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister().then((success) => {
+          if (success) console.info('[KokoMusic] Service Worker desregistrado con éxito para desarrollo.');
+        });
+      }
+    }).catch(err => console.warn('[KokoMusic] Error al desregistrar Service Worker:', err));
+  }
 }
 
 createRoot(document.getElementById('root')!).render(

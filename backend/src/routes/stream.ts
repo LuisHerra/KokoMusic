@@ -99,30 +99,70 @@ function getYTStreamUrl(youtubeId: string): Promise<string> {
 
 /** Stream de archivo local con soporte Range (para custom uploads y cache local) */
 function streamLocalFile(req: Request, res: Response, filePath: string, contentType = 'audio/mpeg'): void {
-  const stat = fs.statSync(filePath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
+  try {
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
 
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunksize = end - start + 1;
-    const file = fs.createReadStream(filePath, { start, end });
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': contentType,
-    });
-    file.pipe(res);
-  } else {
-    res.writeHead(200, {
-      'Content-Length': fileSize,
-      'Content-Type': contentType,
-      'Accept-Ranges': 'bytes',
-    });
-    fs.createReadStream(filePath).pipe(res);
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      let start = parseInt(parts[0], 10);
+      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (isNaN(start)) start = 0;
+      if (isNaN(end)) end = fileSize - 1;
+
+      if (end >= fileSize) {
+        end = fileSize - 1;
+      }
+
+      if (start >= fileSize || start > end) {
+        res.writeHead(416, {
+          'Content-Range': `bytes */${fileSize}`,
+          'Accept-Ranges': 'bytes'
+        });
+        res.end();
+        return;
+      }
+
+      const chunksize = end - start + 1;
+      const file = fs.createReadStream(filePath, { start, end });
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': contentType,
+      });
+      file.on('error', (err) => {
+        console.error(`[Stream] Error en stream de lectura de archivo local:`, err);
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end();
+        }
+      });
+      file.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+      });
+      const file = fs.createReadStream(filePath);
+      file.on('error', (err) => {
+        console.error(`[Stream] Error en stream completo de archivo local:`, err);
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end();
+        }
+      });
+      file.pipe(res);
+    }
+  } catch (err) {
+    console.error('[Stream] Error general en streamLocalFile:', err);
+    if (!res.headersSent) {
+      res.writeHead(500);
+      res.end();
+    }
   }
 }
 
@@ -546,6 +586,138 @@ router.post('/:itunesId/download', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Stream] Error al iniciar descarga manual:', err);
     res.status(500).json({ error: 'Error al iniciar descarga manual' });
+  }
+});
+
+// ── GET /api/stream/:itunesId/download-file ───────────────────────────────────
+
+router.get('/:itunesId/download-file', async (req: Request, res: Response) => {
+  const { itunesId } = req.params;
+
+  try {
+    let filename = 'cancion.mp3';
+    let artist = '';
+    let title = '';
+
+    if (itunesId.startsWith('custom_')) {
+      const { getCustomTrackById } = await import('../services/customTracksService');
+      const customTrack = getCustomTrackById(itunesId);
+      if (customTrack) {
+        artist = customTrack.artist || 'Artista Desconocido';
+        title = customTrack.title || 'Título Desconocido';
+      }
+    } else {
+      const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(itunesId) && isNaN(Number(itunesId));
+      if (isLegacyYoutubeId) {
+        const trackMeta = await getTrackById(itunesId);
+        if (trackMeta) {
+          artist = trackMeta.artist || '';
+          title = trackMeta.title || '';
+        }
+      } else {
+        const itunesIdNum = Number(itunesId);
+        const track = await getTrackById(itunesIdNum);
+        if (track) {
+          artist = track.artist || '';
+          title = track.title || '';
+        }
+      }
+    }
+
+    if (artist && title) {
+      filename = `${artist} - ${title}`.replace(/[\/\\?%*:|"<>\s]+/g, '_') + '.mp3';
+    } else if (title) {
+      filename = `${title}`.replace(/[\/\\?%*:|"<>\s]+/g, '_') + '.mp3';
+    }
+
+    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
+    if (!youtubeId) {
+      return res.status(404).json({ error: 'No se pudo resolver la canción' });
+    }
+
+    // Set correct Content-Disposition for browser download
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+
+    const localPath = getAudioPath(youtubeId);
+    if (fs.existsSync(localPath)) {
+      res.setHeader('Content-Type', 'audio/ogg; codecs=opus');
+      fs.createReadStream(localPath).pipe(res);
+      return;
+    }
+
+    const cachedCDNUrl = cache.get(`cdn-url:${youtubeId}`);
+    if (cachedCDNUrl) {
+      const upstream = await fetch(cachedCDNUrl as string);
+      const ct = upstream.headers.get('content-type') || 'audio/mpeg';
+      res.setHeader('Content-Type', ct);
+      if (upstream.body) {
+        const reader = upstream.body.getReader();
+        const pump = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { res.end(); break; }
+            res.write(value);
+          }
+        };
+        await pump();
+      } else {
+        res.end();
+      }
+      return;
+    }
+
+    if (isCDNEnabled()) {
+      const cdnUrl = await findTrackInCDN(youtubeId);
+      if (cdnUrl) {
+        cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
+        const upstream = await fetch(cdnUrl);
+        const ct = upstream.headers.get('content-type') || 'audio/mpeg';
+        res.setHeader('Content-Type', ct);
+        if (upstream.body) {
+          const reader = upstream.body.getReader();
+          const pump = async () => {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) { res.end(); break; }
+              res.write(value);
+            }
+          };
+          await pump();
+        } else {
+          res.end();
+        }
+        return;
+      }
+    }
+
+    // Proxy stream directly from YouTube
+    const rawUrl = await getYTStreamUrl(youtubeId);
+    const upstream = await fetch(rawUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Connection': 'keep-alive',
+      }
+    });
+    const ct = upstream.headers.get('content-type') || 'audio/webm';
+    res.setHeader('Content-Type', ct);
+    if (upstream.body) {
+      const reader = upstream.body.getReader();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { res.end(); break; }
+          res.write(value);
+        }
+      };
+      await pump();
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    console.error('[Stream] Error descargando archivo local:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Error al descargar el archivo' });
+    }
   }
 });
 
