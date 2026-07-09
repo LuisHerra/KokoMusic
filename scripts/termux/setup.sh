@@ -33,7 +33,8 @@ read -rp "  INSTALL_TOKEN: " INSTALL_TOKEN
 
 # ── 2. Instalar curl y jq antes de usarlos ───────────────
 step "Preparando herramientas..."
-pkg update -y -q && pkg install -y curl jq 2>/dev/null || true
+export DEBIAN_FRONTEND=noninteractive
+pkg update -y -q -o Dpkg::Options::="--force-confnew" && pkg install -y curl jq 2>/dev/null || true
 
 # ── 3. Descargar configuración del Key Vault ─────────────
 step "Descargando configuración desde el servidor..."
@@ -57,28 +58,41 @@ get_val() { echo "$BODY" | jq -r ".config.$1 // \"\""; }
 
 # ── 4. Actualizar Termux ─────────────────────────────────
 step "Actualizando Termux..."
-pkg update -y && pkg upgrade -y
+export DEBIAN_FRONTEND=noninteractive
+pkg update -y -o Dpkg::Options::="--force-confnew"
+pkg upgrade -y -o Dpkg::Options::="--force-confnew"
 ok "Termux actualizado"
 
 # ── 5. Instalar dependencias del sistema ─────────────────
-step "Instalando Node.js, Python, ffmpeg y git..."
-pkg install -y nodejs python ffmpeg git
+step "Instalando Node.js, Python, ffmpeg, git y yt-dlp..."
+pkg install -y nodejs python ffmpeg git yt-dlp
 ok "Dependencias instaladas"
 
-# ── 6. Instalar yt-dlp ───────────────────────────────────
-step "Instalando yt-dlp..."
-pip install -U yt-dlp
-ok "yt-dlp $(yt-dlp --version)"
+# ── 6. Verificar y actualizar yt-dlp ──────────────────────
+step "Verificando yt-dlp..."
+if ! command -v yt-dlp &> /dev/null; then
+  # Fallback a pip si no está en pkg (con flag break-system-packages para evitar error de Python moderno)
+  pip install --break-system-packages -U yt-dlp || pip install -U yt-dlp
+fi
+ok "yt-dlp listo ($(yt-dlp --version | head -n 1))"
 
 # ── 7. Clonar repositorio ────────────────────────────────
-REPO_DIR="$HOME/kokomusic"
+# Detección inteligente de directorios existentes (evita duplicados de mayúsculas/minúsculas)
+if [ -d "$HOME/KokoMusic" ]; then
+  REPO_DIR="$HOME/KokoMusic"
+elif [ -d "$HOME/kokomusic" ]; then
+  REPO_DIR="$HOME/kokomusic"
+else
+  REPO_DIR="$HOME/KokoMusic"
+fi
+
 step "Preparando repositorio en $REPO_DIR..."
 if [ -d "$REPO_DIR/.git" ]; then
   warn "Ya existe. Actualizando..."
-  git -C "$REPO_DIR" pull
+  git -C "$REPO_DIR" pull || warn "No se pudo hacer git pull (puede que no haya conexión o cambios locales)"
 else
   git clone https://github.com/LuisHerra/KokoMusic.git "$REPO_DIR" 2>/dev/null \
-    || { warn "Repo privado — creando estructura manualmente"; mkdir -p "$REPO_DIR/backend"; }
+    || { warn "Repo privado o sin acceso — creando estructura manualmente"; mkdir -p "$REPO_DIR/backend"; }
 fi
 ok "Repositorio listo"
 
@@ -130,12 +144,13 @@ ok ".env escrito con permisos seguros (600 — solo lectura de propietario)"
 # ── 9. Instalar dependencias npm ─────────────────────────
 step "Instalando dependencias del backend..."
 cd "$REPO_DIR/backend"
-npm install --omit=dev
+# Evitar que TypeScript se ejecute durante postinstall de dependencias para controlar el uso de RAM
+NODE_OPTIONS="--max-old-space-size=1024" npm install --omit=dev --ignore-scripts
 ok "node_modules listo"
 
 # ── 10. Compilar TypeScript ──────────────────────────────
 step "Compilando TypeScript..."
-npm run build 2>/dev/null || npx tsc || warn "Compilación con advertencias (puede ser normal)"
+NODE_OPTIONS="--max-old-space-size=1024" npx tsc || NODE_OPTIONS="--max-old-space-size=1024" npm run build 2>/dev/null || warn "Compilación con advertencias (puede ser normal)"
 ok "Backend compilado"
 
 # ── 11. Crear directorios de datos ───────────────────────
@@ -143,12 +158,17 @@ mkdir -p "$REPO_DIR/backend/audio_cache" "$REPO_DIR/backend/data/uploads"
 
 # ── 12. Script de arranque diario ─────────────────────────
 START_SCRIPT="$HOME/start-kokomusic.sh"
-cat > "$START_SCRIPT" << 'STARTEOF'
+cat > "$START_SCRIPT" << STARTEOF
 #!/data/data/com.termux/files/usr/bin/bash
 echo ""
 echo "🎵 KokoMusic arrancando..."
-cd "$HOME/kokomusic/backend"
-yt-dlp -U --quiet 2>/dev/null &
+cd "${REPO_DIR}/backend"
+# Actualizar yt-dlp de forma segura en segundo plano si es posible
+if command -v pkg &> /dev/null; then
+  pkg install -y yt-dlp &>/dev/null &
+else
+  yt-dlp -U --quiet &>/dev/null &
+fi
 node dist/app.js
 STARTEOF
 chmod +x "$START_SCRIPT"
@@ -157,12 +177,12 @@ ok "Script de arranque: ~/start-kokomusic.sh"
 # ── 13. Termux:Boot (autostart al encender) ───────────────
 BOOT_DIR="$HOME/.termux/boot"
 mkdir -p "$BOOT_DIR"
-cat > "$BOOT_DIR/kokomusic.sh" << 'BOOTEOF'
+cat > "$BOOT_DIR/kokomusic.sh" << BOOTEOF
 #!/data/data/com.termux/files/usr/bin/bash
 termux-wake-lock
 sleep 8
-cd "$HOME/kokomusic/backend"
-node dist/app.js >> "$HOME/koko.log" 2>&1 &
+cd "${REPO_DIR}/backend"
+node dist/app.js >> "\$HOME/koko.log" 2>&1 &
 BOOTEOF
 chmod +x "$BOOT_DIR/kokomusic.sh"
 ok "Autostart configurado (requiere Termux:Boot de F-Droid)"

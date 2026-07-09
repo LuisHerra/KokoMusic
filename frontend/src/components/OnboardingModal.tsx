@@ -89,20 +89,33 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
     reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
-        const parsed = JSON.parse(text);
+        let historyArray: any[] = [];
+        try {
+          const parsed = JSON.parse(text);
+          historyArray = Array.isArray(parsed) ? parsed : [parsed];
+        } catch (jsonErr) {
+          // Intentar parsear como JSON Lines (JSONL)
+          const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+          if (lines.length > 0) {
+            try {
+              historyArray = lines.map(line => JSON.parse(line));
+            } catch (lineErr) {
+              throw new Error('El archivo no es un JSON ni un JSONL válido de Spotify.');
+            }
+          } else {
+            throw jsonErr;
+          }
+        }
         
-        // El archivo debe ser un array de reproducciones
-        const historyArray = Array.isArray(parsed) ? parsed : [parsed];
-
-        // Validar formato mínimo de Spotify (puede ser Extended o Legacy)
+        // Validar formato mínimo de Spotify (puede ser Extended, Legacy o Normalizado)
         const sample = historyArray[0];
         const isValid = sample && (
-          (sample.master_metadata_track_name || sample.trackName) &&
-          (sample.master_metadata_album_artist_name || sample.artistName)
+          (sample.master_metadata_track_name || sample.trackName || sample.track_name) &&
+          (sample.master_metadata_album_artist_name || sample.artistName || sample.artist_name)
         );
 
         if (!isValid) {
-          throw new Error('El formato del archivo JSON no coincide con el historial de Spotify. Asegúrate de subir un archivo StreamingHistory o AudioPlay válido.');
+          throw new Error('El formato del archivo no coincide con el historial de Spotify. Asegúrate de subir un archivo StreamingHistory o el archivo de historial limpio normalizado.');
         }
 
         const res = await importSpotifyHistory(historyArray);

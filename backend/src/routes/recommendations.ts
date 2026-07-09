@@ -39,8 +39,19 @@ import {
   onArtistFollowed,
 } from '../services/backgroundJobRunner';
 import { seedInitialProfile } from '../services/tasteProfileBuilder';
+import { setUserRegion, getUserRegion } from '../services/regionService';
 
 const router = Router();
+
+// Middleware to capture user region from headers
+router.use((req, res, next) => {
+  const userId = (req.headers['x-user-id'] || 'default') as string;
+  const region = req.headers['x-user-region'] as string | undefined;
+  if (region) {
+    setUserRegion(userId, region);
+  }
+  next();
+});
 
 // ── Helpers: re-ranking (mirrors smart-reorder logic in playlists.ts) ──────────
 
@@ -140,12 +151,13 @@ router.get('/', async (req: Request, res: Response) => {
   const userId = (req.headers['x-user-id'] || 'default') as string;
   const limit = Math.min(parseInt((req.query.limit as string) || '30', 10), 100);
   const mood = req.query.mood as string | undefined;
+  const region = getUserRegion(userId);
 
   try {
     // ── 1. Cold-start check ────────────────────────────────────────────────────
     if (isColdStart(userId)) {
-      console.log(`[Recs] Cold-start path for ${userId}`);
-      const coldCandidates = await getColdStartCandidates(limit);
+      console.log(`[Recs] Cold-start path for ${userId} in region ${region}`);
+      const coldCandidates = await getColdStartCandidates(limit, region);
 
       // Trigger pipeline for future visits (non-blocking)
       setImmediate(() => triggerUserPipeline(userId));
@@ -203,7 +215,7 @@ router.get('/', async (req: Request, res: Response) => {
     console.log(`[Recs] Cache miss for ${userId} — triggering pipeline, serving cold start`);
     setImmediate(() => triggerUserPipeline(userId));
 
-    const coldCandidates = await getColdStartCandidates(limit);
+    const coldCandidates = await getColdStartCandidates(limit, region);
     const elapsed = Date.now() - start;
     return res.json({
       tracks: mapCandidatesToTracks(coldCandidates.slice(0, limit)),

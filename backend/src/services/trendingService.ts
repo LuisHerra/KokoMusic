@@ -12,11 +12,13 @@
 
 import { supabase } from './supabaseService';
 import type { TrackMetadata } from './metadataService';
+import { normalizeRegionName } from './regionService';
 
-// ── In-Memory Cache ───────────────────────────────────────────────────────────
-let cachedTrendingTracks: TrackMetadata[] = [];
-let cachedTrendingGenres: string[] = [];
-let lastFetchedTime = 0;
+// ── In-Memory Cache (Regionalized) ───────────────────────────────────────────
+const cachedTrendingTracksByRegion = new Map<string, TrackMetadata[]>();
+const cachedTrendingGenresByRegion = new Map<string, string[]>();
+const lastFetchedTimeByRegion = new Map<string, number>();
+
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 const DEFAULT_TRENDING_GENRES = [
@@ -38,16 +40,18 @@ function normalizeStr(s: string): string {
 /**
  * Recalculates trending tracks and genres from DB (play_events + external_charts_cache).
  */
-export async function updateTrendingData(): Promise<void> {
+export async function updateTrendingData(region = 'spain'): Promise<void> {
+  const normRegion = normalizeRegionName(region);
+
   if (!supabase) {
-    cachedTrendingTracks = [];
-    cachedTrendingGenres = DEFAULT_TRENDING_GENRES;
-    lastFetchedTime = Date.now();
+    cachedTrendingTracksByRegion.set(normRegion, []);
+    cachedTrendingGenresByRegion.set(normRegion, DEFAULT_TRENDING_GENRES);
+    lastFetchedTimeByRegion.set(normRegion, Date.now());
     return;
   }
 
   try {
-    console.log('[Trending] Updating trending tracks and genres...');
+    console.log(`[Trending] Updating trending tracks and genres for region: ${normRegion}...`);
     const now = Date.now();
     const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -58,13 +62,13 @@ export async function updateTrendingData(): Promise<void> {
       .select('track_id, title, artist, cover, played_at')
       .gte('played_at', fourteenDaysAgo);
 
-    // 2. Fetch external charts cache
+    // 2. Fetch external charts cache for this specific region OR global charts
     const { data: charts, error: chartsErr } = await supabase
       .schema('kokomusic')
       .from('external_charts_cache')
-      .select('payload_json, source')
-      .order('fetched_at', { ascending: false })
-      .limit(4);
+      .select('payload_json, source, region')
+      .or(`region.eq.global,region.eq.${normRegion}`)
+      .order('fetched_at', { ascending: false });
 
     // --- Compute play stats ---
     const playCounts = new Map<string, number>();
@@ -187,7 +191,7 @@ export async function updateTrendingData(): Promise<void> {
     const sortedCandidates = Array.from(candidates.values())
       .sort((a, b) => b.score - a.score);
 
-    cachedTrendingTracks = sortedCandidates.map(c => c.track).slice(0, 30);
+    cachedTrendingTracksByRegion.set(normRegion, sortedCandidates.map(c => c.track).slice(0, 30));
 
     // --- Compute Trending Genres ---
     // Combine genres from play events and charts
@@ -204,40 +208,44 @@ export async function updateTrendingData(): Promise<void> {
 
     // Merge with defaults to ensure we have enough diversity
     const finalGenresList = Array.from(new Set([...sortedGenres, ...DEFAULT_TRENDING_GENRES]));
-    cachedTrendingGenres = finalGenresList.slice(0, 8);
+    cachedTrendingGenresByRegion.set(normRegion, finalGenresList.slice(0, 8));
 
-    lastFetchedTime = Date.now();
-    console.log(`[Trending] Finished update. Loaded ${cachedTrendingTracks.length} tracks & ${cachedTrendingGenres.length} genres.`);
+    lastFetchedTimeByRegion.set(normRegion, Date.now());
+    console.log(`[Trending] Finished update for ${normRegion}. Loaded ${cachedTrendingTracksByRegion.get(normRegion)?.length} tracks & ${cachedTrendingGenresByRegion.get(normRegion)?.length} genres.`);
   } catch (err) {
-    console.error('[Trending] Error updating trending data:', err);
-    if (cachedTrendingTracks.length === 0) {
-      cachedTrendingTracks = [];
+    console.error(`[Trending] Error updating trending data for ${normRegion}:`, err);
+    if (!cachedTrendingTracksByRegion.has(normRegion)) {
+      cachedTrendingTracksByRegion.set(normRegion, []);
     }
-    if (cachedTrendingGenres.length === 0) {
-      cachedTrendingGenres = DEFAULT_TRENDING_GENRES;
+    if (!cachedTrendingGenresByRegion.has(normRegion)) {
+      cachedTrendingGenresByRegion.set(normRegion, DEFAULT_TRENDING_GENRES);
     }
-    lastFetchedTime = Date.now();
+    lastFetchedTimeByRegion.set(normRegion, Date.now());
   }
 }
 
 /**
  * Returns the current trending tracks list.
  */
-export async function getTrendingTracks(): Promise<TrackMetadata[]> {
-  if (Date.now() - lastFetchedTime > CACHE_TTL || cachedTrendingTracks.length === 0) {
-    await updateTrendingData();
+export async function getTrendingTracks(region = 'spain'): Promise<TrackMetadata[]> {
+  const normRegion = normalizeRegionName(region);
+  const lastFetched = lastFetchedTimeByRegion.get(normRegion) || 0;
+  if (Date.now() - lastFetched > CACHE_TTL || !cachedTrendingTracksByRegion.has(normRegion)) {
+    await updateTrendingData(normRegion);
   }
-  return cachedTrendingTracks;
+  return cachedTrendingTracksByRegion.get(normRegion) || [];
 }
 
 /**
  * Returns the current trending genres list.
  */
-export async function getTrendingGenres(): Promise<string[]> {
-  if (Date.now() - lastFetchedTime > CACHE_TTL || cachedTrendingGenres.length === 0) {
-    await updateTrendingData();
+export async function getTrendingGenres(region = 'spain'): Promise<string[]> {
+  const normRegion = normalizeRegionName(region);
+  const lastFetched = lastFetchedTimeByRegion.get(normRegion) || 0;
+  if (Date.now() - lastFetched > CACHE_TTL || !cachedTrendingGenresByRegion.has(normRegion)) {
+    await updateTrendingData(normRegion);
   }
-  return cachedTrendingGenres;
+  return cachedTrendingGenresByRegion.get(normRegion) || DEFAULT_TRENDING_GENRES;
 }
 
 /**
@@ -245,15 +253,18 @@ export async function getTrendingGenres(): Promise<string[]> {
  *
  * @param results Initial search results from iTunes/YouTube
  * @param userHistoryScores Map of normalized artist name to playcount for user-specific boosting
+ * @param region Optional region parameter for localized trending boost
  */
 export async function boostSearchResults(
   results: TrackMetadata[],
-  userHistoryScores?: Record<string, number>
+  userHistoryScores?: Record<string, number>,
+  region = 'spain'
 ): Promise<TrackMetadata[]> {
   if (results.length === 0) return results;
 
-  const trendTracks = await getTrendingTracks();
-  const trendGenres = await getTrendingGenres();
+  const normRegion = normalizeRegionName(region);
+  const trendTracks = await getTrendingTracks(normRegion);
+  const trendGenres = await getTrendingGenres(normRegion);
 
   // Create fast-lookup sets for exact matching
   const trendTrackKeys = new Set(

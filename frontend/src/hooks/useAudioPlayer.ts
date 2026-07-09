@@ -19,6 +19,11 @@ import { logToServer } from '../lib/logger';
 
 let currentBlobUrl: string | null = null;
 
+const isMobileDevice = () => {
+  if (typeof window === 'undefined') return false;
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+};
+
 // ─── Media Session API ────────────────────────────────────────────────────────
 // Registra metadatos y controles de transporte en el SO (lock screen, notificación,
 // auriculares Bluetooth, mandos de Android/iOS) para reproducción en 2º plano.
@@ -115,6 +120,7 @@ let analyserNode: AnalyserNode | null = null;
 
 export function getAudioAnalyser(): AnalyserNode | null {
   if (typeof window === 'undefined') return null;
+  if (isMobileDevice()) return null; // Bypassed on mobile for background play compatibility
   const ctx = getAudioContext();
   if (!analyserNode) {
     analyserNode = ctx.createAnalyser();
@@ -124,7 +130,8 @@ export function getAudioAnalyser(): AnalyserNode | null {
   return analyserNode;
 }
 
-function getOrCreateChain(audio: HTMLAudioElement): AudioChain {
+function getOrCreateChain(audio: HTMLAudioElement): AudioChain | null {
+  if (isMobileDevice()) return null; // Bypassed on mobile for background play compatibility
   if (chains.has(audio)) return chains.get(audio)!;
 
   const ctx = getAudioContext();
@@ -163,7 +170,9 @@ function getOrCreateChain(audio: HTMLAudioElement): AudioChain {
  * Aplica los valores de EQ a los BiquadFilterNodes del audio dado.
  */
 export function applyEqBands(audio: HTMLAudioElement, bands: number[]) {
+  if (isMobileDevice()) return; // Bypassed on mobile for background play compatibility
   const chain = getOrCreateChain(audio);
+  if (!chain) return;
   bands.forEach((gainDb, i) => {
     if (chain.filters[i]) chain.filters[i].gain.value = gainDb;
   });
@@ -247,6 +256,10 @@ export function unlockAudio() {
             .then(() => logToServer('INFO', `[useAudioPlayer] ${label} sync play succeeded`))
             .catch((err) => {
               logToServer('WARN', `[useAudioPlayer] ${label} sync play failed`, err);
+              if (err.name !== 'NotAllowedError') {
+                const event = new Event('error');
+                audio.dispatchEvent(event);
+              }
             });
         }
       }
@@ -395,15 +408,71 @@ export function useAudioPlayer() {
       logToServer('INFO', `[useAudioPlayer] audio onCanPlay. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isActive: ${audioEl === getActiveAudio()}`);
       if (audioEl === getActiveAudio()) setLoading(false);
     };
-    const onError = (e: Event) => {
+    const onError = async (e: Event) => {
       const audioEl = e.target as HTMLAudioElement;
       logToServer('ERROR', `[useAudioPlayer] audio onError. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isActive: ${audioEl === getActiveAudio()}`, {
         code: audioEl.error?.code,
         message: audioEl.error?.message
       });
       if (e.target === getActiveAudio()) {
-        setError('Error al cargar el audio. El archivo puede estar procesándose.');
-        setIsPlaying(false);
+        const currentT = usePlayerStore.getState().currentTrack;
+        if (!currentT) return;
+
+        const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(currentT.id) && isNaN(Number(currentT.id));
+        const isEmbedModeStore = usePlayerStore.getState().isEmbedMode;
+
+        // Si no estamos ya en modo embed, podemos intentar cambiar a modo embed como fallback
+        if (!isEmbedModeStore) {
+          logToServer('INFO', `[useAudioPlayer] onError: Intentando fallback a YouTube Embed Mode para track: ${currentT.id}`);
+          let youtubeId: string | null = null;
+          
+          if (isLegacyYoutubeId) {
+            youtubeId = currentT.id;
+          } else {
+            // Intentar resolver desde el backend
+            try {
+              const API_BASE = await getApiUrl();
+              const res = await fetch(`${API_BASE}/stream/${currentT.id}/status`);
+              if (res.ok) {
+                const data = await res.json();
+                if (data.youtubeId) {
+                  youtubeId = data.youtubeId;
+                }
+              }
+            } catch (fetchErr) {
+              console.error('[useAudioPlayer] Failed to fetch resolved youtubeId on error fallback:', fetchErr);
+            }
+          }
+
+          if (youtubeId) {
+            logToServer('INFO', `[useAudioPlayer] onError: Cambiando a YouTube Embed Mode con ID ${youtubeId}`);
+            usePlayerStore.getState().setEmbedMode(true, youtubeId);
+            // Detener audios nativos y limpiar su src para evitar bucles de error
+            audio1.pause();
+            audio2.pause();
+            audio1.src = '';
+            audio2.src = '';
+            if (currentBlobUrl) {
+              URL.revokeObjectURL(currentBlobUrl);
+              currentBlobUrl = null;
+            }
+            setIsPlaying(true);
+            return;
+          }
+        }
+
+        // Si el fallback de Embed Mode no es posible o ya falló, pasamos a la siguiente canción en la cola
+        logToServer('WARN', `[useAudioPlayer] onError: No se pudo reproducir "${currentT.title}". Pasando a la siguiente canción para asegurar reproducción.`);
+        setError(`Error al reproducir "${currentT.title}". Saltando a la siguiente canción.`);
+        
+        // Esperar un momento breve para que el usuario pueda ver el aviso y pasar a la siguiente
+        setTimeout(() => {
+          const state = usePlayerStore.getState();
+          // Verificar que el track actual sigue siendo el mismo antes de saltar
+          if (state.currentTrack?.id === currentT.id) {
+            state.nextTrack();
+          }
+        }, 1500);
       }
     };
 
@@ -556,7 +625,12 @@ export function useAudioPlayer() {
             .then(() => logToServer('INFO', `[useAudioPlayer] playWhenReady: play succeeded.`))
             .catch((err) => {
               logToServer('ERROR', `[useAudioPlayer] playWhenReady: play REJECTED`, err);
-              setIsPlaying(false);
+              if (err.name !== 'NotAllowedError') {
+                const event = new Event('error');
+                nextAudio.dispatchEvent(event);
+              } else {
+                setIsPlaying(false);
+              }
             });
 
           if (!prevAudio.paused && prevAudio.src) {
@@ -656,7 +730,12 @@ export function useAudioPlayer() {
           .then(() => logToServer('INFO', '[useAudioPlayer] isPlaying effect: play succeeded'))
           .catch((err) => {
             logToServer('ERROR', '[useAudioPlayer] isPlaying effect: play REJECTED', err);
-            setIsPlaying(false);
+            if (err.name !== 'NotAllowedError') {
+              const event = new Event('error');
+              audio.dispatchEvent(event);
+            } else {
+              setIsPlaying(false);
+            }
           });
       } else {
         logToServer('INFO', `[useAudioPlayer] isPlaying effect: cannot play yet, readyState is ${audio.readyState}`);

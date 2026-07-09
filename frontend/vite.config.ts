@@ -13,8 +13,8 @@ export default defineConfig({
     assetsDir: 'assets',
   },
   server: {
+    host: true,
     hmr: {
-      host: 'localhost',
       protocol: 'ws',
       port: 5173,
     },

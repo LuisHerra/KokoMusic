@@ -247,25 +247,26 @@ async function isChartsCacheOverdue(): Promise<boolean> {
   }
 }
 
-/**
- * Main charts pre-fetch job.
- * Fetches Deezer global charts and Last.fm geo top tracks and writes to DB.
- * NEVER called from an HTTP request path.
- */
 async function runChartsPrefetch(): Promise<void> {
-  console.log('[Charts] Starting charts pre-fetch job...');
+  console.log('[Charts] Starting multi-region charts pre-fetch job...');
 
-  const [deezerTracks, lfmTracks] = await Promise.all([
+  const [deezerTracks, lfmTracksUS, lfmTracksES, lfmTracksMX, lfmTracksUK] = await Promise.all([
     fetchDeezerCharts(),
-    fetchLastFmGeoTopTracks(),
+    fetchLastFmGeoTopTracks('united states'),
+    fetchLastFmGeoTopTracks('spain'),
+    fetchLastFmGeoTopTracks('mexico'),
+    fetchLastFmGeoTopTracks('united kingdom'),
   ]);
 
   await Promise.all([
     upsertChartsCache('deezer', 'global', deezerTracks),
-    upsertChartsCache('lastfm', LFM_GEO_REGION, lfmTracks),
+    upsertChartsCache('lastfm', 'united states', lfmTracksUS),
+    upsertChartsCache('lastfm', 'spain', lfmTracksES),
+    upsertChartsCache('lastfm', 'mexico', lfmTracksMX),
+    upsertChartsCache('lastfm', 'united kingdom', lfmTracksUK),
   ]);
 
-  console.log('[Charts] Pre-fetch complete');
+  console.log('[Charts] Pre-fetch complete for all regions');
 }
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────

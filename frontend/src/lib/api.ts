@@ -22,10 +22,12 @@ getApiUrl().then((url) => {
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const userId  = localStorage.getItem('koko_device_id') || '';
+  const userRegion = typeof window !== 'undefined' ? (navigator.language || 'es-ES') : 'es-ES';
   const apiBase = await getApiUrl();   // resuelve local/tunnel/cloud automáticamente
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(userId ? { 'x-user-id': userId } : {}),
+    'x-user-region': userRegion,
     ...(options?.headers || {}),
   };
   const res = await fetch(`${apiBase}${path}`, {

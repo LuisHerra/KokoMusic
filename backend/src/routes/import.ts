@@ -218,8 +218,8 @@ router.post('/spotify-history', async (req, res) => {
     // 1. Filtrar y mapear los campos soportando ambos formatos de Spotify
     const validPlays = history
       .map((item: any) => {
-        const title = item.master_metadata_track_name || item.trackName;
-        const artist = item.master_metadata_album_artist_name || item.artistName;
+        const title = item.master_metadata_track_name || item.trackName || item.track_name;
+        const artist = item.master_metadata_album_artist_name || item.artistName || item.artist_name;
         const msPlayed = item.ms_played || item.msPlayed || 0;
         const playedAt = item.ts || item.endTime;
 

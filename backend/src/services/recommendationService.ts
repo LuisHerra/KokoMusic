@@ -4,6 +4,7 @@ import { readHistory, type HistoryEntry } from './historyService';
 import { audioExists } from './ytdlpService';
 import { trackExistsInCDN } from './cdnService';
 import { getTrendingTracks, getTrendingGenres } from './trendingService';
+import { getUserRegion } from './regionService';
 
 function normalizeStr(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
@@ -416,8 +417,9 @@ export async function getRecommendations(
     }
   }
 
-  const trendTracks = await getTrendingTracks();
-  const trendGenres = await getTrendingGenres();
+  const region = userId ? getUserRegion(userId) : 'spain';
+  const trendTracks = await getTrendingTracks(region);
+  const trendGenres = await getTrendingGenres(region);
 
   // Inject trending tracks as discovery candidates only when genre-compatible
   for (const track of trendTracks) {
@@ -468,7 +470,18 @@ export async function getRecommendations(
     // ignore
   }
 
-  // ── 5. APLICAR CAP DE ARTISTA ANTES DE SCORING ───────────────────────────
+  // ── 5. FILTRAR POR DURACIÓN Y APLICAR CAP DE ARTISTA ───────────────────────
+  // Exclude tracks longer than 7 minutes (420,000 ms)
+  for (const [id, c] of exploitPool.entries()) {
+    if (c.track.duration && c.track.duration > 420000) {
+      exploitPool.delete(id);
+    }
+  }
+  for (const [id, c] of discoverPool.entries()) {
+    if (c.track.duration && c.track.duration > 420000) {
+      discoverPool.delete(id);
+    }
+  }
 
   const exploitList = applyArtistCap([...exploitPool.values()], limit, 0.20);
   const discoverList = applyArtistCap([...discoverPool.values()], limit, 0.25); // discovery puede ser más repetitivo por chartsigma

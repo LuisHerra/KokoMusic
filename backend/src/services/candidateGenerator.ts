@@ -22,6 +22,7 @@ import { supabase } from './supabaseService';
 import type { TasteProfile } from './tasteProfileBuilder';
 import { readHistory } from './historyService';
 import { getTrendingTracks } from './trendingService';
+import { getUserRegion } from './regionService';
 
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ async function fetchTasteCandidates(
   if (error || !data) return [];
 
   return (data as any[])
-    .filter((row) => !exclude.has(String(row.itunes_id)))
+    .filter((row) => !exclude.has(String(row.itunes_id)) && (!row.duration_ms || row.duration_ms <= 420000))
     .map((row) => {
       const trackId = String(row.itunes_id);
       const title = (row.title as string) || '';
@@ -202,7 +203,7 @@ async function fetchFollowCandidates(
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   return (data as any[])
-    .filter((row) => !exclude.has(String(row.itunes_id)))
+    .filter((row) => !exclude.has(String(row.itunes_id)) && (!row.duration_ms || row.duration_ms <= 420000))
     .map((row) => {
       const trackId = String(row.itunes_id);
       const title = (row.title as string) || '';
@@ -236,19 +237,21 @@ async function fetchFollowCandidates(
 
 /** Fetch discovery candidates from trending tracks (local + global). */
 async function fetchChartCandidates(
+  userId: string,
   profile: TasteProfile,
   exclude: Set<string>,
   limit: number
 ): Promise<EnrichedCandidate[]> {
   try {
-    const trendTracks = await getTrendingTracks();
+    const region = getUserRegion(userId);
+    const trendTracks = await getTrendingTracks(region);
     if (!trendTracks || trendTracks.length === 0) return [];
 
     const candidates: EnrichedCandidate[] = [];
 
     for (const item of trendTracks) {
       const trackId = item.id;
-      if (!trackId || exclude.has(trackId)) continue;
+      if (!trackId || exclude.has(trackId) || (item.duration && item.duration > 420000)) continue;
 
       candidates.push({
         trackId,
@@ -345,7 +348,7 @@ export async function generateCandidates(
   const [followCandidates, tasteCandidates, chartCandidates] = await Promise.all([
     fetchFollowCandidates(userId, profile, exclude, Math.ceil(exploitLimit * 0.4)),
     fetchTasteCandidates(profile, exclude, Math.ceil(exploitLimit * 0.6)),
-    fetchChartCandidates(profile, exclude, discoverLimit),
+    fetchChartCandidates(userId, profile, exclude, discoverLimit),
   ]);
 
   // Merge exploitation bucket (follows first, then taste-matched)
@@ -439,9 +442,9 @@ export async function generateCandidates(
  * Cold-start candidate list for users with no taste profile.
  * Reads from trending tracks (local + global) and returns enriched candidates.
  */
-export async function getColdStartCandidates(limit = 30): Promise<EnrichedCandidate[]> {
+export async function getColdStartCandidates(limit = 30, region = 'spain'): Promise<EnrichedCandidate[]> {
   try {
-    const trendTracks = await getTrendingTracks();
+    const trendTracks = await getTrendingTracks(region);
     if (!trendTracks || trendTracks.length === 0) return [];
 
     const candidates: EnrichedCandidate[] = [];
@@ -449,7 +452,7 @@ export async function getColdStartCandidates(limit = 30): Promise<EnrichedCandid
 
     for (const item of trendTracks) {
       const trackId = item.id;
-      if (!trackId || seenIds.has(trackId)) continue;
+      if (!trackId || seenIds.has(trackId) || (item.duration && item.duration > 420000)) continue;
       seenIds.add(trackId);
 
       candidates.push({

@@ -40,6 +40,8 @@ const rawOrigins = process.env.CORS_ORIGIN
 const allowedOrigins = [
   // Localhost dev — cualquier puerto
   /^http:\/\/(localhost|127\.0\.0\.1):\d+$/,
+  // Local network IP ranges (e.g. 192.168.x.x, 10.x.x.x, 172.16.x.x-172.31.x.x)
+  /^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+):\d+$/,
   // Permitir kokoworks.es y subdominios
   /^https?:\/\/(.*\.)?kokoworks\.es$/,
   // Permitir vercel.app y subdominios
