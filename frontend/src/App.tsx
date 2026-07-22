@@ -31,6 +31,8 @@ import { joinJam, getJam, getMyProfile, getProfileNames, cleanName, resolveImage
 import { cleanupOldOfflineTracks } from './lib/offlineAudio';
 import InstallPrompt from './components/InstallPrompt';
 import AppSplash from './components/AppSplash';
+import { useVoiceControl } from './hooks/useVoiceControl';
+import VoiceControlModal, { IconMic } from './components/VoiceControlModal';
 
 
 const queryClient = new QueryClient({
@@ -107,6 +109,9 @@ function PlayerErrorToast() {
 function AppShell() {
   const { isLyricsOpen, isQueueOpen, isVideoOpen, toggleVideo, currentTrack } = usePlayerStore();
   const location = useLocation();
+
+  const voiceControl = useVoiceControl();
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('koko_device_id') || '');
   useEffect(() => {
@@ -235,6 +240,30 @@ function AppShell() {
 
             {/* Right side header actions — always visible */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                className="ctrl-btn"
+                onClick={() => {
+                  voiceControl.toggleListening();
+                  setIsVoiceModalOpen(true);
+                }}
+                title="Control por voz (Alt + V)"
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
+                  background: voiceControl.isListening ? 'rgba(29, 185, 84, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+                  border: voiceControl.isListening ? '1px solid #1DB954' : '1px solid rgba(255, 255, 255, 0.1)',
+                  color: voiceControl.isListening ? '#1DB954' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all var(--duration-fast)',
+                }}
+              >
+                <IconMic size={18} color={voiceControl.isListening ? '#1DB954' : 'currentColor'} />
+              </button>
               <NotificationBell />
               {isUUID && (
                 <Link
@@ -369,6 +398,11 @@ function AppShell() {
       <QueuePanel />
       <Player />
       <BottomNav />
+      <VoiceControlModal
+        voiceControl={voiceControl}
+        isOpen={isVoiceModalOpen || voiceControl.isListening}
+        onClose={() => setIsVoiceModalOpen(false)}
+      />
     </div>
   );
 }

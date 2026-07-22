@@ -358,9 +358,9 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
 
     // ── Flujo CDN-first ───────────────────────────────────────────────────────
 
-    // 1. ¿Existe localmente? Servir directamente
+    // 1. ¿Existe localmente con contenido válido? Servir directamente
     const localPath = getAudioPath(youtubeId);
-    if (fs.existsSync(localPath)) {
+    if (fs.existsSync(localPath) && fs.statSync(localPath).size > 1024) {
       console.log(`[Stream] 💾 Local hit: ${youtubeId}`);
       streamLocalFile(req, res, localPath, 'audio/ogg; codecs=opus');
       return;

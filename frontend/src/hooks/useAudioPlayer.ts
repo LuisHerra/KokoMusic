@@ -242,7 +242,7 @@ export function unlockAudio() {
         audio.play()
           .then(() => {
             audio.pause();
-            audio.src = '';
+            audio.removeAttribute('src');
             logToServer('INFO', `[useAudioPlayer] ${label} unlocked successfully (silent play finished)`);
           })
           .catch((err) => {
@@ -381,9 +381,11 @@ export function useAudioPlayer() {
           }
         }
 
-        const remaining = audio.duration - audio.currentTime;
-        if (!shouldCrossfade && remaining <= CROSSFADE_DURATION / 1000) {
-          shouldCrossfade = true;
+        if (!isMobileDevice()) {
+          const remaining = audio.duration - audio.currentTime;
+          if (!shouldCrossfade && remaining <= CROSSFADE_DURATION / 1000) {
+            shouldCrossfade = true;
+          }
         }
 
         if (shouldCrossfade && !crossfadeTriggered.current) {
@@ -450,8 +452,8 @@ export function useAudioPlayer() {
             // Detener audios nativos y limpiar su src para evitar bucles de error
             audio1.pause();
             audio2.pause();
-            audio1.src = '';
-            audio2.src = '';
+            audio1.removeAttribute('src');
+            audio2.removeAttribute('src');
             if (currentBlobUrl) {
               URL.revokeObjectURL(currentBlobUrl);
               currentBlobUrl = null;
@@ -549,8 +551,8 @@ export function useAudioPlayer() {
         // El VideoPanel toma el control. Pausar y vaciar src de los audios HTML5 nativos para no duplicar sonido.
         audio1.pause();
         audio2.pause();
-        audio1.src = '';
-        audio2.src = '';
+        audio1.removeAttribute('src');
+        audio2.removeAttribute('src');
         if (currentBlobUrl) {
           URL.revokeObjectURL(currentBlobUrl);
           currentBlobUrl = null;
@@ -615,12 +617,21 @@ export function useAudioPlayer() {
             logToServer('WARN', `[useAudioPlayer] playWhenReady: error resuming ctx or applying EQ`, e);
           }
 
-          const fadeInStartVol = rule?.fadeInPercent
-            ? targetVolume * (1 - rule.fadeInPercent / 100)
-            : prevAudio.paused ? targetVolume : 0;
+          const isMobile = isMobileDevice();
 
-          nextAudio.volume = fadeInStartVol;
-          logToServer('INFO', `[useAudioPlayer] playWhenReady: calling nextAudio.play(). volume: ${fadeInStartVol}`);
+          let fadeInStartVol = targetVolume;
+          if (isMobile) {
+            prevAudio.pause();
+            prevAudio.removeAttribute('src');
+            nextAudio.volume = targetVolume;
+          } else {
+            fadeInStartVol = rule?.fadeInPercent
+              ? targetVolume * (1 - rule.fadeInPercent / 100)
+              : prevAudio.paused ? targetVolume : 0;
+            nextAudio.volume = fadeInStartVol;
+          }
+
+          logToServer('INFO', `[useAudioPlayer] playWhenReady: calling nextAudio.play(). volume: ${nextAudio.volume}`);
           nextAudio.play()
             .then(() => logToServer('INFO', `[useAudioPlayer] playWhenReady: play succeeded.`))
             .catch((err) => {
@@ -633,7 +644,7 @@ export function useAudioPlayer() {
               }
             });
 
-          if (!prevAudio.paused && prevAudio.src) {
+          if (!isMobile && !prevAudio.paused && prevAudio.src) {
             if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
 
             const steps = 20;
@@ -674,12 +685,12 @@ export function useAudioPlayer() {
                       clearInterval(fadeOutIntervalRef.current!);
                       fadeOutIntervalRef.current = null;
                       prevAudio.pause();
-                      prevAudio.src = '';
+                      prevAudio.removeAttribute('src');
                     }
                   }, foStepTime);
                 } else {
                   prevAudio.pause();
-                  prevAudio.src = '';
+                  prevAudio.removeAttribute('src');
                 }
               }
             }, stepTime);
