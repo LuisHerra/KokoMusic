@@ -27,6 +27,7 @@ import { getTrackById } from '../services/metadataService';
 import { cache } from '../services/cacheService';
 import { audioExists } from '../services/ytdlpService';
 import { logTrackPlay, readHistory, saveSessionMinutes, HistoryEntry, getHistoryForUser } from '../services/historyService';
+import { setUserRegion } from '../services/regionService';
 import { getRecommendations } from '../services/recommendationService';
 
 const router = Router();
@@ -36,6 +37,10 @@ router.get('/recommendations', async (req: Request, res: Response) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
     const userId = (req.headers['x-user-id'] || req.query.userId || '') as string;
+    const region = (req.headers['x-user-region'] || req.query.userRegion || '') as string;
+    if (userId && region) {
+      setUserRegion(userId, region);
+    }
     const mood = req.query.mood as string | undefined;
     const seedTrackId = req.query.seedTrackId as string | undefined;
     const recommendations = await getRecommendations(limit, userId, mood, seedTrackId);

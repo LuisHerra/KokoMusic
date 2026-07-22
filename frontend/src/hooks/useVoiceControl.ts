@@ -417,8 +417,19 @@ export function useVoiceControl(): VoiceControlState {
     }
   }, [isListening, startListening, stopListening]);
 
-  // Global Keyboard Shortcut: Alt + V
+  // Global Keyboard Shortcuts: Alt + V & Simultaneous Vol Up + Vol Down
   useEffect(() => {
+    const activeKeys = new Set<string>();
+    let lastVolUpTime = 0;
+    let lastVolDownTime = 0;
+    let triggeredCombo = false;
+
+    const isVolUp = (e: KeyboardEvent) =>
+      e.key === 'AudioVolumeUp' || e.code === 'VolumeUp';
+
+    const isVolDown = (e: KeyboardEvent) =>
+      e.key === 'AudioVolumeDown' || e.code === 'VolumeDown';
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (
@@ -430,14 +441,56 @@ export function useVoiceControl(): VoiceControlState {
         return;
       }
 
+      const now = Date.now();
+
+      if (isVolUp(e)) {
+        activeKeys.add('vol_up');
+        lastVolUpTime = now;
+      } else if (isVolDown(e)) {
+        activeKeys.add('vol_down');
+        lastVolDownTime = now;
+      }
+
+      // Check if both volume up and volume down were pressed simultaneously or within 400ms
+      const bothActive = activeKeys.has('vol_up') && activeKeys.has('vol_down');
+      const withinWindow =
+        lastVolUpTime > 0 &&
+        lastVolDownTime > 0 &&
+        Math.abs(lastVolUpTime - lastVolDownTime) < 400 &&
+        Math.abs(now - Math.min(lastVolUpTime, lastVolDownTime)) < 600;
+
+      if ((bothActive || withinWindow) && !triggeredCombo) {
+        triggeredCombo = true;
+        e.preventDefault();
+        toggleListening();
+        return;
+      }
+
+      // Shortcut: Alt + V
       if (e.altKey && (e.key === 'v' || e.key === 'V')) {
         e.preventDefault();
         toggleListening();
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (isVolUp(e)) {
+        activeKeys.delete('vol_up');
+      }
+      if (isVolDown(e)) {
+        activeKeys.delete('vol_down');
+      }
+      if (activeKeys.size === 0) {
+        triggeredCombo = false;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [toggleListening]);
 
   return {

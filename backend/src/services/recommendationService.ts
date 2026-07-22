@@ -5,6 +5,8 @@ import { audioExists } from './ytdlpService';
 import { trackExistsInCDN } from './cdnService';
 import { getTrendingTracks, getTrendingGenres } from './trendingService';
 import { getUserRegion } from './regionService';
+import { getRegionalTopTracks } from './regionalChartsService';
+import { getListenBrainzTopRecordings } from './listenBrainzService';
 
 function normalizeStr(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
@@ -418,15 +420,38 @@ export async function getRecommendations(
   }
 
   const region = userId ? getUserRegion(userId) : 'spain';
-  const trendTracks = await getTrendingTracks(region);
-  const trendGenres = await getTrendingGenres(region);
+  const [trendTracks, trendGenres, regionalChartTracks, lbRecordings] = await Promise.all([
+    getTrendingTracks(region).catch(() => []),
+    getTrendingGenres(region).catch(() => []),
+    getRegionalTopTracks(region).catch(() => []),
+    getListenBrainzTopRecordings(15).catch(() => []),
+  ]);
 
-  // Inject trending tracks as discovery candidates only when genre-compatible
+  // 1. Inject regional country top chart tracks (iTunes RSS + Last.fm Geo)
+  for (const track of regionalChartTracks) {
+    if (exploitPool.has(track.id) || discoverPool.has(track.id)) continue;
+    if (seedGenre && track.genre && track.genre.toLowerCase() !== seedGenre.toLowerCase()) continue;
+    discoverPool.set(track.id, { track, source: 'regional_chart', baseScore: 60 });
+  }
+
+  // 2. Inject trending tracks as discovery candidates
   for (const track of trendTracks) {
     if (exploitPool.has(track.id) || discoverPool.has(track.id)) continue;
-    // When seed is active: only inject trending if genre matches seed
     if (seedGenre && track.genre && track.genre.toLowerCase() !== seedGenre.toLowerCase()) continue;
-    discoverPool.set(track.id, { track, source: 'trending', baseScore: 40 });
+    discoverPool.set(track.id, { track, source: 'trending', baseScore: 45 });
+  }
+
+  // 3. Resolve ListenBrainz open collaborative filtering recordings
+  if (lbRecordings.length > 0 && !seedTrackId) {
+    const chosenLB = lbRecordings.sort(() => Math.random() - 0.5).slice(0, 4);
+    const lbPools = await Promise.all(
+      chosenLB.map((r) => resolveSimilarTrack(r.artistName, r.trackName).catch(() => null))
+    );
+    for (const track of lbPools) {
+      if (track && !exploitPool.has(track.id) && !discoverPool.has(track.id)) {
+        discoverPool.set(track.id, { track, source: 'listenbrainz', baseScore: 50 });
+      }
+    }
   }
 
   const activeMood = mood?.toLowerCase();
@@ -442,7 +467,7 @@ export async function getRecommendations(
     ];
   } else {
     const trendGenreQueries = trendGenres.slice(0, 3).map(g => `${g} hits`);
-    const globalDiscovery = ['trending hits 2025', 'new music releases', 'viral songs 2025', 'top charts global'];
+    const globalDiscovery = ['trending hits 2026', 'exitos virales', 'top musica', 'exitos del momento'];
     discoveryPool = [
       ...moodWords,
       ...adjacentKeywords,
@@ -462,7 +487,7 @@ export async function getRecommendations(
     for (const results of searchResults) {
       for (const track of results) {
         if (track && !exploitPool.has(track.id) && !discoverPool.has(track.id)) {
-          discoverPool.set(track.id, { track, source: 'discovery', baseScore: 30 });
+          discoverPool.set(track.id, { track, source: 'discovery', baseScore: 35 });
         }
       }
     }

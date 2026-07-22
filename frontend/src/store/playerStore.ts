@@ -278,7 +278,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   nextTrack: async () => {
     logToServer('INFO', `[playerStore] nextTrack`);
     if (globalUnlockHandler) globalUnlockHandler();
-    const { queue, queueIndex, repeatMode, currentTrack, autoplayEnabled } = get();
+    const { queue, queueIndex, repeatMode, currentTrack } = get();
 
     if (repeatMode === 'one') {
       set({ progress: 0 });
@@ -289,11 +289,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (next < queue.length) {
       set({ currentTrack: queue[next], queueIndex: next, progress: 0, error: null, isPlaying: true });
 
-      // ── Proactive queue replenishment ──────────────────────────────────────
-      // If we're within 3 tracks of the end of the queue, silently fetch more
-      // recommendations and append them so the user never hits a dead end.
+      // ── Proactive queue replenishment (within 5 tracks of the end) ──────────────
       const remaining = queue.length - next - 1;
-      if (remaining <= 3 && autoplayEnabled && currentTrack && !queueReplenishLock) {
+      if (remaining <= 5 && currentTrack && !queueReplenishLock) {
         queueReplenishLock = true;
         (async () => {
           try {
@@ -331,43 +329,76 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (repeatMode === 'all' && queue.length > 0) {
       set({ currentTrack: queue[0], queueIndex: 0, progress: 0, error: null, isPlaying: true });
-    } else if (autoplayEnabled && currentTrack) {
-      try {
-        set({ isLoading: true });
-        const userId = localStorage.getItem('koko_device_id') || '';
-        const headers: HeadersInit = {
-          'Content-Type': 'application/json',
-          ...(userId ? { 'x-user-id': userId } : {}),
-        };
-        const apiBase = await getApiUrl();
-        const res = await fetch(
-          `${apiBase}/tracks/recommendations?seedTrackId=${currentTrack.id}&limit=10`,
-          { headers }
-        );
-        if (!res.ok) throw new Error();
-        const recs = await res.json() as Track[];
-        if (recs && recs.length > 0) {
-          const existingIds = new Set(queue.map(t => t.id));
-          const fresh = recs.filter(t => !existingIds.has(t.id));
-          const newQueue = [...queue, ...fresh];
-          set({
-            queue: newQueue,
-            originalQueue: newQueue,
-            queueIndex: next,
-            currentTrack: fresh[0] ?? recs[0],
-            progress: 0,
-            error: null,
-            isPlaying: true,
-            isLoading: false
-          });
-          return;
-        }
-      } catch (err) {
-        console.error('Failed to autoplay recommendations:', err);
+      return;
+    }
+
+    // ── ENDLESS NON-STOP PLAYBACK GUARANTEE ─────────────────────────────────
+    // If the queue reached the end and user hasn't explicitly paused:
+    // 1. Attempt seed-based recommendations
+    // 2. Fallback to general recommendations
+    // 3. Fallback to looping from the top of the queue
+    try {
+      set({ isLoading: true });
+      const userId = localStorage.getItem('koko_device_id') || '';
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(userId ? { 'x-user-id': userId } : {}),
+      };
+      const apiBase = await getApiUrl();
+      
+      const seedUrl = currentTrack 
+        ? `${apiBase}/tracks/recommendations?seedTrackId=${currentTrack.id}&limit=10`
+        : `${apiBase}/tracks/recommendations?limit=10`;
+
+      let res = await fetch(seedUrl, { headers });
+      let recs: Track[] = [];
+
+      if (res.ok) {
+        recs = await res.json() as Track[];
       }
-      set({ isPlaying: false, isLoading: false });
+
+      // If seed-based recs empty, fetch general recs
+      if (!recs || recs.length === 0) {
+        const fallbackRes = await fetch(`${apiBase}/tracks/recommendations?limit=10`, { headers });
+        if (fallbackRes.ok) {
+          recs = await fallbackRes.json() as Track[];
+        }
+      }
+
+      if (recs && recs.length > 0) {
+        const existingIds = new Set(queue.map(t => t.id));
+        const fresh = recs.filter(t => !existingIds.has(t.id));
+        const finalCandidates = fresh.length > 0 ? fresh : recs;
+        const newQueue = [...queue, ...finalCandidates];
+        set({
+          queue: newQueue,
+          originalQueue: newQueue,
+          queueIndex: next,
+          currentTrack: finalCandidates[0],
+          progress: 0,
+          error: null,
+          isPlaying: true,
+          isLoading: false
+        });
+        return;
+      }
+    } catch (err) {
+      console.error('[playerStore] Endless playback recommendation fetch failed:', err);
+    }
+
+    // Ultimate fallback: Loop back to start of queue so music NEVER stops
+    if (queue.length > 0) {
+      console.log('[playerStore] Endless playback fallback: looping queue from start');
+      set({
+        currentTrack: queue[0],
+        queueIndex: 0,
+        progress: 0,
+        error: null,
+        isPlaying: true,
+        isLoading: false
+      });
     } else {
-      set({ isPlaying: false });
+      set({ isPlaying: false, isLoading: false });
     }
   },
 

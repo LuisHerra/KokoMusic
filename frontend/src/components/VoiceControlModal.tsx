@@ -133,7 +133,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
         </button>
 
         {/* Header & Mode Tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
           <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>
             Control por Voz
           </h2>
@@ -150,6 +150,20 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
             }}
           >
             Alt + V
+          </span>
+          <span
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#ffffff',
+              padding: '2px 8px',
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+            }}
+          >
+            Vol 🭁 + Vol 🭂
           </span>
         </div>
 
