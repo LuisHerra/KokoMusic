@@ -4,8 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import TrackGrid, { TrackCard } from '../components/TrackCard/TrackGrid';
 import { getPersonalizedRecommendations, getRecommendations } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
+import { usePwaInstall } from '../hooks/usePwaInstall';
 import OnboardingModal from '../components/OnboardingModal';
-
 
 // SVG icons for each filter category
 function FilterIcon({ type }: { type: string }) {
@@ -55,6 +55,11 @@ export default function Home() {
   const { currentTrack, isPlaying, setTrack, addToQueue, setError } = usePlayerStore();
   const [activeCategory, setActiveCategory] = useState<'all' | 'music' | 'podcasts'>('all');
   
+  const { isInstallable, isInstalled, promptInstall } = usePwaInstall();
+  const [showIosGuide, setShowIosGuide] = useState(false);
+  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [hasAutoOpenedOnboarding, setHasAutoOpenedOnboarding] = useState(false);
 
@@ -242,6 +247,70 @@ export default function Home() {
           <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 16 }}>
             {getGreeting()}
           </h1>
+
+          {/* Mobile PWA Installation Banner (Zero dependency 1-click mobile install) */}
+          {isMobile && !isInstalled && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(29, 185, 84, 0.2) 0%, rgba(18, 18, 22, 0.9) 100%)',
+              border: '1px solid rgba(29, 185, 84, 0.4)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '16px 20px',
+              marginBottom: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 200 }}>
+                <span style={{ fontSize: 24 }}>📱</span>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#ffffff' }}>Instalar KokoMusic en tu móvil</h4>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>Instalación directa sin paquetes ni descargas APK</p>
+                </div>
+              </div>
+              {isInstallable ? (
+                <button
+                  onClick={promptInstall}
+                  style={{
+                    background: 'var(--accent)',
+                    color: '#000000',
+                    border: 'none',
+                    borderRadius: 'var(--radius-full)',
+                    padding: '8px 16px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Instalar App ⚡
+                </button>
+              ) : isIos ? (
+                <button
+                  onClick={() => setShowIosGuide(!showIosGuide)}
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: 'var(--radius-full)',
+                    padding: '8px 16px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {showIosGuide ? 'Ocultar guía' : 'Ver guía para iOS 📲'}
+                </button>
+              ) : null}
+
+              {showIosGuide && (
+                <div style={{ width: '100%', marginTop: 8, fontSize: 12, color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 8 }}>
+                  En Safari: Toca el icono <strong>Compartir (↑)</strong> en la barra inferior y selecciona <strong>"Añadir a pantalla de inicio (+)"</strong>.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Visual Koko Taste Profile Card */}
           <div style={{

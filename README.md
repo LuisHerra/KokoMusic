@@ -13,6 +13,21 @@ Reproductor de música académico estilo Spotify. Usa la **Spotify Web API** par
 | Caché local | In-memory (Map) — Redis en producción |
 | DB local | In-memory playlists — PostgreSQL + Prisma en producción |
 
+## 📱 Instalación en Android (Termux) — 1 Comando Único
+
+Copia y pega este comando en tu terminal de Termux para instalar KokoMusic automáticamente:
+
+```bash
+pkg install -y git && git clone https://github.com/LuisHerra/KokoMusic.git && cd KokoMusic && chmod +x install_termux.sh && ./install_termux.sh
+```
+
+### 🚀 Arrancar KokoMusic en Termux
+Para iniciar la aplicación en cualquier momento:
+
+```bash
+cd KokoMusic && ./start_termux.sh
+```
+
 ---
 
 ## Desarrollo local
