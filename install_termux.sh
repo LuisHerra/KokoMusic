@@ -31,10 +31,10 @@ echo "🛠️ 2/5 Instalando Node.js, Python, FFmpeg y dependencias de red..."
 pkg install -y nodejs-lts python ffmpeg git build-essential ca-certificates libjpeg-turbo
 
 # 4. Instalar y actualizar yt-dlp para streaming sin errores
+# 4. Instalar y actualizar yt-dlp para streaming sin errores
 echo ""
 echo "⚡ 3/5 Instalando yt-dlp para extracción de audio en Android..."
-pip install --upgrade pip
-pip install --upgrade yt-dlp
+pip install --upgrade yt-dlp --break-system-packages
 
 # 5. Instalar dependencias de Node.js omitiendo librerías binarias nativas incompatibles
 echo ""
