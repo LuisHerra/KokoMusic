@@ -104,6 +104,7 @@ interface PlayerState {
   toggleVideo: () => void;
   setIsVideoOpen: (open: boolean) => void;
   toggleShuffle: () => void;
+  setIsShuffle: (val: boolean) => void;
   toggleAutoplay: () => void;
   cycleRepeat: () => void;
   removeFromQueue: (index: number) => void;
@@ -218,6 +219,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isEmbedMode: false,
   embedYoutubeId: null,
   setEmbedMode: (active, youtubeId) => set({ isEmbedMode: active, embedYoutubeId: youtubeId }),
+  setIsShuffle: (val) => set({ isShuffle: val }),
 
   eqBands: JSON.parse(localStorage.getItem('koko_eq_bands') || '[0,0,0,0,0]'),
   setEqBand: (index, gainDb) => set((s) => {
@@ -289,9 +291,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (next < queue.length) {
       set({ currentTrack: queue[next], queueIndex: next, progress: 0, error: null, isPlaying: true });
 
-      // ── Proactive queue replenishment (within 5 tracks of the end) ──────────────
+      // ── Dynamic 1-by-1 Queue Enrichment (evaluating all recent queue elements) ──
       const remaining = queue.length - next - 1;
-      if (remaining <= 5 && currentTrack && !queueReplenishLock) {
+      if (remaining <= 2 && currentTrack && !queueReplenishLock) {
         queueReplenishLock = true;
         (async () => {
           try {
@@ -301,8 +303,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               ...(userId ? { 'x-user-id': userId } : {}),
             };
             const apiBase = await getApiUrl();
+            const recentQueueIds = queue.slice(Math.max(0, next - 4), next + 1).map(t => t.id).join(',');
+            const allQueueIds = queue.map(t => t.id).join(',');
             const res = await fetch(
-              `${apiBase}/tracks/recommendations?seedTrackId=${queue[next].id}&limit=10`,
+              `${apiBase}/tracks/recommendations?seedTrackIds=${encodeURIComponent(recentQueueIds)}&excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`,
               { headers }
             );
             if (!res.ok) return;
@@ -314,11 +318,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               if (fresh.length > 0) {
                 const extended = [...currentQueue, ...fresh];
                 set({ queue: extended, originalQueue: extended });
-                console.log(`[playerStore] Queue replenished: +${fresh.length} tracks (${extended.length} total)`);
+                console.log(`[playerStore] Dynamic queue enriched: +${fresh.length} tracks evaluated across queue context`);
               }
             }
           } catch (err) {
-            console.error('[playerStore] Queue replenishment failed:', err);
+            console.error('[playerStore] Dynamic queue enrichment failed:', err);
           } finally {
             queueReplenishLock = false;
           }
@@ -332,11 +336,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return;
     }
 
-    // ── ENDLESS NON-STOP PLAYBACK GUARANTEE ─────────────────────────────────
-    // If the queue reached the end and user hasn't explicitly paused:
-    // 1. Attempt seed-based recommendations
-    // 2. Fallback to general recommendations
-    // 3. Fallback to looping from the top of the queue
+    // ── ENDLESS PLAYBACK GUARANTEE (Evaluating whole queue context) ──────────
     try {
       set({ isLoading: true });
       const userId = localStorage.getItem('koko_device_id') || '';
@@ -345,10 +345,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         ...(userId ? { 'x-user-id': userId } : {}),
       };
       const apiBase = await getApiUrl();
+      const recentQueueIds = queue.slice(Math.max(0, queue.length - 5)).map(t => t.id).join(',');
+      const allQueueIds = queue.map(t => t.id).join(',');
       
-      const seedUrl = currentTrack 
-        ? `${apiBase}/tracks/recommendations?seedTrackId=${currentTrack.id}&limit=10`
-        : `${apiBase}/tracks/recommendations?limit=10`;
+      const seedUrl = recentQueueIds 
+        ? `${apiBase}/tracks/recommendations?seedTrackIds=${encodeURIComponent(recentQueueIds)}&excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`
+        : `${apiBase}/tracks/recommendations?excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`;
 
       let res = await fetch(seedUrl, { headers });
       let recs: Track[] = [];
@@ -359,7 +361,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
       // If seed-based recs empty, fetch general recs
       if (!recs || recs.length === 0) {
-        const fallbackRes = await fetch(`${apiBase}/tracks/recommendations?limit=10`, { headers });
+        const fallbackRes = await fetch(`${apiBase}/tracks/recommendations?limit=2`, { headers });
         if (fallbackRes.ok) {
           recs = await fallbackRes.json() as Track[];
         }
@@ -386,11 +388,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       console.error('[playerStore] Endless playback recommendation fetch failed:', err);
     }
 
-    // Ultimate fallback: Loop back to start of queue so music NEVER stops
+    // Ultimate fallback: Shuffle queue and restart so music NEVER plays the same order
     if (queue.length > 0) {
-      console.log('[playerStore] Endless playback fallback: looping queue from start');
+      console.log('[playerStore] Endless playback fallback: shuffling queue for random continuation');
+      const shuffled = shuffleArray(queue, null);
       set({
-        currentTrack: queue[0],
+        queue: shuffled,
+        originalQueue: shuffled,
+        currentTrack: shuffled[0],
         queueIndex: 0,
         progress: 0,
         error: null,

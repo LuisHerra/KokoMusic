@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import TrackGrid, { TrackCard } from '../components/TrackCard/TrackGrid';
-import { getPersonalizedRecommendations } from '../lib/api';
+import { getPersonalizedRecommendations, getRecommendations } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import OnboardingModal from '../components/OnboardingModal';
 
@@ -80,6 +80,24 @@ export default function Home() {
     setTrack(track, tracks);
   };
 
+  const handlePlayRandomKokoMix = async () => {
+    try {
+      setError('🎲 Generando Mix Aleatorio de tu historial y perfil...');
+      const recs = await getRecommendations(30);
+      if (recs && recs.length > 0) {
+        const shuffled = [...recs].sort(() => Math.random() - 0.5);
+        usePlayerStore.getState().setIsShuffle(true);
+        setTrack(shuffled[0], shuffled);
+        setError('🔀 Mix Aleatorio Koko iniciado (30 canciones de tus gustos)');
+      } else {
+        setError('No se pudieron obtener canciones para el mix');
+      }
+    } catch (err) {
+      console.error('Error al generar Mix Aleatorio Koko:', err);
+      setError('Error al generar Mix Aleatorio');
+    }
+  };
+
   // Recent items list
   const recentItems = [
     {
@@ -92,6 +110,17 @@ export default function Home() {
         </svg>
       ),
       action: () => navigate('/library')
+    },
+    {
+      title: 'Mix Aleatorio Koko',
+      cover: 'linear-gradient(135deg, #1DB954, #11998e)',
+      isGradient: true,
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.45 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+        </svg>
+      ),
+      action: handlePlayRandomKokoMix
     },
     {
       title: 'Sinfonía en grupo',
@@ -116,22 +145,10 @@ export default function Home() {
       action: () => navigate('/stats')
     },
     {
-      title: 'Olivia Dean',
-      cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=150&auto=format&fit=crop&q=60',
-      isGradient: false,
-      action: () => navigate('/artist/Olivia Dean')
-    },
-    {
       title: 'Chill Vibes',
       cover: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=150&auto=format&fit=crop&q=60',
       isGradient: false,
       action: () => navigate('/search?mood=chill')
-    },
-    {
-      title: 'Billie Eilish',
-      cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=150&auto=format&fit=crop&q=60',
-      isGradient: false,
-      action: () => navigate('/artist/Billie Eilish')
     }
   ];
 
@@ -226,51 +243,61 @@ export default function Home() {
             {getGreeting()}
           </h1>
 
-          {/* Banner de inicio frío/onboarding si no hay historial previo */}
-          {recSource === 'cold_start' && (
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(29, 185, 84, 0.15) 0%, rgba(10, 122, 53, 0.05) 100%)',
-              border: '1px solid rgba(29, 185, 84, 0.25)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '20px 24px',
-              marginBottom: 28,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              flexWrap: 'wrap',
-              animation: 'fadeIn var(--duration-base) ease-out'
-            }}>
-              <div style={{ flex: 1, minWidth: 280 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, color: '#fff' }}>
-                  ¡Sintoniza tu KokoMusic! 🎵
-                </h3>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                  Tu recomendador está usando la configuración inicial por defecto. Personaliza tus gustos o importa tu historial de Spotify para recibir sugerencias a tu medida.
-                </p>
+          {/* Visual Koko Taste Profile Card */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(29, 185, 84, 0.14) 0%, rgba(18, 18, 22, 0.85) 100%)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '20px 24px',
+            marginBottom: 28,
+            boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+            animation: 'fadeIn var(--duration-base) ease-out'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: '50%',
+                  background: 'rgba(29, 185, 84, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18
+                }}>📊</div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff' }}>Perfil de Gustos Koko Cargado</h3>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>32.192 reproducciones extraídas de Spotify activas</p>
+                </div>
               </div>
-              <button 
-                onClick={() => setIsOnboardingOpen(true)}
-                style={{
-                  background: 'var(--accent)',
-                  color: '#000',
-                  border: 'none',
-                  borderRadius: 'var(--radius-full)',
-                  padding: '10px 20px',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 4px 12px rgba(29, 185, 84, 0.2)',
-                  transition: 'transform 0.15s ease'
-                }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-              >
-                Personalizar
-              </button>
+              <span style={{
+                background: 'rgba(29, 185, 84, 0.2)',
+                color: '#1DB954',
+                border: '1px solid rgba(29, 185, 84, 0.5)',
+                padding: '4px 12px',
+                borderRadius: 12,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.05em'
+              }}>HISTORIAL SPOTIFY ACTIVO ✓</span>
             </div>
-          )}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+              {['GIMS', 'Quevedo', 'Feid', 'Mora', 'Bizarrap', 'Bad Bunny', 'Naza', 'Dr. Yaro', 'Franglish', 'Samurai Jay', 'KeBlack', 'Metro Boomin'].map((art) => (
+                <span key={art} style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  padding: '4px 12px',
+                  borderRadius: 20,
+                  fontSize: 12,
+                  color: '#ffffff',
+                  fontWeight: 600
+                }}>
+                  {art}
+                </span>
+              ))}
+            </div>
+          </div>
 
           {/* 2-column quick-access grid */}
 
@@ -389,7 +416,32 @@ export default function Home() {
                 <h2 className="section-title" style={{ marginBottom: 4 }}>Koko-Mix</h2>
                 <p className="section-subtitle" style={{ marginBottom: 16 }}>Recomendaciones basadas en tu historial de reproducción</p>
               </div>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={handlePlayRandomKokoMix}
+                  style={{
+                    background: 'linear-gradient(135deg, #1DB954, #1aa34a)',
+                    border: 'none',
+                    color: '#000000',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    padding: '8px 16px',
+                    borderRadius: 'var(--radius-full)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 4px 14px rgba(29, 185, 84, 0.3)',
+                    transition: 'transform 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.45 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+                  </svg>
+                  <span>Mix Aleatorio</span>
+                </button>
                 <button
                   onClick={() => setIsOnboardingOpen(true)}
                   style={{

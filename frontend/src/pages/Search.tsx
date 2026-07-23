@@ -405,7 +405,8 @@ export default function Search() {
     setTrack(track, [track]);
     addRecentSearch({ type: 'track', ...track });
     try {
-      const recs = await getRecommendations(15, undefined, track.id);
+      // Recomendar de una en una basándose en los elementos de la cola activa
+      const recs = await getRecommendations(1, undefined, undefined, [track.id]);
       if (recs && recs.length > 0) {
         const currentStore = usePlayerStore.getState();
         if (currentStore.currentTrack?.id === track.id) {
@@ -417,14 +418,14 @@ export default function Search() {
         }
       }
     } catch (err) {
-      console.error('Error fetching recommendations for played search track:', err);
+      console.error('Error fetching recommendation for played search track:', err);
     }
   };
 
   const handlePlayRecentTrack = async (track: any) => {
     setTrack(track, [track]);
     try {
-      const recs = await getRecommendations(15, undefined, track.id);
+      const recs = await getRecommendations(1, undefined, undefined, [track.id]);
       if (recs && recs.length > 0) {
         const currentStore = usePlayerStore.getState();
         if (currentStore.currentTrack?.id === track.id) {
@@ -436,7 +437,7 @@ export default function Search() {
         }
       }
     } catch (err) {
-      console.error('Error fetching recommendations for played recent track:', err);
+      console.error('Error fetching recommendation for played recent track:', err);
     }
   };
 
@@ -486,7 +487,7 @@ export default function Search() {
               onClick={handleClearSearch}
               style={{
                 position: 'absolute',
-                right: 12,
+                right: 42,
                 top: '50%',
                 transform: 'translateY(-50%)',
                 background: 'none',
@@ -505,6 +506,41 @@ export default function Search() {
               </svg>
             </button>
           )}
+
+          {/* Voice Search Mic Button (Only 1 mic button, positioned in top search bar on mobile) */}
+          <button
+            type="button"
+            onClick={() => {
+              const evt = new KeyboardEvent('keydown', { key: 'v', altKey: true, bubbles: true });
+              window.dispatchEvent(evt);
+            }}
+            className="search-bar-mic-btn"
+            title="Control por voz"
+            style={{
+              position: 'absolute',
+              right: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'rgba(29, 185, 84, 0.15)',
+              border: '1px solid rgba(29, 185, 84, 0.3)',
+              borderRadius: '50%',
+              width: 32,
+              height: 32,
+              color: '#1DB954',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 0.15s ease',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
         </div>
       </form>
 

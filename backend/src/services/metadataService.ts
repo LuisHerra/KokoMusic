@@ -39,6 +39,10 @@ export interface TrackMetadata {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function normalizeStr(s: string): string {
+  return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+}
+
 /** Escala la URL de artwork de iTunes a 600x600 */
 function scaleArtwork(url: string | undefined): string {
   if (!url) return '';
@@ -58,7 +62,7 @@ function itunesResultToTrack(item: any, index = 0): TrackMetadata {
     duration: item.trackTimeMillis ?? 0,
     genre: item.primaryGenreName ?? '',
     releaseDate: item.releaseDate ?? null,
-    popularity: 1000 - index, // posición inversa como proxy de popularidad
+    popularity: Math.max(1, 20 - index), // Posición relativa suave (1-20)
     preview_url: item.previewUrl ?? null,
   };
 }
@@ -101,19 +105,93 @@ function ytResultToTrack(v: any, index = 0): TrackMetadata {
   // Quitar la palabra "- Topic" del nombre del artista si viene del autor
   authorName = authorName.replace(/ - Topic$/i, '').trim();
 
+  const { cleanTitle, cleanArtist } = cleanTrackNameAndArtist(trackTitle, authorName);
+
   return {
     id: v.videoId,
     itunesId: 0,        // no tiene iTunesId
-    artistId: hashStringToInteger(authorName),
-    title: trackTitle,
-    artist: authorName,
+    artistId: hashStringToInteger(cleanArtist),
+    title: cleanTitle,
+    artist: cleanArtist,
     album: 'YouTube',
     cover: v.thumbnail ?? '',
     duration: (v.duration?.seconds ?? 0) * 1000,
-    genre: '',
+    genre: 'Urbano / Pop',
     releaseDate: null,
     popularity: v.views || (1000 - index),
     preview_url: null,
+  };
+}
+
+/**
+ * Cleans YouTube noise from titles and artist names.
+ */
+export function cleanTrackNameAndArtist(rawTitle: string, rawArtist: string): { cleanTitle: string; cleanArtist: string } {
+  let artist = rawArtist.replace(/ - Topic$/i, '').replace(/vevo$/i, '').trim();
+  let title = rawTitle;
+
+  const sepIdx = title.indexOf(' - ');
+  if (sepIdx !== -1) {
+    artist = title.substring(0, sepIdx).trim();
+    title = title.substring(sepIdx + 3).trim();
+  }
+
+  title = title
+    .replace(/\[(Official|Music|Video|Lyrics|Audio|HD|4K|Visualizer|Clip).*?\]/gi, '')
+    .replace(/\((Official|Music|Video|Lyrics|Audio|HD|4K|Visualizer|Paroles|Clip).*?\)/gi, '')
+    .replace(/Official\s+Video/gi, '')
+    .replace(/Music\s+Video/gi, '')
+    .replace(/Clip\s+Officiel/gi, '')
+    .replace(/Video\s+Oficial/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { cleanTitle: title, cleanArtist: artist };
+}
+
+/**
+ * Cross-resolves track metadata via iTunes & Last.fm to enrich YouTube tracks with genres, official artist names, release dates, and album art.
+ */
+export async function enrichTrackWithExternalAPIs(track: TrackMetadata): Promise<TrackMetadata> {
+  if (track.genre && track.genre !== 'Desconocido' && track.genre !== 'Urbano / Pop' && track.itunesId > 0) {
+    return track;
+  }
+
+  const { cleanTitle, cleanArtist } = cleanTrackNameAndArtist(track.title, track.artist);
+  const cacheKey = `enrich:${normalizeStr(`${cleanArtist}-${cleanTitle}`)}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return { ...track, ...JSON.parse(cached) };
+
+  try {
+    const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(cleanArtist + ' ' + cleanTitle)}&media=music&entity=musicTrack&limit=1`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json() as any;
+      const match = data.results?.[0];
+      if (match) {
+        const enriched = {
+          title: match.trackName || cleanTitle,
+          artist: match.artistName || cleanArtist,
+          artistId: match.artistId || track.artistId,
+          itunesId: match.trackId || track.itunesId,
+          album: match.collectionName || track.album,
+          cover: scaleArtwork(match.artworkUrl100) || track.cover,
+          genre: match.primaryGenreName || 'Pop',
+          releaseDate: match.releaseDate || track.releaseDate,
+        };
+        cache.setex(cacheKey, 86400, JSON.stringify(enriched));
+        return { ...track, ...enriched };
+      }
+    }
+  } catch (err) {
+    // ignore lookup error
+  }
+
+  return {
+    ...track,
+    title: cleanTitle,
+    artist: cleanArtist,
+    genre: track.genre || 'Urbano / Pop',
   };
 }
 
@@ -334,11 +412,14 @@ async function searchYouTube(query: string, limit: number, cacheKey: string): Pr
 
     const rawTracks = filteredVideos.map((v, idx) => ytResultToTrack(v, idx));
     const uniqueTracks = deduplicateTracks(rawTracks);
+
+    // Cross-resolve YouTube metadata with iTunes & Last.fm to populate real genres, official artist names, release dates and album art
+    const enrichedTracks = await Promise.all(uniqueTracks.map(t => enrichTrackWithExternalAPIs(t)));
     
-    if (uniqueTracks.length > 0) {
-      cache.setex(cacheKey, 3600, JSON.stringify(uniqueTracks));
+    if (enrichedTracks.length > 0) {
+      cache.setex(cacheKey, 3600, JSON.stringify(enrichedTracks));
     }
-    return uniqueTracks;
+    return enrichedTracks;
   } catch (err) {
     console.error('[Metadata] Error en searchYouTube:', err);
     return [];

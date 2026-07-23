@@ -146,10 +146,11 @@ export const logTrackPlay = (
     { method: 'POST', body: JSON.stringify(track) }
   );
 
-export const getRecommendations = (limit = 10, mood?: string, seedTrackId?: string) => {
+export const getRecommendations = (limit = 10, mood?: string, seedTrackId?: string, seedTrackIds?: string[]) => {
   const params = new URLSearchParams({ limit: String(limit) });
   if (mood) params.append('mood', mood);
   if (seedTrackId) params.append('seedTrackId', seedTrackId);
+  if (seedTrackIds && seedTrackIds.length > 0) params.append('seedTrackIds', seedTrackIds.join(','));
   return apiFetch<Track[]>(`/tracks/recommendations?${params.toString()}`);
 };
 

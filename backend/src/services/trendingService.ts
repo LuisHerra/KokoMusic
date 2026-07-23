@@ -258,7 +258,8 @@ export async function getTrendingGenres(region = 'spain'): Promise<string[]> {
 export async function boostSearchResults(
   results: TrackMetadata[],
   userHistoryScores?: Record<string, number>,
-  region = 'spain'
+  region = 'spain',
+  listenedTrackKeys?: Set<string>
 ): Promise<TrackMetadata[]> {
   if (results.length === 0) return results;
 
@@ -275,14 +276,20 @@ export async function boostSearchResults(
   );
 
   const scored = results.map((track, index) => {
-    // Initial rank score (descending from 1000)
-    let score = 1000 - index;
+    // Initial rank score (descending from 100)
+    let score = 100 - index;
 
     const trackKey = normalizeStr(`${track.title}-${track.artist}`);
     const artistNorm = track.artist.toLowerCase().trim();
     const genreNorm = track.genre ? track.genre.toLowerCase().trim() : '';
 
-    // 1. Personalization: User followed/listened artist boost (highest priority if matching)
+    // 0. PREVIOUSLY LISTENED / TASTE PROFILE PRIORITY:
+    // If the track is already in the user's history or taste profile, give it top priority!
+    if (listenedTrackKeys && (listenedTrackKeys.has(trackKey) || listenedTrackKeys.has(track.id.toLowerCase()))) {
+      score += 500; // Super high priority: puts previously heard songs first!
+    }
+
+    // 1. Personalization: User followed/listened artist boost
     if (userHistoryScores && userHistoryScores[artistNorm]) {
       score += Math.min(userHistoryScores[artistNorm] * 10, 200); // Max +200 points
     }

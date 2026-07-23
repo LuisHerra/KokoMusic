@@ -1,7 +1,7 @@
 import { usePlayerStore } from '../../store/playerStore';
 import { useState, useEffect } from 'react';
 import DjMixerModal from './DjMixerModal';
-import { getJamQueue, voteJamQueueItem, removeFromJamQueue, getRecommendations, type Track } from '../../lib/api';
+import { getJamQueue, voteJamQueueItem, removeFromJamQueue, getRecommendations } from '../../lib/api';
 import { useResizableRightPanel } from '../../hooks/useResizable';
 
 function getUserId(): string {
@@ -24,7 +24,6 @@ export default function QueuePanel() {
   const [djModalTracks, setDjModalTracks] = useState<{ from: any, to: any } | null>(null);
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
   const { startResize, isResizing } = useResizableRightPanel();
-  const [autoplayRecs, setAutoplayRecs] = useState<Track[]>([]);
 
   // Sync votedIds with jamQueue voted properties
   useEffect(() => {
@@ -34,23 +33,35 @@ export default function QueuePanel() {
     }
   }, [jamQueue]);
 
-  // Fetch recommendations for queue autoplay when current track or autoplay status changes
+  // Automatically populate active queue with dynamic recommendation when queue is short
   useEffect(() => {
     if (!currentTrack || !autoplayEnabled || activeJamCode) {
-      setAutoplayRecs([]);
       return;
     }
 
-    const loadRecs = async () => {
-      try {
-        const data = await getRecommendations(5, undefined, currentTrack.id);
-        setAutoplayRecs(data);
-      } catch (err) {
-        console.error('Error fetching similar recommendations:', err);
-      }
-    };
+    const { queue: q, queueIndex: qIdx } = usePlayerStore.getState();
+    const remaining = q.length - qIdx - 1;
 
-    loadRecs();
+    if (remaining === 0) {
+      const loadRecs = async () => {
+        try {
+          const recentQueueIds = q.slice(Math.max(0, qIdx - 4), qIdx + 1).map(t => t.id);
+          const data = await getRecommendations(1, undefined, undefined, recentQueueIds);
+          if (data && data.length > 0) {
+            const currentQ = usePlayerStore.getState().queue;
+            const existingIds = new Set(currentQ.map(t => t.id));
+            const fresh = data.filter(t => !existingIds.has(t.id));
+            if (fresh.length > 0) {
+              usePlayerStore.getState().addToQueue(fresh[0]);
+            }
+          }
+        } catch (err) {
+          console.error('Error auto-enriching queue:', err);
+        }
+      };
+
+      loadRecs();
+    }
   }, [currentTrack?.id, autoplayEnabled, activeJamCode]);
 
   // Poll Sinfonia collaborative queue when panel is open
@@ -287,61 +298,6 @@ export default function QueuePanel() {
           )
         )}
 
-        {!activeJamCode && autoplayEnabled && autoplayRecs.length > 0 && (
-          <div className="queue-section" style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '16px' }}>
-            <span className="queue-section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Recomendados a continuación</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Basado en {currentTrack?.title}</span>
-            </span>
-            {autoplayRecs.map((track) => (
-              <div
-                key={track.id}
-                className="queue-item queue-item-recommendation"
-                style={{ opacity: 0.8 }}
-                onClick={() => {
-                  const { queue: q, queueIndex: qIdx } = usePlayerStore.getState();
-                  const newQueue = [...q];
-                  newQueue.splice(qIdx + 1, 0, track);
-                  usePlayerStore.getState().setQueue(newQueue, qIdx);
-                  usePlayerStore.getState().nextTrack();
-                }}
-              >
-                <span className="queue-item-num" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.7 }}>
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
-                </span>
-                <img className="queue-item-cover" src={track.cover} alt={track.title} />
-                <div className="queue-item-info" style={{ flex: 1, minWidth: 0 }}>
-                  <div className="queue-item-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</div>
-                  <div className="queue-item-artist" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</div>
-                </div>
-                
-                <button
-                  className="queue-item-add"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    usePlayerStore.getState().addToQueue(track);
-                    setAutoplayRecs(prev => prev.filter(t => t.id !== track.id));
-                  }}
-                  title="Añadir a la cola"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    padding: 8,
-                    marginRight: 4
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {djModalTracks && (

@@ -502,11 +502,7 @@ export default function VideoPanel() {
                             </div>
                           )}
                         </div>
-                      ) : (
-                        <div className="sp-bg-lyrics-empty">
-                          KokoMusic • Disfruta del video
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <div className="sp-artwork-wrap" onClick={() => setShowVideo(!showVideo)}>

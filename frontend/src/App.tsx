@@ -398,6 +398,7 @@ function AppShell() {
       <QueuePanel />
       <Player />
       <BottomNav />
+
       <VoiceControlModal
         voiceControl={voiceControl}
         isOpen={isVoiceModalOpen || voiceControl.isListening}

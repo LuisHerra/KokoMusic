@@ -28,10 +28,10 @@ interface LastFmSimilarTrack {
 // ANTI-LOOP FIX: Minimum discovery floor of 40% to prevent taste-bubble lock-in.
 
 function getExplorationRatio(totalPlays: number): number {
-  if (totalPlays < 20)  return 0.65;  // 65% discovery — cold start
-  if (totalPlays < 60)  return 0.50;  // 50% discovery — ramp up
-  if (totalPlays < 200) return 0.45;  // 45% discovery — established
-  return 0.40;                         // 40% discovery — veteran (hard floor)
+  if (totalPlays < 20)  return 0.75;  // 75% discovery — cold start
+  if (totalPlays < 60)  return 0.65;  // 65% discovery — ramp up
+  if (totalPlays < 200) return 0.60;  // 60% discovery — established
+  return 0.60;                         // 60% discovery — Spotify discovery floor
 }
 
 // ── Last.fm helpers ───────────────────────────────────────────────────────────
@@ -206,15 +206,24 @@ export async function getRecommendations(
   limit = 10,
   userId?: string,
   mood?: string,
-  seedTrackId?: string
+  seedTrackId?: string,
+  seedTrackIds?: string[],
+  excludeTrackIds?: string[]
 ): Promise<TrackMetadata[]> {
-  const cacheKey = `recs:${userId || 'global'}:${mood || 'none'}:${seedTrackId || 'none'}:${limit}`;
+  const effectiveSeeds = seedTrackIds && seedTrackIds.length > 0 ? seedTrackIds : (seedTrackId ? [seedTrackId] : []);
+  const activeSeedId = effectiveSeeds.length > 0 ? effectiveSeeds[effectiveSeeds.length - 1] : undefined;
+  const hardExcludeSet = new Set<string>([
+    ...effectiveSeeds,
+    ...(excludeTrackIds || [])
+  ].map(id => id.toLowerCase().trim()));
+
+  const cacheKey = `recs:${userId || 'global'}:${mood || 'none'}:${effectiveSeeds.join('_') || 'none'}:${(excludeTrackIds || []).join('_') || 'none'}:${limit}`;
   const cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
   // ── 1. HISTORIAL + PLAY COUNTS ────────────────────────────────────────────
 
-  const history = readHistory().filter(h => !userId || h.userId === userId);
+  const history = readHistory().filter(h => !userId || h.userId === userId || h.userId === 'koko' || !h.userId);
   const trackPlayCounts = new Map<string, number>();
   const artistPlayCounts = new Map<string, number>();
   let totalPlays = 0;
@@ -255,9 +264,50 @@ export async function getRecommendations(
   // When a seed track is provided, its genre defines the listening context.
   // All subsequent candidate generation and scoring is biased toward that genre.
 
+const KNOWN_FRENCH_ARTISTS = new Set([
+  'gims', 'naza', 'dr. yaro', 'dr yaro', 'keblack', 'franglish', 'tayc', 'plk',
+  'ninho', 'tiakola', 'alonzo', 'dadju', 'soolking', 'mauvais djo', 'niska',
+  'booba', 'damso', 'pnl', 'nekfeu', 'stromae', 'indila', 'aya nakamura', 'sch',
+  'jul', 'koba lad', 'zola', 'danyl', 'gambino', 'gradur', 'rk', 'soso maness',
+  'gazo', 'kerchak', 'werenoi', 'favé', 'sdm', 'hamza', 'bosh', "heuss l'enfoiré"
+]);
+
+const KNOWN_LATIN_ARTISTS = new Set([
+  'quevedo', 'feid', 'mora', 'bizarrap', 'bad bunny', 'myke towers', 'trueno',
+  'ozuna', 'rauw alejandro', 'dei v', 'saiko', 'omar courtz', 'gonzy', 'maná',
+  'mana', 'el bobe', 'rvfv', 'jcreyes', 'omay', 'morad', 'charlie puth', 'samurai jay'
+]);
+
+function detectLanguageAndCulture(artist: string, title: string, genre?: string, tags: string[] = []): 'french' | 'latin' | 'other' {
+  const normArtist = (artist || '').toLowerCase().trim();
+  const normTitle = (title || '').toLowerCase().trim();
+  const normGenre = (genre || '').toLowerCase().trim();
+  const normTags = tags.map(t => t.toLowerCase().trim()).join(' ');
+
+  if (
+    KNOWN_FRENCH_ARTISTS.has(normArtist) ||
+    normGenre.includes('french') || normGenre.includes('francais') || normGenre.includes('chanson') ||
+    normTags.includes('french') || normTags.includes('francais') || normTags.includes('chanson') || normTags.includes('rap fr') ||
+    normTitle.includes('parisienne') || normTitle.includes('impofie')
+  ) {
+    return 'french';
+  }
+
+  if (
+    KNOWN_LATIN_ARTISTS.has(normArtist) ||
+    normGenre.includes('reggaeton') || normGenre.includes('urbano') || normGenre.includes('latin') || normGenre.includes('salsa') || normGenre.includes('bachata') ||
+    normTags.includes('reggaeton') || normTags.includes('latin') || normTags.includes('spanish')
+  ) {
+    return 'latin';
+  }
+
+  return 'other';
+}
+
   let seedGenre: string | null = null;
   let seedArtistName: string | null = null;
   let seedTags: string[] = [];   // Last.fm genre tags for adjacent-genre search
+  let seedCulture: 'french' | 'latin' | 'other' = 'other';
 
   if (seedTrackId) {
     try {
@@ -279,6 +329,7 @@ export async function getRecommendations(
 
         // Fetch artist tags for genre-aware discovery queries
         seedTags = await fetchLastFmArtistTags(seedTrack.artist, 4);
+        seedCulture = detectLanguageAndCulture(seedTrack.artist, seedTrack.title, seedTrack.genre, seedTags);
       }
     } catch {
       // ignore seed errors
@@ -300,74 +351,77 @@ export async function getRecommendations(
   );
 
   try {
-    // GENRE COHERENCE: When a seed is active, skip the taste-profile artist pool entirely.
-    // The seed's Last.fm similar tracks already cover exploitation — mixing the user's
-    // reggaeton artists into a Coldplay session is exactly the bug we're fixing.
-    if (!seedTrackId && history.length > 0) {
+    // ── MULTI-CLUSTER TASTE ROTATION ENGINE ─────────────────────────────────
+    // We sample from the broad spectrum of top 80+ artists in the user's Spotify history
+    // and partition them into 4 Taste Clusters. On each call, we sample a cluster dynamically!
+    const allTasteArtists = Array.from(new Set([
+      ...artistPlayCounts.keys(),
+      ...(tasteProfile?.topArtists || []).map((a: any) => (typeof a === 'string' ? a : a.name).toLowerCase().trim())
+    ])).filter(Boolean);
 
-      // Artistas similares a los tops del usuario
-      const topArtists = [...artistPlayCounts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([a]) => a);
+    if (allTasteArtists.length > 0 && !activeSeedId) {
+      // Partition artists into 4 Taste Clusters based on genre & style
+      const frenchCluster = allTasteArtists.filter(a =>
+        /gims|naza|dr\. yaro|franglish|tayc|keblack|soolking|plk|ninho|tiakola|alonzo|dadju|sch|jul|pnl|booba|nekfeu|stromae|indila|aya nakamura|damso|niska/i.test(a)
+      );
+      const latinCluster = allTasteArtists.filter(a =>
+        /quevedo|feid|mora|bizarrap|bad bunny|myke towers|trueno|ozuna|rauw|dei v|jhayco|dystinct|duki|eladio|j balvin|anuel|karol g|saiko|ryan castro|young miko/i.test(a)
+      );
+      const usHipHopCluster = allTasteArtists.filter(a =>
+        /metro boomin|drake|weeknd|travis scott|21 savage|future|kanye|kendrick|j\. cole|carti|uzi|don toliver|frank ocean/i.test(a)
+      );
+      const globalPopChillCluster = allTasteArtists.filter(a =>
+        !frenchCluster.includes(a) && !latinCluster.includes(a) && !usHipHopCluster.includes(a)
+      );
 
-      if (topArtists.length > 0) {
-        // Elegir un artista distinto en cada llamada para variedad
-        const randomArtist = topArtists[Math.floor(Math.random() * topArtists.length)];
-        const similarArtists = await fetchLastFmSimilarArtists(randomArtist, 5);
-        if (similarArtists.length > 0) {
-          const pools = await Promise.all(
-            similarArtists.map(a => searchTracks(`${a} top hits`, 3, 'itunes'))
-          );
-          for (const pool of pools) {
-            for (const track of pool) {
-              if (track && !exploitPool.has(track.id)) {
-                exploitPool.set(track.id, { track, source: 'artist_similarity', baseScore: 55 });
+      // Dynamic Cluster Selection: Pick 2 clusters at random on each recommendation request
+      const clusterPools = [
+        { name: 'french', artists: frenchCluster },
+        { name: 'latin', artists: latinCluster },
+        { name: 'us_hiphop', artists: usHipHopCluster },
+        { name: 'global_pop', artists: globalPopChillCluster },
+      ].filter(c => c.artists.length > 0);
+
+      if (clusterPools.length > 0) {
+        const shuffledClusters = [...clusterPools].sort(() => Math.random() - 0.5);
+        const selectedClusters = shuffledClusters.slice(0, 2);
+
+        for (const cluster of selectedClusters) {
+          // Pick 2 random artists from this cluster
+          const sampledArtists = [...cluster.artists].sort(() => Math.random() - 0.5).slice(0, 2);
+          for (const artistName of sampledArtists) {
+            // 1. Fetch top hits for the sampled Spotify artist
+            try {
+              const hits = await searchTracks(`${artistName} top hits`, 3, 'itunes');
+              for (const t of hits) {
+                if (t && !exploitPool.has(t.id)) {
+                  exploitPool.set(t.id, { track: t, source: 'cluster_artist', baseScore: 75 });
+                }
               }
-            }
-          }
-        }
-      }
-    } else if (!seedTrackId && tasteProfile) {
-      // Si no hay historial pero sí hay perfil inicial (onboarding / Koko pre-seeded)
-      const topArtists = (tasteProfile.topArtists || []).map((a: any) => a.name);
+            } catch {}
 
-      if (topArtists.length > 0) {
-        // 1. Buscar temas populares de los artistas seleccionados
-        const shuffledArtists = [...topArtists].sort(() => Math.random() - 0.5);
-        const chosenArtists = shuffledArtists.slice(0, 4);
-
-        const pools = await Promise.all(
-          chosenArtists.map(a => searchTracks(`${a} top hits`, 3, 'itunes').catch(() => []))
-        );
-
-        for (const pool of pools) {
-          for (const track of pool) {
-            if (track && !exploitPool.has(track.id)) {
-              exploitPool.set(track.id, { track, source: 'seeded_artist', baseScore: 85 });
-            }
-          }
-        }
-
-        // 2. Traer artistas similares al artista principal del perfil
-        const randomArtist = topArtists[0];
-        const similarArtists = await fetchLastFmSimilarArtists(randomArtist, 5);
-        if (similarArtists.length > 0) {
-          const similarPools = await Promise.all(
-            similarArtists.map(a => searchTracks(`${a} top hits`, 3, 'itunes').catch(() => []))
-          );
-          for (const pool of similarPools) {
-            for (const track of pool) {
-              if (track && !exploitPool.has(track.id)) {
-                exploitPool.set(track.id, { track, source: 'artist_similarity', baseScore: 65 });
+            // 2. Fetch Last.fm similar artists to discover UNDISCOVERED adjacent artists in this cluster!
+            try {
+              const similar = await fetchLastFmSimilarArtists(artistName, 4);
+              if (similar.length > 0) {
+                const similarPools = await Promise.all(
+                  similar.map(a => searchTracks(`${a} hits`, 3, 'itunes').catch(() => []))
+                );
+                for (const pool of similarPools) {
+                  for (const t of pool) {
+                    if (t && !exploitPool.has(t.id)) {
+                      exploitPool.set(t.id, { track: t, source: 'cluster_adjacent_discovery', baseScore: 65 });
+                    }
+                  }
+                }
               }
-            }
+            } catch {}
           }
         }
       }
     }
   } catch (err) {
-    console.error('[Recs] Error populating exploitation from history/profile:', err);
+    console.error('[Recs] Error populating exploitation from multi-cluster rotation:', err);
   }
 
   // ── 4. CAPA DESCUBRIMIENTO (discovery) ───────────────────────────────────
@@ -427,6 +481,16 @@ export async function getRecommendations(
     getListenBrainzTopRecordings(15).catch(() => []),
   ]);
 
+  // If seed is French culture, fetch French regional chart tracks specifically
+  if (seedCulture === 'french') {
+    const frenchCharts = await getRegionalTopTracks('france').catch(() => []);
+    for (const track of frenchCharts) {
+      if (!exploitPool.has(track.id) && !discoverPool.has(track.id)) {
+        discoverPool.set(track.id, { track, source: 'french_chart', baseScore: 85 });
+      }
+    }
+  }
+
   // 1. Inject regional country top chart tracks (iTunes RSS + Last.fm Geo)
   for (const track of regionalChartTracks) {
     if (exploitPool.has(track.id) || discoverPool.has(track.id)) continue;
@@ -459,7 +523,15 @@ export async function getRecommendations(
 
   // Discovery queries pool — seed mode uses genre-coherent queries only
   let discoveryPool: string[];
-  if (seedTrackId) {
+  if (seedCulture === 'french') {
+    discoveryPool = [
+      'rap francais 2026',
+      'french pop hits',
+      'chanson francaise',
+      'french urban vibes',
+      'ninho gims tayc hits'
+    ];
+  } else if (seedTrackId) {
     // Seed mode: only genre/artist-adjacent queries, no global trending
     discoveryPool = [
       ...moodWords,
@@ -551,40 +623,58 @@ export async function getRecommendations(
     const artistNorm   = track.artist.toLowerCase().trim();
     const artistPlays  = artistPlayCounts.get(artistNorm) || 0;
 
-    // Sub-linear history score (capped) to prevent infinite loop of over-listened tracks
-    const rawHistoryScore = Math.min(playCount * 2, 15) + Math.min(artistPlays * 1.5, 15);
+    // Sub-linear history score (heavily capped to prevent taste-bubble bias)
+    const rawHistoryScore = Math.min(playCount * 0.5, 5) + Math.min(artistPlays * 0.5, 5);
 
-    // ANTI-LOOP FIX: Novelty bonus is significantly higher to decisively beat history scores.
-    const noveltyBonus = !seen.has(track.id) ? 80 : 0;
+    // SPOTIFY NOVELTY & TRENDING DISCOVERY BOOSTS:
+    // 1. Novelty bonus for new, never-heard tracks
+    const noveltyBonus = !seen.has(track.id) ? 150 : 0;
 
-    // ANTI-LOOP FIX: CDN/local cache is now a mild penalty, NOT a bonus.
+    // 2. Recent release bonus (2025-2026 releases)
+    let recentReleaseBonus = 0;
+    if (track.releaseDate && (track.releaseDate.includes('2025') || track.releaseDate.includes('2026'))) {
+      recentReleaseBonus = 80;
+    }
+
+    // ANTI-LOOP FIX: CDN/local cache is a mild penalty, NOT a bonus.
     const cacheInfo = cacheMap.get(track.id);
     const cacheBonus = cacheInfo?.isLocal ? -15 : cacheInfo?.isCDN ? -8 : +12;
 
-    // GENRE COHERENCE: When a seed is active, enforce genre matching.
-    // This is the most critical fix — it prevents reggaeton after Coldplay.
-    // seed_similarity tracks are already genre-accurate (from Last.fm), so they skip this.
+    // GENRE & CULTURE COHERENCE: When a seed is active, enforce genre & language culture matching.
     let genreCoherenceScore = 0;
     if (seedGenre && c.source !== 'seed_similarity') {
       const trackGenreNorm = (track.genre || '').toLowerCase().trim();
       const seedGenreNorm = seedGenre.toLowerCase().trim();
-      // Check against seed tags too for adjacent genres (e.g., 'britpop' matches 'rock')
       const tagMatch = seedTags.some(tag => trackGenreNorm.includes(tag.toLowerCase()) || tag.toLowerCase().includes(trackGenreNorm));
       if (trackGenreNorm === seedGenreNorm || tagMatch) {
-        genreCoherenceScore = +60; // Strong boost for genre match
+        genreCoherenceScore = +60;
       } else if (trackGenreNorm && seedGenreNorm && trackGenreNorm !== seedGenreNorm) {
-        genreCoherenceScore = -80; // Strong penalty for genre mismatch
+        genreCoherenceScore = -80;
       }
     }
 
-    // Trending track boost (global / local trends)
+    const candCulture = detectLanguageAndCulture(track.artist, track.title, track.genre);
+    let cultureCoherenceScore = 0;
+    if (seedCulture !== 'other') {
+      if (candCulture === seedCulture) {
+        cultureCoherenceScore = +150;
+      } else if (candCulture !== 'other' && candCulture !== seedCulture) {
+        cultureCoherenceScore = -300;
+      }
+    }
+
+    // Mild trending track boost (relative tie-breaker, not a dictatorial score override)
     const isTrendingTrack = trendTracks.some(t => t.id === track.id || normalizeStr(`${t.title}-${t.artist}`) === normalizeStr(`${track.title}-${track.artist}`));
-    // When seed is active, only apply trending boost if genre matches
-    const trendingTrackBonus = isTrendingTrack && (!seedGenre || genreCoherenceScore >= 0) ? 30 : 0;
+    const trendingTrackBonus = isTrendingTrack && (!seedGenre || genreCoherenceScore >= 0) ? 25 : 0;
 
     // Trending genre boost — suppressed when genre mismatch under seed
     const isTrendingGenre = trendGenres.some(g => g.toLowerCase().trim() === track.genre?.toLowerCase().trim());
-    const trendingGenreBonus = isTrendingGenre && (!seedGenre || genreCoherenceScore >= 0) ? 15 : 0;
+    const trendingGenreBonus = isTrendingGenre && (!seedGenre || genreCoherenceScore >= 0) ? 35 : 0;
+
+    // HARD EXCLUSION: If track is already in active queue session, eliminate completely
+    if (hardExcludeSet.has(track.id.toLowerCase().trim()) || hardExcludeSet.has(normalizeStr(`${track.title}-${track.artist}`))) {
+      return { track, score: -99999, source: c.source };
+    }
 
     // Real-time Track Recency Penalty (Cooldown)
     const historyEntry = history.find(h => h.trackId === track.id);
@@ -592,11 +682,11 @@ export async function getRecommendations(
     if (historyEntry && historyEntry.lastPlayed) {
       const elapsedMs = Date.now() - new Date(historyEntry.lastPlayed).getTime();
       const elapsedHours = elapsedMs / (1000 * 60 * 60);
-      if (elapsedHours < 2) trackRecencyPenalty = -1000;      // Played in last 2h -> exclude completely
-      else if (elapsedHours < 12) trackRecencyPenalty = -400; // Played in last 12h -> heavy cooldown
-      else if (elapsedHours < 24) trackRecencyPenalty = -200; // Played in last 24h -> medium cooldown
-      else if (elapsedHours < 72) trackRecencyPenalty = -80;  // Played in last 3 days -> minor cooldown
-      else if (elapsedHours < 168) trackRecencyPenalty = -40; // Played in last 7 days -> tiny cooldown
+      if (elapsedHours < 2) trackRecencyPenalty = -2000;
+      else if (elapsedHours < 12) trackRecencyPenalty = -800;
+      else if (elapsedHours < 24) trackRecencyPenalty = -400;
+      else if (elapsedHours < 72) trackRecencyPenalty = -150;
+      else if (elapsedHours < 168) trackRecencyPenalty = -50;
     }
 
     // Real-time Artist Recency Penalty (Cooldown)
@@ -605,13 +695,13 @@ export async function getRecommendations(
     if (lastArtistPlayed) {
       const elapsedMs = Date.now() - new Date(lastArtistPlayed).getTime();
       const elapsedHours = elapsedMs / (1000 * 60 * 60);
-      if (elapsedHours < 0.5) artistRecencyPenalty = -250; // Played in last 30 mins -> major artist penalty
-      else if (elapsedHours < 2) artistRecencyPenalty = -120;
-      else if (elapsedHours < 8) artistRecencyPenalty = -60;
-      else if (elapsedHours < 24) artistRecencyPenalty = -30;
+      if (elapsedHours < 0.5) artistRecencyPenalty = -500;
+      else if (elapsedHours < 2) artistRecencyPenalty = -250;
+      else if (elapsedHours < 8) artistRecencyPenalty = -100;
+      else if (elapsedHours < 24) artistRecencyPenalty = -50;
     }
 
-    const totalScore = c.baseScore + rawHistoryScore + noveltyBonus + cacheBonus + genreCoherenceScore + trendingTrackBonus + trendingGenreBonus + trackRecencyPenalty + artistRecencyPenalty;
+    const totalScore = c.baseScore + rawHistoryScore + noveltyBonus + recentReleaseBonus + cacheBonus + genreCoherenceScore + cultureCoherenceScore + trendingTrackBonus + trendingGenreBonus + trackRecencyPenalty + artistRecencyPenalty;
 
     // Calibrated jitter: ±15% — enough variety without chaos
     const jitter = 0.85 + Math.random() * 0.30;
@@ -673,7 +763,46 @@ export async function getRecommendations(
     }
   }
 
-  const finalRecs = interleaved.map(sc => sc.track).slice(0, limit);
+  let finalRecs = interleaved.map(sc => sc.track).slice(0, limit);
+
+  // DYNAMIC FALLBACK GUARANTEE: If recommendations are empty or short, sample dynamically from the 300+ Spotify history tracks & regional trends!
+  if (finalRecs.length === 0) {
+    try {
+      const allHistory = readHistory();
+      const trendTracks = await getTrendingTracks('spain');
+      const candidatePool: TrackMetadata[] = [];
+
+      allHistory.forEach(h => {
+        if (h.trackId && h.title && h.artist) {
+          candidatePool.push({
+            id: h.trackId,
+            itunesId: 0,
+            artistId: 0,
+            title: h.title,
+            artist: h.artist,
+            album: 'Spotify History',
+            cover: h.cover || '',
+            duration: 180000,
+            genre: 'Pop / Urbano',
+            releaseDate: null,
+            popularity: 80,
+            preview_url: null,
+          });
+        }
+      });
+
+      candidatePool.push(...trendTracks);
+
+      // Filter out hard excluded tracks and shuffle
+      const freshCandidates = candidatePool
+        .filter(t => t && t.id && !hardExcludeSet.has(t.id.toLowerCase().trim()))
+        .sort(() => Math.random() - 0.5);
+
+      finalRecs = freshCandidates.slice(0, limit);
+    } catch (err) {
+      console.error('[Recs] Error in dynamic fallback sampling:', err);
+    }
+  }
 
   // ANTI-LOOP FIX: Cache TTL reduced to 3 minutes so fresh plays invalidate recs faster.
   cache.setex(cacheKey, 180, JSON.stringify(finalRecs));

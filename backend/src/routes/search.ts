@@ -24,8 +24,10 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     let tracks = await searchTracks(q.trim(), Number(limit) || 20, searchSource);
 
-    // Obtener puntuación de historial del usuario si x-user-id está presente
+    // Obtener puntuación de historial y canciones previamente escuchadas del usuario
     let artistScores: Record<string, number> = {};
+    let listenedTrackKeys = new Set<string>();
+
     if (userId && tracks.length > 0) {
       try {
         const history = await getHistoryForUser(userId);
@@ -35,6 +37,15 @@ router.get('/', async (req: Request, res: Response) => {
               const artistNorm = entry.artist.toLowerCase().trim();
               artistScores[artistNorm] = (artistScores[artistNorm] || 0) + (entry.playCount || 1);
             }
+            if (entry.title && entry.artist) {
+              const cleanTitle = entry.title.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+              const cleanArtist = entry.artist.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+              listenedTrackKeys.add(`${cleanTitle}${cleanArtist}`);
+              listenedTrackKeys.add(`${cleanArtist}${cleanTitle}`);
+            }
+            if (entry.trackId) {
+              listenedTrackKeys.add(entry.trackId.toLowerCase());
+            }
           }
         }
       } catch (err) {
@@ -42,8 +53,9 @@ router.get('/', async (req: Request, res: Response) => {
       }
     }
 
-    // Aplicar boost de personalización e items/géneros en tendencia
-    tracks = await boostSearchResults(tracks, artistScores);
+    // Aplicar boost de personalización, canciones previamente escuchadas e items en tendencia
+    const userRegion = (req.headers['x-user-region'] as string) || 'spain';
+    tracks = await boostSearchResults(tracks, artistScores, userRegion, listenedTrackKeys);
 
     return res.json({ tracks, source: searchSource });
   } catch (err) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { VoiceControlState, VoiceActionId } from '../hooks/useVoiceControl';
 import { DEFAULT_VOICE_COMMANDS } from '../hooks/useVoiceControl';
 
@@ -163,7 +163,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
               letterSpacing: '0.05em',
             }}
           >
-            Vol 🭁 + Vol 🭂
+            📱 Toca el Micrófono Flotante
           </span>
         </div>
 

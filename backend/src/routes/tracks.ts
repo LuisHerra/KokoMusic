@@ -43,7 +43,9 @@ router.get('/recommendations', async (req: Request, res: Response) => {
     }
     const mood = req.query.mood as string | undefined;
     const seedTrackId = req.query.seedTrackId as string | undefined;
-    const recommendations = await getRecommendations(limit, userId, mood, seedTrackId);
+    const seedTrackIds = req.query.seedTrackIds ? (req.query.seedTrackIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
+    const excludeTrackIds = req.query.excludeTrackIds ? (req.query.excludeTrackIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
+    const recommendations = await getRecommendations(limit, userId, mood, seedTrackId, seedTrackIds, excludeTrackIds);
     return res.json(recommendations);
   } catch (error) {
     console.error('[Tracks] Error al obtener recomendaciones:', error);

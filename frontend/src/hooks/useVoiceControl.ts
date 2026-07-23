@@ -95,7 +95,6 @@ export function useVoiceControl(): VoiceControlState {
 
   const {
     currentTrack,
-    isPlaying,
     volume,
     isMuted,
     setIsPlaying,
@@ -105,7 +104,6 @@ export function useVoiceControl(): VoiceControlState {
     toggleMute,
     toggleLyrics,
     toggleQueue,
-    toggleVideo,
     toggleShuffle,
     cycleRepeat,
     setTrack,
