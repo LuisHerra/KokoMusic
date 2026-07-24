@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import TrackGrid, { TrackCard } from '../components/TrackCard/TrackGrid';
 import { getPersonalizedRecommendations, getRecommendations } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
-import { usePwaInstall } from '../hooks/usePwaInstall';
+
 import OnboardingModal from '../components/OnboardingModal';
 
 // SVG icons for each filter category
@@ -55,10 +55,7 @@ export default function Home() {
   const { currentTrack, isPlaying, setTrack, addToQueue, setError } = usePlayerStore();
   const [activeCategory, setActiveCategory] = useState<'all' | 'music' | 'podcasts'>('all');
   
-  const { isInstallable, isInstalled, promptInstall } = usePwaInstall();
-  const [showIosGuide, setShowIosGuide] = useState(false);
-  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+
 
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [hasAutoOpenedOnboarding, setHasAutoOpenedOnboarding] = useState(false);
@@ -248,125 +245,7 @@ export default function Home() {
             {getGreeting()}
           </h1>
 
-          {/* Mobile PWA Installation Banner (Zero dependency 1-click mobile install) */}
-          {isMobile && !isInstalled && (
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(29, 185, 84, 0.2) 0%, rgba(18, 18, 22, 0.9) 100%)',
-              border: '1px solid rgba(29, 185, 84, 0.4)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '16px 20px',
-              marginBottom: 24,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              flexWrap: 'wrap',
-              boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 200 }}>
-                <span style={{ fontSize: 24 }}>📱</span>
-                <div>
-                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#ffffff' }}>Instalar KokoMusic en tu móvil</h4>
-                  <p style={{ margin: '2px 0 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>Instalación directa sin paquetes ni descargas APK</p>
-                </div>
-              </div>
-              {isInstallable ? (
-                <button
-                  onClick={promptInstall}
-                  style={{
-                    background: 'var(--accent)',
-                    color: '#000000',
-                    border: 'none',
-                    borderRadius: 'var(--radius-full)',
-                    padding: '8px 16px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Instalar App ⚡
-                </button>
-              ) : isIos ? (
-                <button
-                  onClick={() => setShowIosGuide(!showIosGuide)}
-                  style={{
-                    background: 'rgba(255,255,255,0.1)',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    borderRadius: 'var(--radius-full)',
-                    padding: '8px 16px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {showIosGuide ? 'Ocultar guía' : 'Ver guía para iOS 📲'}
-                </button>
-              ) : null}
 
-              {showIosGuide && (
-                <div style={{ width: '100%', marginTop: 8, fontSize: 12, color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 8 }}>
-                  En Safari: Toca el icono <strong>Compartir (↑)</strong> en la barra inferior y selecciona <strong>"Añadir a pantalla de inicio (+)"</strong>.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Visual Koko Taste Profile Card */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(29, 185, 84, 0.14) 0%, rgba(18, 18, 22, 0.85) 100%)',
-            border: '1px solid rgba(29, 185, 84, 0.3)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '20px 24px',
-            marginBottom: 28,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
-            animation: 'fadeIn var(--duration-base) ease-out'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: '50%',
-                  background: 'rgba(29, 185, 84, 0.2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 18
-                }}>📊</div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff' }}>Perfil de Gustos Koko Cargado</h3>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>32.192 reproducciones extraídas de Spotify activas</p>
-                </div>
-              </div>
-              <span style={{
-                background: 'rgba(29, 185, 84, 0.2)',
-                color: '#1DB954',
-                border: '1px solid rgba(29, 185, 84, 0.5)',
-                padding: '4px 12px',
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: '0.05em'
-              }}>HISTORIAL SPOTIFY ACTIVO ✓</span>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-              {['GIMS', 'Quevedo', 'Feid', 'Mora', 'Bizarrap', 'Bad Bunny', 'Naza', 'Dr. Yaro', 'Franglish', 'Samurai Jay', 'KeBlack', 'Metro Boomin'].map((art) => (
-                <span key={art} style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  padding: '4px 12px',
-                  borderRadius: 20,
-                  fontSize: 12,
-                  color: '#ffffff',
-                  fontWeight: 600
-                }}>
-                  {art}
-                </span>
-              ))}
-            </div>
-          </div>
 
           {/* 2-column quick-access grid */}
 

@@ -54,6 +54,98 @@ html, body, #root {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+
+/* ── Mobile & Layout Density Customization ──────────────────────────────────── */
+.compact-density .track-row {
+  padding: 4px 8px !important;
+  min-height: 38px !important;
+}
+
+.compact-density .track-row-cover {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 4px !important;
+}
+
+.compact-density .track-row-name {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.compact-density .track-row-artist {
+  font-size: 10px !important;
+}
+
+.compact-density .track-row-album {
+  font-size: 11px !important;
+}
+
+.compact-density .track-card {
+  padding: 8px !important;
+}
+
+.compact-density .tracks-grid {
+  gap: 10px !important;
+}
+
+.compact-density .pill-filters {
+  gap: 6px !important;
+  margin-bottom: 12px !important;
+}
+
+.compact-density .pill-filter {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+}
+
+/* ── Translucent Background & Wallpaper Theme Engine ────────────────────────── */
+[data-bg-style="wallpaper"] body,
+[data-bg-style="glass"] body,
+[data-bg-style="ambient"] body,
+body[data-bg-style="wallpaper"],
+body[data-bg-style="glass"],
+body[data-bg-style="ambient"] {
+  background-color: transparent !important;
+}
+
+[data-bg-style="wallpaper"] .app-shell,
+[data-bg-style="glass"] .app-shell,
+[data-bg-style="ambient"] .app-shell {
+  background: transparent !important;
+}
+
+[data-bg-style="wallpaper"] .sidebar,
+[data-bg-style="glass"] .sidebar,
+[data-bg-style="ambient"] .sidebar {
+  background: rgba(10, 10, 10, 0.65) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-bg-style="wallpaper"] .main-content,
+[data-bg-style="glass"] .main-content,
+[data-bg-style="ambient"] .main-content {
+  background: rgba(10, 10, 10, 0.45) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+[data-bg-style="wallpaper"] .player-bar,
+[data-bg-style="glass"] .player-bar,
+[data-bg-style="ambient"] .player-bar {
+  background: rgba(14, 14, 14, 0.82) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+[data-bg-style="wallpaper"] .main-header,
+[data-bg-style="glass"] .main-header,
+[data-bg-style="ambient"] .main-header {
+  background: rgba(10, 10, 10, 0.60) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */

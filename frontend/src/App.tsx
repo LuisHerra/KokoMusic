@@ -33,6 +33,8 @@ import InstallPrompt from './components/InstallPrompt';
 import AppSplash from './components/AppSplash';
 import { useVoiceControl } from './hooks/useVoiceControl';
 import VoiceControlModal, { IconMic } from './components/VoiceControlModal';
+import ThemeModal from './components/ThemeModal';
+import { useThemeStore } from './store/themeStore';
 
 
 const queryClient = new QueryClient({
@@ -112,6 +114,10 @@ function AppShell() {
 
   const voiceControl = useVoiceControl();
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+
+  useEffect(() => {
+    useThemeStore.getState().applyThemeToDOM();
+  }, []);
 
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('koko_device_id') || '');
   useEffect(() => {
@@ -298,6 +304,35 @@ function AppShell() {
                   </span>
                 </Link>
               )}
+
+              {/* Theme Customizer Palette Button */}
+              <button
+                onClick={() => useThemeStore.getState().toggleThemeModal()}
+                className="ctrl-btn"
+                title="Personalizar diseño y colores"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '50%',
+                  width: 36,
+                  height: 36,
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'transform 0.15s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                  <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                  <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                  <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                  <path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.21-.64-1.67-.42-.45-.64-1.04-.64-1.67 0-1.38 1.12-2.5 2.5-2.5H18c2.21 0 4-1.79 4-4 0-4.97-4.43-9.1-10-9.1z"/>
+                </svg>
+              </button>
             </div>
 
             {/* Stats Page Specific Header Controls */}
@@ -404,6 +439,8 @@ function AppShell() {
         isOpen={isVoiceModalOpen || voiceControl.isListening}
         onClose={() => setIsVoiceModalOpen(false)}
       />
+
+      <ThemeModal />
     </div>
   );
 }

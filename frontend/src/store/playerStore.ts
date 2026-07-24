@@ -53,6 +53,7 @@ interface PlayerState {
   isShuffle: boolean;
   repeatMode: RepeatMode;  // off → all → one
   autoplayEnabled: boolean;
+  sessionPlayedTrackIds: string[]; // Track IDs played during current listening session
 
   // Sleep Timer
   sleepTimerMinutes: number | null;   // null = off, -1 = end of track
@@ -192,6 +193,35 @@ const savedDuration = (() => {
 
 const savedDominantColor = localStorage.getItem('koko_dominant_color') || '#1DB954';
 
+const savedSessionPlayedTrackIds: string[] = (() => {
+  try {
+    const s = sessionStorage.getItem('koko_session_played_ids');
+    return s ? JSON.parse(s) : [];
+  } catch {
+    return [];
+  }
+})();
+
+function recordPlayedTrack(trackId: string, setFn: any, getFn: any) {
+  if (!trackId) return;
+  const current: string[] = getFn().sessionPlayedTrackIds || [];
+  if (!current.includes(trackId)) {
+    const updated = [...current, trackId];
+    try {
+      sessionStorage.setItem('koko_session_played_ids', JSON.stringify(updated));
+    } catch {}
+    setFn({ sessionPlayedTrackIds: updated });
+  }
+}
+
+function getExcludeIdsForApi(state: PlayerState): string {
+  const queueIds = (state.queue || []).map(t => t.id);
+  const sessionIds = state.sessionPlayedTrackIds || [];
+  const currentId = state.currentTrack?.id ? [state.currentTrack.id] : [];
+  const combined = Array.from(new Set([...queueIds, ...sessionIds, ...currentId])).filter(Boolean);
+  return combined.join(',');
+}
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: savedCurrentTrack,
   queue: savedQueue,
@@ -205,6 +235,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isLoading: false,
   error: null,
   dominantColor: savedDominantColor,
+  sessionPlayedTrackIds: savedSessionPlayedTrackIds,
   isLyricsOpen: false,
   isQueueOpen: false,
   isVideoOpen: false,
@@ -256,6 +287,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       idx = newOriginal.findIndex((t) => t.id === track.id);
     }
 
+    recordPlayedTrack(track.id, set, get);
+
     set({
       currentTrack: track,
       queue: newQueue,
@@ -289,6 +322,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     const next = queueIndex + 1;
     if (next < queue.length) {
+      if (queue[next]?.id) recordPlayedTrack(queue[next].id, set, get);
       set({ currentTrack: queue[next], queueIndex: next, progress: 0, error: null, isPlaying: true });
 
       // ── Dynamic 1-by-1 Queue Enrichment (evaluating all recent queue elements) ──
@@ -304,7 +338,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             };
             const apiBase = await getApiUrl();
             const recentQueueIds = queue.slice(Math.max(0, next - 4), next + 1).map(t => t.id).join(',');
-            const allQueueIds = queue.map(t => t.id).join(',');
+            const allQueueIds = getExcludeIdsForApi(get());
             const res = await fetch(
               `${apiBase}/tracks/recommendations?seedTrackIds=${encodeURIComponent(recentQueueIds)}&excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`,
               { headers }
@@ -312,8 +346,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             if (!res.ok) return;
             const recs = await res.json() as Track[];
             if (recs && recs.length > 0) {
-              const { queue: currentQueue } = get();
-              const existingIds = new Set(currentQueue.map(t => t.id));
+              const { queue: currentQueue, sessionPlayedTrackIds } = get();
+              const existingIds = new Set([...currentQueue.map(t => t.id), ...(sessionPlayedTrackIds || [])]);
               const fresh = recs.filter(t => !existingIds.has(t.id));
               if (fresh.length > 0) {
                 const extended = [...currentQueue, ...fresh];
@@ -346,7 +380,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       };
       const apiBase = await getApiUrl();
       const recentQueueIds = queue.slice(Math.max(0, queue.length - 5)).map(t => t.id).join(',');
-      const allQueueIds = queue.map(t => t.id).join(',');
+      const allQueueIds = getExcludeIdsForApi(get());
       
       const seedUrl = recentQueueIds 
         ? `${apiBase}/tracks/recommendations?seedTrackIds=${encodeURIComponent(recentQueueIds)}&excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`
@@ -359,30 +393,37 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         recs = await res.json() as Track[];
       }
 
-      // If seed-based recs empty, fetch general recs
+      // If seed-based recs empty, fetch general recs — ALWAYS with full exclude list to prevent popular-song loop
       if (!recs || recs.length === 0) {
-        const fallbackRes = await fetch(`${apiBase}/tracks/recommendations?limit=2`, { headers });
+        const fallbackRes = await fetch(
+          `${apiBase}/tracks/recommendations?excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`,
+          { headers }
+        );
         if (fallbackRes.ok) {
           recs = await fallbackRes.json() as Track[];
         }
       }
 
       if (recs && recs.length > 0) {
-        const existingIds = new Set(queue.map(t => t.id));
+        const { queue: currentQueue, sessionPlayedTrackIds } = get();
+        const existingIds = new Set([...currentQueue.map(t => t.id), ...(sessionPlayedTrackIds || [])]);
+        // LOOP FIX: Only add tracks NOT already in the queue or played in session.
         const fresh = recs.filter(t => !existingIds.has(t.id));
-        const finalCandidates = fresh.length > 0 ? fresh : recs;
-        const newQueue = [...queue, ...finalCandidates];
-        set({
-          queue: newQueue,
-          originalQueue: newQueue,
-          queueIndex: next,
-          currentTrack: finalCandidates[0],
-          progress: 0,
-          error: null,
-          isPlaying: true,
-          isLoading: false
-        });
-        return;
+        if (fresh.length > 0) {
+          const newQueue = [...queue, ...fresh];
+          if (fresh[0]?.id) recordPlayedTrack(fresh[0].id, set, get);
+          set({
+            queue: newQueue,
+            originalQueue: newQueue,
+            queueIndex: next,
+            currentTrack: queue[next] ?? fresh[0],
+            progress: 0,
+            error: null,
+            isPlaying: true,
+            isLoading: false
+          });
+          return;
+        }
       }
     } catch (err) {
       console.error('[playerStore] Endless playback recommendation fetch failed:', err);

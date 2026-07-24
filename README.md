@@ -18,7 +18,7 @@ Reproductor de música académico estilo Spotify. Usa la **Spotify Web API** par
 Copia y pega este comando en tu terminal de Termux para instalar KokoMusic automáticamente:
 
 ```bash
-pkg install -y git && git clone https://github.com/LuisHerra/KokoMusic.git && cd KokoMusic && chmod +x install_termux.sh && ./install_termux.sh
+pkg install -y git && git clone -b master https://github.com/LuisHerra/KokoMusic.git && cd KokoMusic && chmod +x install_termux.sh && ./install_termux.sh
 ```
 
 ### 🚀 Arrancar KokoMusic en Termux

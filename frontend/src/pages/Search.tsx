@@ -281,9 +281,9 @@ export default function Search() {
     queryKey: ['search', query, source, mood],
     queryFn: () => {
       if (mood && !query) {
-        return getRecommendations(30, mood).then(tracks => ({ tracks, source: 'youtube' }));
+        return getRecommendations(50, mood).then(tracks => ({ tracks, source: 'youtube' }));
       }
-      return searchTracks(query, 30, source as any);
+      return searchTracks(query, 50, source as any);
     },
     enabled: query.trim().length > 0 || (!!mood && !query),
     staleTime: 60_000,
@@ -671,48 +671,7 @@ export default function Search() {
         </div>
       )}
 
-      {/* Top result cards */}
-      {!isLoading && tracks.length > 0 && (
-        tracks[0].artist.toLowerCase().includes(query.replace('@', '').toLowerCase()) ||
-        query.startsWith('@') ||
-        query.includes('youtube.com')
-      ) && (
-        <div style={{ marginBottom: 32, animation: 'fadeIn var(--duration-fast) ease-out' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 12 }}>Mejor resultado</h2>
-          <Link
-            to={(tracks[0].artistId && tracks[0].artistId !== 0) ? `/artist/${tracks[0].artistId}` : `/artist/${encodeURIComponent(tracks[0].artist)}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 24,
-              padding: 24,
-              background: 'var(--bg-card)',
-              borderRadius: 12,
-              textDecoration: 'none',
-              transition: 'background 0.2s',
-            }}
-            className="hover-card"
-          >
-            <img
-              src={tracks[0].cover}
-              alt={tracks[0].artist}
-              style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', flexShrink: 0 }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 6px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tracks[0].artist}</h3>
-              <div style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(255,255,255,0.1)', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, color: '#fff' }}>
-                Artista
-              </div>
-            </div>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', opacity: 0.8, flexShrink: 0 }} className="play-button-hover">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-          </Link>
-          <h2 style={{ fontSize: 18, fontWeight: 800, marginTop: 32, marginBottom: 12 }}>Canciones</h2>
-        </div>
-      )}
+
 
       {/* Table headers */}
       {!isLoading && tracks.length > 0 && (

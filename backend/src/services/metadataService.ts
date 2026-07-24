@@ -468,21 +468,29 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
       if (!v) return null;
       
       const authorName = v.author?.name ?? 'Artista desconocido';
-      const track: TrackMetadata = {
+      const rawTitle = v.title ?? 'Sin título';
+      const { cleanTitle, cleanArtist } = cleanTrackNameAndArtist(rawTitle, authorName);
+
+      let track: TrackMetadata = {
         id: idStr,
         itunesId: 0,
-        artistId: hashStringToInteger(authorName),
-        title: v.title ?? 'Sin título',
-        artist: authorName,
+        artistId: hashStringToInteger(cleanArtist),
+        title: cleanTitle,
+        artist: cleanArtist,
         album: 'YouTube',
         cover: v.thumbnail ?? `https://img.youtube.com/vi/${idStr}/hqdefault.jpg`,
         duration: (v.duration?.seconds ?? 0) * 1000,
-        genre: 'YouTube Video',
+        genre: 'Urbano / Pop',
         releaseDate: null,
         popularity: v.views || 0,
         preview_url: null,
       };
-      
+
+      // Enrich YouTube tracks with iTunes & Last.fm to get real genre, official artist & title
+      try {
+        track = await enrichTrackWithExternalAPIs(track);
+      } catch { /* ignore enrichment error */ }
+
       cache.setex(cacheKey, 86400, JSON.stringify(track));
       return track;
     } catch (err) {

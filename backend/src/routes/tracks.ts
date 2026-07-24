@@ -29,8 +29,32 @@ import { audioExists } from '../services/ytdlpService';
 import { logTrackPlay, readHistory, saveSessionMinutes, HistoryEntry, getHistoryForUser } from '../services/historyService';
 import { setUserRegion } from '../services/regionService';
 import { getRecommendations } from '../services/recommendationService';
+import { enrichHistoryBatch } from '../services/metadataEnrichmentService';
 
 const router = Router();
+
+// POST /api/tracks/enrich-metadata
+router.post('/enrich-metadata', async (req: Request, res: Response) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+    const userId = (req.query.userId || req.body?.userId || undefined) as string | undefined;
+
+    // Trigger non-blocking in background
+    enrichHistoryBatch(userId, limit).catch(err => {
+      console.error('[Tracks] Error in async enrichHistoryBatch:', err);
+    });
+
+    return res.json({
+      success: true,
+      message: `Enrichment started in background for up to ${limit} tracks`,
+      targetUser: userId || 'all'
+    });
+  } catch (error) {
+    console.error('[Tracks] Error launching enrichment:', error);
+    return res.status(500).json({ error: 'Error launching metadata enrichment' });
+  }
+});
+
 
 // GET /api/tracks/recommendations
 router.get('/recommendations', async (req: Request, res: Response) => {
