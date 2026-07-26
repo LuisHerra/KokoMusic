@@ -195,8 +195,8 @@ function AppShell() {
 
   // Limpiar pistas offline que expiran tras 2 días sin escucharse
   useEffect(() => {
+    useThemeStore.getState().applyThemeToDOM();
     cleanupOldOfflineTracks()
-      .then(() => console.log('[App] 💾 Limpieza de caché local IndexedDB realizada con éxito'))
       .catch((err) => console.error('[App] Error en la limpieza de IndexedDB:', err));
   }, []);
 

@@ -465,6 +465,26 @@
     "enrichedAt": "2026-07-24T14:17:51.697Z",
     "source": "itunes+lastfm"
   },
+  "1442452725": {
+    "trackId": "1442452725",
+    "title": "Summertime Sadness",
+    "artist": "Lana Del Rey",
+    "genre": "Pop",
+    "tags": [
+      "indie",
+      "pop",
+      "female vocalists",
+      "indie pop",
+      "Lana Del Rey"
+    ],
+    "language": "english",
+    "listeners": 2517147,
+    "duration": 264773,
+    "album": "Born to Die – Paradise Edition (Special Version)",
+    "releaseDate": "2012-01-27",
+    "enrichedAt": "2026-07-26T17:09:58.675Z",
+    "source": "itunes+lastfm"
+  },
   "1462966826": {
     "trackId": "1462966826",
     "title": "Solo Pienso en Ti (feat. De La Ghetto & Justin Quiles)",
@@ -1097,6 +1117,27 @@
     "enrichedAt": "2026-07-24T14:17:15.080Z",
     "source": "itunes+lastfm"
   },
+  "1712363845": {
+    "trackId": "1712363845",
+    "title": "EXCESOS",
+    "artist": "Fuerza Regida",
+    "genre": "Música Mexicana",
+    "tags": [
+      "Corridos tumbados",
+      "mexico",
+      "corridos",
+      "Sierreno",
+      "corrido",
+      "latin"
+    ],
+    "language": "mexican",
+    "listeners": 94746,
+    "duration": 187077,
+    "album": "Pa las Baby's Y Belikeada",
+    "releaseDate": "2023-10-20",
+    "enrichedAt": "2026-07-26T17:10:04.986Z",
+    "source": "itunes+lastfm"
+  },
   "1713773553": {
     "trackId": "1713773553",
     "title": "Por Clave El Fresa",
@@ -1291,6 +1332,23 @@
     "enrichedAt": "2026-07-24T14:22:48.332Z",
     "source": "itunes+lastfm"
   },
+  "1786262016": {
+    "trackId": "1786262016",
+    "title": "COQUETA",
+    "artist": "Fuerza Regida & Grupo Frontera",
+    "genre": "Música Mexicana",
+    "tags": [
+      "Merge",
+      "mexico"
+    ],
+    "language": "mexican",
+    "listeners": 1417,
+    "duration": 241649,
+    "album": "MALA MÍA - EP",
+    "releaseDate": "2024-12-19",
+    "enrichedAt": "2026-07-26T17:10:06.060Z",
+    "source": "itunes+lastfm"
+  },
   "1791666573": {
     "trackId": "1791666573",
     "title": "⁠LUCES DE COLORES",
@@ -1454,6 +1512,24 @@
     "album": "DONDE TE ESCONDES? 2.0 - Single",
     "releaseDate": "2025-08-28",
     "enrichedAt": "2026-07-24T14:25:26.026Z",
+    "source": "itunes+lastfm"
+  },
+  "1839077087": {
+    "trackId": "1839077087",
+    "title": "Vino Y Cemento",
+    "artist": "Taburete",
+    "genre": "Pop",
+    "tags": [
+      "spanish",
+      "spain",
+      "barcenas"
+    ],
+    "language": "latin",
+    "listeners": 3527,
+    "duration": 172266,
+    "album": "Vino Y Cemento - Single",
+    "releaseDate": "2025-09-26",
+    "enrichedAt": "2026-07-26T17:09:58.019Z",
     "source": "itunes+lastfm"
   },
   "1843351866": {
@@ -2708,6 +2784,39 @@
     "album": "FANTAISIE - Single",
     "releaseDate": "2026-07-24",
     "enrichedAt": "2026-07-26T15:01:00.423Z",
+    "source": "itunes+lastfm"
+  },
+  "MD4fFAkTMjU": {
+    "trackId": "MD4fFAkTMjU",
+    "title": "DIFERENTE 2.0 (Prod.by Pablomas)",
+    "artist": "RVFV",
+    "genre": "Urbano / Pop",
+    "tags": [
+      "latin",
+      "rap",
+      "Hip-Hop",
+      "spanish",
+      "JAVILDA",
+      "trap latino"
+    ],
+    "language": "latin",
+    "duration": 152000,
+    "album": "YouTube",
+    "enrichedAt": "2026-07-26T17:10:02.762Z",
+    "source": "itunes+lastfm"
+  },
+  "ju_Av4gD11c": {
+    "trackId": "ju_Av4gD11c",
+    "title": "Golfista",
+    "artist": "Camin & Rvfv",
+    "genre": "Pop",
+    "tags": [],
+    "language": "latin",
+    "listeners": 7,
+    "duration": 147002,
+    "album": "Golfista - Single",
+    "releaseDate": "2026-02-18T12:00:00Z",
+    "enrichedAt": "2026-07-26T17:10:04.014Z",
     "source": "itunes+lastfm"
   }
 }

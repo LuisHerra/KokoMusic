@@ -102,7 +102,6 @@ export default function Home() {
   };
 
   const { customGreeting } = useThemeStore();
-  const greetingText = customGreeting ? `${getGreeting()}, ${customGreeting}` : getGreeting();
   // Recent items list
   const recentItems = [
     {
@@ -245,7 +244,10 @@ export default function Home() {
         <>
           {/* Greeting Title */}
           <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.5, marginBottom: 14 }}>
-            {greetingText}
+            {getGreeting()}
+            {customGreeting && (
+              <span>, <span style={{ color: 'var(--accent)' }}>{customGreeting}</span></span>
+            )}
           </h1>
 
           {/* 2-column quick-access grid */}

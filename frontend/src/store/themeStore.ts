@@ -278,6 +278,26 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     root.style.setProperty('--accent-glow', cfg.glow);
     root.style.setProperty('--wallpaper-blur', `${wallpaperBlur}px`);
 
+    // Dynamically update PWA / Direct Access Mobile Status Bar Theme Color
+    try {
+      let themeColorMeta = document.querySelector('meta[name="theme-color"]');
+      if (themeColorMeta) {
+        themeColorMeta.setAttribute('content', cfg.accent);
+      } else {
+        themeColorMeta = document.createElement('meta');
+        themeColorMeta.setAttribute('name', 'theme-color');
+        themeColorMeta.setAttribute('content', cfg.accent);
+        document.head.appendChild(themeColorMeta);
+      }
+
+      let appleMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      if (appleMeta) {
+        appleMeta.setAttribute('content', 'black-translucent');
+      }
+    } catch (e) {
+      /* ignore SSR or browser error */
+    }
+
     // Apply layout density
     if (density === 'compact') {
       root.classList.add('compact-density');
