@@ -761,4 +761,290 @@ router.delete('/profile/:userId', async (req, res) => {
   }
 });
 
+// ── BEMUSIC DAILY DROPS ────────────────────────────────────────────────────────
+
+// Helper to calculate posting streak
+async function getDailyDropStreak(userId: string): Promise<number> {
+  if (!supabase) return 0;
+  try {
+    const { data: drops } = await supabase
+      .schema('kokomusic')
+      .from('koko_daily_drops')
+      .select('drop_date')
+      .eq('user_id', userId)
+      .order('drop_date', { ascending: false });
+
+    if (!drops || drops.length === 0) return 0;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    const dropDates = new Set(drops.map((d: any) => d.drop_date));
+    let currentCheck = new Date();
+
+    // Must have dropped today or yesterday to maintain active streak
+    if (!dropDates.has(todayStr) && !dropDates.has(yesterdayStr)) {
+      return 0;
+    }
+
+    if (!dropDates.has(todayStr)) {
+      currentCheck = new Date(Date.now() - 86400000);
+    }
+
+    let streak = 0;
+    while (true) {
+      const dateStr = currentCheck.toISOString().split('T')[0];
+      if (dropDates.has(dateStr)) {
+        streak++;
+        currentCheck.setDate(currentCheck.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  } catch (e) {
+    console.error('Error calculating streak:', e);
+    return 0;
+  }
+}
+
+// ── POST /api/friends/daily-drop ───────────────────────────────────────────────
+// Post or update today's BeMusic song drop
+router.post('/daily-drop', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { userId, trackId, title, artist, cover, caption } = req.body;
+  if (!userId || !trackId || !title || !artist) {
+    return err(res, 'userId, trackId, title y artist requeridos', 400);
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  try {
+    // 1. Check if drop already exists for today
+    const { data: existing } = await supabase!
+      .schema('kokomusic')
+      .from('koko_daily_drops')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('drop_date', todayStr)
+      .maybeSingle();
+
+    let drop: any;
+    if (existing) {
+      const { data: updated, error: updateErr } = await supabase!
+        .schema('kokomusic')
+        .from('koko_daily_drops')
+        .update({
+          track_id: trackId,
+          title,
+          artist,
+          cover,
+          caption: caption || '',
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (updateErr) return err(res, updateErr.message);
+      drop = updated;
+    } else {
+      const { data: inserted, error: insertErr } = await supabase!
+        .schema('kokomusic')
+        .from('koko_daily_drops')
+        .insert({
+          user_id: userId,
+          track_id: trackId,
+          title,
+          artist,
+          cover,
+          caption: caption || '',
+          drop_date: todayStr,
+        })
+        .select()
+        .single();
+
+      if (insertErr) return err(res, insertErr.message);
+      drop = inserted;
+    }
+
+    const streak = await getDailyDropStreak(userId);
+    res.json({ drop, streak, success: true });
+  } catch (e: any) {
+    console.error('Error posting daily drop:', e);
+    err(res, e.message || 'Error al publicar canción del día');
+  }
+});
+
+// ── GET /api/friends/daily-drops?userId=xxx ─────────────────────────────────────
+// Get today's BeMusic feed (locked if user hasn't dropped today)
+router.get('/daily-drops', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { userId } = req.query as { userId?: string };
+  if (!userId) return err(res, 'userId requerido', 400);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  try {
+    // 1. Fetch user's own drop today
+    const { data: myDrop } = await supabase!
+      .schema('kokomusic')
+      .from('koko_daily_drops')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('drop_date', todayStr)
+      .maybeSingle();
+
+    const streak = await getDailyDropStreak(userId);
+    const hasUserDroppedToday = !!myDrop;
+
+    // If user hasn't posted today, return locked state
+    if (!hasUserDroppedToday) {
+      return res.json({
+        hasUserDroppedToday: false,
+        myDropToday: null,
+        streak,
+        friendDropsToday: [],
+      });
+    }
+
+    // 2. Fetch accepted friends
+    const { data: friendships } = await supabase!
+      .schema('kokomusic')
+      .from('friendships')
+      .select('requester_id, addressee_id')
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+      .eq('status', 'accepted');
+
+    const friendIds = (friendships ?? []).map((f: any) =>
+      f.requester_id === userId ? f.addressee_id : f.requester_id
+    );
+
+    const allowedUserIds = [userId, ...friendIds];
+
+    // 3. Fetch today's drops for user + friends
+    const { data: drops, error } = await supabase!
+      .schema('kokomusic')
+      .from('koko_daily_drops')
+      .select('*')
+      .in('user_id', allowedUserIds)
+      .eq('drop_date', todayStr)
+      .order('created_at', { ascending: false });
+
+    if (error) return err(res, error.message);
+
+    // Fetch user profiles for drops
+    const { data: profiles } = await supabase!
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .select('id, username, display_name, avatar_url')
+      .in('id', allowedUserIds);
+
+    const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+
+    // Fetch comments for today's drops
+    const dropIds = (drops ?? []).map((d: any) => d.id);
+    let commentsByDrop: Record<string, any[]> = {};
+
+    if (dropIds.length > 0) {
+      const { data: comments } = await supabase!
+        .schema('kokomusic')
+        .from('koko_daily_drop_comments')
+        .select('*')
+        .in('drop_id', dropIds)
+        .order('created_at', { ascending: true });
+
+      const commentUserIds = (comments ?? []).map((c: any) => c.user_id);
+      const { data: commentProfiles } = await supabase!
+        .schema('kokomusic')
+        .from('koko_profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', Array.from(new Set(commentUserIds)));
+
+      const cProfileMap = new Map((commentProfiles ?? []).map((p: any) => [p.id, p]));
+
+      for (const c of comments ?? []) {
+        if (!commentsByDrop[c.drop_id]) commentsByDrop[c.drop_id] = [];
+        commentsByDrop[c.drop_id].push({
+          ...c,
+          user: cProfileMap.get(c.user_id) || { display_name: 'Usuario' },
+        });
+      }
+    }
+
+    const enrichedDrops = (drops ?? []).map((d: any) => ({
+      ...d,
+      user: profileMap.get(d.user_id) || { id: d.user_id, username: 'kokoer', display_name: 'Usuario Koko', avatar_url: '' },
+      comments: commentsByDrop[d.id] || [],
+    }));
+
+    res.json({
+      hasUserDroppedToday: true,
+      myDropToday: myDrop,
+      streak,
+      friendDropsToday: enrichedDrops,
+    });
+  } catch (e: any) {
+    console.error('Error getting daily drops:', e);
+    err(res, e.message || 'Error al obtener canciones del día');
+  }
+});
+
+// ── POST /api/friends/daily-drop/comment ───────────────────────────────────────
+// Comment on a daily drop
+router.post('/daily-drop/comment', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { dropId, userId, content } = req.body;
+  if (!dropId || !userId || !content?.trim()) {
+    return err(res, 'dropId, userId y content requeridos', 400);
+  }
+
+  try {
+    const { data: comment, error } = await supabase!
+      .schema('kokomusic')
+      .from('koko_daily_drop_comments')
+      .insert({ drop_id: dropId, user_id: userId, content: content.trim() })
+      .select()
+      .single();
+
+    if (error) return err(res, error.message);
+
+    const { data: profile } = await supabase!
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .select('id, username, display_name, avatar_url')
+      .eq('id', userId)
+      .single();
+
+    res.json({ comment: { ...comment, user: profile } });
+  } catch (e: any) {
+    console.error('Error posting comment:', e);
+    err(res, e.message || 'Error al comentar');
+  }
+});
+
+// ── GET /api/friends/daily-drop/mine?userId=xxx ────────────────────────────────
+// Get personal history of all daily drops
+router.get('/daily-drop/mine', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { userId } = req.query as { userId?: string };
+  if (!userId) return err(res, 'userId requerido', 400);
+
+  try {
+    const { data: drops, error } = await supabase!
+      .schema('kokomusic')
+      .from('koko_daily_drops')
+      .select('*')
+      .eq('user_id', userId)
+      .order('drop_date', { ascending: false });
+
+    if (error) return err(res, error.message);
+    const streak = await getDailyDropStreak(userId);
+
+    res.json({ drops: drops ?? [], streak });
+  } catch (e: any) {
+    console.error('Error getting my daily drops:', e);
+    err(res, e.message || 'Error al obtener tus publicaciones');
+  }
+});
+
 export default router;

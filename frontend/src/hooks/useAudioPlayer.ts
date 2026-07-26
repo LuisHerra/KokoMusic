@@ -539,10 +539,31 @@ export function useAudioPlayer() {
       ? usePlayerStore.getState().transitions[`${prevTrackId}-${currentTrack.id}`]
       : undefined;
 
+    // Detener audio anterior inmediatamente para evitar sangrado de sonido durante la carga
+    if (!rule && !crossfadeTriggered.current) {
+      try {
+        prevAudio.pause();
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
     const autoDownload = localStorage.getItem('autoDownloadYt') !== 'false';
     const url = `${getStreamUrl(currentTrack.id)}?autoDownload=${autoDownload}`;
     logToServer('INFO', `[useAudioPlayer] Loading new track. id: ${currentTrack.id}, title: ${currentTrack.title}, autoDownload: ${autoDownload}, URL: ${url}`);
     setLoading(true);
+
+    // Pre-cargar en segundo plano el siguiente tema de la cola si existe
+    const state = usePlayerStore.getState();
+    if (state.queue && state.queue.length > state.queueIndex + 1) {
+      const nextInQueue = state.queue[state.queueIndex + 1];
+      if (nextInQueue && nextInQueue.id) {
+        const preloadUrl = `${getStreamUrl(nextInQueue.id)}?autoDownload=${autoDownload}`;
+        const preloader = new Audio();
+        preloader.src = preloadUrl;
+        preloader.preload = 'auto';
+      }
+    }
 
     // Primero comprobar si debe usar embed mode; si no, cargar audio normal
     checkEmbedMode().then(async (isEmbed) => {

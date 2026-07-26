@@ -84,7 +84,15 @@ export default function TrackGrid({ initialQuery = '', showInput = true }: Props
     setTrack(track, tracks);
   };
 
-  const tracks = data?.tracks ?? [];
+  // Deduplicate tracks by cover URL to ensure visual variety
+  const rawTracks = data?.tracks ?? [];
+  const seenCovers = new Set<string>();
+  const tracks = rawTracks.filter((t) => {
+    if (!t.cover) return true;
+    if (seenCovers.has(t.cover)) return false;
+    seenCovers.add(t.cover);
+    return true;
+  });
 
   return (
     <div>

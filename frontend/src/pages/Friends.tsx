@@ -3,9 +3,10 @@ import FriendsList from '../components/Friends/FriendsList';
 import FriendRequests from '../components/Friends/FriendRequests';
 import UserSearch from '../components/Friends/UserSearch';
 import ChatPanel from '../components/Friends/ChatPanel';
+import BeMusicFeed from '../components/Friends/BeMusicFeed';
 import type { Friendship } from '../lib/api';
 
-type Tab = 'friends' | 'requests' | 'search';
+type Tab = 'bemusic' | 'friends' | 'requests' | 'search';
 
 // UUID validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,7 +54,7 @@ function AccountSetup({ onSet }: { onSet: (id: string) => void }) {
 }
 
 export default function Friends() {
-  const [tab, setTab] = useState<Tab>('friends');
+  const [tab, setTab] = useState<Tab>('bemusic');
   const [chatFriend, setChatFriend] = useState<Friendship | null>(null);
   const [userId, setUserId] = useState(() => localStorage.getItem('koko_device_id') ?? '');
 
@@ -68,19 +69,30 @@ export default function Friends() {
   return (
     <div className="main-body" style={{ paddingTop: 24, paddingBottom: 140, display: 'flex', gap: 0, height: '100%' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ marginBottom: 28 }}>
+        <div style={{ marginBottom: 20 }}>
           <h1 className="section-title" style={{ margin: '0 0 6px' }}>Amigos</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Conecta con otros Kokoers y comparte música.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Conecta con otros Kokoers y comparte tu música diaria.</p>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
-          {(['friends', 'requests', 'search'] as Tab[]).map(t => (
-            <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'friends' ? 'Mis amigos' : t === 'requests' ? 'Solicitudes' : 'Buscar usuarios'}
+        {/* 4 Main Tabs at Top */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+          {[
+            { key: 'bemusic', label: 'BeMusic (Canción del Día)' },
+            { key: 'friends', label: 'Mis amigos' },
+            { key: 'requests', label: 'Solicitudes' },
+            { key: 'search', label: 'Buscar usuarios' },
+          ].map(t => (
+            <button
+              key={t.key}
+              className={`tab-btn ${tab === t.key ? 'active' : ''}`}
+              onClick={() => setTab(t.key as Tab)}
+            >
+              {t.label}
             </button>
           ))}
         </div>
 
+        {tab === 'bemusic' && <BeMusicFeed userId={userId} />}
         {tab === 'friends' && <FriendsList userId={userId} onChat={setChatFriend} />}
         {tab === 'requests' && <FriendRequests userId={userId} />}
         {tab === 'search' && <UserSearch userId={userId} />}

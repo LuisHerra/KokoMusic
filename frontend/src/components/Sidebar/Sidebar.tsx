@@ -258,7 +258,7 @@ export default function Sidebar() {
     <nav className="sidebar">
       {/* Logo */}
       <NavLink to="/" className="sidebar-logo" style={isCollapsed ? { justifyContent: 'center', padding: '16px 0' } : undefined}>
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="#1DB954">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--accent)">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
         </svg>
         {!isCollapsed && <span className="sidebar-logo-text">Koko<span>Music</span></span>}

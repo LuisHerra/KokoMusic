@@ -8,7 +8,7 @@ function Avatar({ src, name, size = 44 }: { src?: string; name: string; size?: n
   const resolved = resolveImageUrl(src);
   if (resolved) return <img src={resolved} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,#1DB954,#0a7a35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.4, fontWeight: 700, color: '#000', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,var(--accent),var(--accent-dim))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.4, fontWeight: 700, color: '#000', flexShrink: 0 }}>
       {name.charAt(0).toUpperCase()}
     </div>
   );
@@ -20,6 +20,7 @@ export default function FriendRequests({ userId }: Props) {
     queryKey: ['friend-requests', userId],
     queryFn: () => getFriendRequests(userId),
     enabled: !!userId,
+    staleTime: 60000,
     refetchInterval: 15000,
   });
 

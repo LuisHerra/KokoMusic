@@ -75,6 +75,25 @@
     "enrichedAt": "2026-07-24T14:22:40.472Z",
     "source": "itunes+lastfm"
   },
+  "380170164": {
+    "trackId": "380170164",
+    "title": "Pop Español",
+    "artist": "Guaraná",
+    "genre": "Alternative",
+    "tags": [
+      "spanish",
+      "pop",
+      "spanish pop",
+      "español"
+    ],
+    "language": "latin",
+    "listeners": 129,
+    "duration": 228730,
+    "album": "Grabaciones 2000-2010",
+    "releaseDate": "2010-07-05",
+    "enrichedAt": "2026-07-26T15:00:48.602Z",
+    "source": "itunes+lastfm"
+  },
   "700051039": {
     "trackId": "700051039",
     "title": "Clocks (Radio Edit)",
@@ -116,6 +135,27 @@
     "enrichedAt": "2026-07-24T14:22:47.211Z",
     "source": "itunes+lastfm"
   },
+  "1005850935": {
+    "trackId": "1005850935",
+    "title": "Easy Lover",
+    "artist": "Philip Bailey & Phil Collins",
+    "genre": "R&B/Soul",
+    "tags": [
+      "pop",
+      "rock",
+      "80s",
+      "classic rock",
+      "new wave",
+      "1980s"
+    ],
+    "language": "english",
+    "listeners": 47371,
+    "duration": 305867,
+    "album": "Chinese Wall (Bonus Track)",
+    "releaseDate": "1984-10-01",
+    "enrichedAt": "2026-07-26T15:00:44.219Z",
+    "source": "itunes+lastfm"
+  },
   "1058140313": {
     "trackId": "1058140313",
     "title": "Adventure of a Lifetime (Radio Edit)",
@@ -135,6 +175,41 @@
     "album": "Adventure of a Lifetime (Radio Edit) - Single",
     "releaseDate": "2015-11-06",
     "enrichedAt": "2026-07-24T14:22:46.095Z",
+    "source": "itunes+lastfm"
+  },
+  "1088551720": {
+    "trackId": "1088551720",
+    "title": "One More Night (2016 Remastered)",
+    "artist": "Phil Collins",
+    "genre": "Pop",
+    "tags": [
+      "pop",
+      "80s",
+      "rock",
+      "classic rock",
+      "soft rock",
+      "british"
+    ],
+    "language": "english",
+    "listeners": 5308,
+    "duration": 291253,
+    "album": "No Jacket Required (Deluxe Edition) [Remastered]",
+    "releaseDate": "1985-01-25",
+    "enrichedAt": "2026-07-26T15:00:35.071Z",
+    "source": "itunes+lastfm"
+  },
+  "1121699106": {
+    "trackId": "1121699106",
+    "title": "La Roja Baila (Himno Oficial de la Selección Española)",
+    "artist": "Sergio Ramos, Niña Pastori & RedOne",
+    "genre": "Pop",
+    "tags": [],
+    "language": "latin",
+    "listeners": 97,
+    "duration": 235385,
+    "album": "La Roja Baila (Himno Oficial de la Selección Española) - Single",
+    "releaseDate": "2016-06-10",
+    "enrichedAt": "2026-07-26T15:00:37.250Z",
     "source": "itunes+lastfm"
   },
   "1122782283": {
@@ -264,6 +339,26 @@
     "album": "The Miseducation of Lauryn Hill",
     "releaseDate": "1998-08-10",
     "enrichedAt": "2026-07-24T14:21:47.984Z",
+    "source": "itunes+lastfm"
+  },
+  "1301513530": {
+    "trackId": "1301513530",
+    "title": "La Chona",
+    "artist": "Los Tucanes de Tijuana",
+    "genre": "Música Mexicana",
+    "tags": [
+      "regional mexican",
+      "Los Tucanes",
+      "indie",
+      "dance",
+      "spanish"
+    ],
+    "language": "mexican",
+    "listeners": 238730,
+    "duration": 199080,
+    "album": "Para Tucancillos y Tucancillas",
+    "releaseDate": "1995-06-30",
+    "enrichedAt": "2026-07-26T15:01:02.231Z",
     "source": "itunes+lastfm"
   },
   "1377817652": {
@@ -438,6 +533,41 @@
     "album": "B11 (feat. Myke Towers) - Single",
     "releaseDate": "2019-09-18",
     "enrichedAt": "2026-07-24T14:17:09.819Z",
+    "source": "itunes+lastfm"
+  },
+  "1492159754": {
+    "trackId": "1492159754",
+    "title": "Corridos Tumbados",
+    "artist": "Natanael Cano",
+    "genre": "Música Mexicana",
+    "tags": [
+      "Corridos tumbados",
+      "corridos",
+      "REGIONAL MEXICANO",
+      "mexico",
+      "mierda",
+      "trap"
+    ],
+    "language": "mexican",
+    "listeners": 13442,
+    "duration": 155403,
+    "album": "Mi Nuevo Yo",
+    "releaseDate": "2019-12-24",
+    "enrichedAt": "2026-07-26T16:37:47.980Z",
+    "source": "itunes+lastfm"
+  },
+  "1497358990": {
+    "trackId": "1497358990",
+    "title": "Meleğim",
+    "artist": "Soolking & Dadju",
+    "genre": "Hip-Hop/Rap",
+    "tags": [],
+    "language": "french",
+    "listeners": 353,
+    "duration": 221815,
+    "album": "Meleğim - Single",
+    "releaseDate": "2020-02-07",
+    "enrichedAt": "2026-07-26T15:00:36.192Z",
     "source": "itunes+lastfm"
   },
   "1499336422": {
@@ -677,6 +807,22 @@
     "album": "FELIZ CUMPLEAÑOS FERXXO TE PIRATEAMOS EL ÁLBUM",
     "releaseDate": "2022-08-19",
     "enrichedAt": "2026-07-24T14:22:42.306Z",
+    "source": "itunes+lastfm"
+  },
+  "1657271974": {
+    "trackId": "1657271974",
+    "title": "Creepin'",
+    "artist": "Metro Boomin, The Weeknd & 21 Savage",
+    "genre": "Hip-Hop/Rap",
+    "tags": [
+      "Merge"
+    ],
+    "language": "english",
+    "listeners": 24873,
+    "duration": 221520,
+    "album": "HEROES & VILLAINS",
+    "releaseDate": "2022-12-02",
+    "enrichedAt": "2026-07-26T16:25:27.114Z",
     "source": "itunes+lastfm"
   },
   "1657583928": {
@@ -951,6 +1097,48 @@
     "enrichedAt": "2026-07-24T14:17:15.080Z",
     "source": "itunes+lastfm"
   },
+  "1713773553": {
+    "trackId": "1713773553",
+    "title": "Por Clave El Fresa",
+    "artist": "Luis R Conriquez",
+    "genre": "Música Mexicana",
+    "tags": [
+      "latin",
+      "mexico",
+      "español",
+      "corridos",
+      "corrudos tumbados",
+      "Corridos tumbados"
+    ],
+    "language": "mexican",
+    "listeners": 9420,
+    "duration": 144985,
+    "album": "Corridos Bélicos",
+    "releaseDate": "2020-10-30",
+    "enrichedAt": "2026-07-26T16:37:46.885Z",
+    "source": "itunes+lastfm"
+  },
+  "1713828004": {
+    "trackId": "1713828004",
+    "title": "What's In a Kiss (Guitar Version)",
+    "artist": "Gilbert O'Sullivan",
+    "genre": "Pop",
+    "tags": [
+      "pop",
+      "70s",
+      "soft rock",
+      "singer-songwriter",
+      "oldies",
+      "irish"
+    ],
+    "language": "english",
+    "listeners": 15917,
+    "duration": 157440,
+    "album": "The Very Best of Gilbert O'Sullivan - A Singer and His Songs",
+    "releaseDate": "1980-08-22",
+    "enrichedAt": "2026-07-26T15:00:57.248Z",
+    "source": "itunes+lastfm"
+  },
   "1714344148": {
     "trackId": "1714344148",
     "title": "Niña Bonita",
@@ -1011,6 +1199,27 @@
     "album": "HIT ME HARD AND SOFT",
     "releaseDate": "2024-05-17",
     "enrichedAt": "2026-07-24T14:18:02.352Z",
+    "source": "itunes+lastfm"
+  },
+  "1742278284": {
+    "trackId": "1742278284",
+    "title": "Hammer to the Heart",
+    "artist": "Teddy Swims",
+    "genre": "Pop",
+    "tags": [
+      "soul",
+      "singer-songwriter",
+      "pop",
+      "rnb",
+      "Neo-Soul",
+      "Teddy Swims"
+    ],
+    "language": "english",
+    "listeners": 103587,
+    "duration": 192317,
+    "album": "I've Tried Everything But Therapy (Part 1.5)",
+    "releaseDate": "2023-09-15",
+    "enrichedAt": "2026-07-26T15:00:58.760Z",
     "source": "itunes+lastfm"
   },
   "1743409332": {
@@ -1150,6 +1359,47 @@
     "enrichedAt": "2026-07-24T14:25:23.976Z",
     "source": "itunes+lastfm"
   },
+  "1817609508": {
+    "trackId": "1817609508",
+    "title": "Let Alone The One You Love",
+    "artist": "Olivia Dean",
+    "genre": "Pop",
+    "tags": [
+      "soul",
+      "rnb",
+      "pop",
+      "indie",
+      "female vocalists",
+      "pop soul"
+    ],
+    "language": "english",
+    "listeners": 421875,
+    "duration": 186000,
+    "album": "The Art of Loving",
+    "releaseDate": "2025-09-26",
+    "enrichedAt": "2026-07-26T15:00:38.236Z",
+    "source": "itunes+lastfm"
+  },
+  "1817609509": {
+    "trackId": "1817609509",
+    "title": "Man I Need",
+    "artist": "Olivia Dean",
+    "genre": "Pop",
+    "tags": [
+      "pop",
+      "soul",
+      "rnb",
+      "Love",
+      "female vocalists"
+    ],
+    "language": "english",
+    "listeners": 959801,
+    "duration": 184000,
+    "album": "The Art of Loving",
+    "releaseDate": "2025-09-26",
+    "enrichedAt": "2026-07-26T15:01:01.519Z",
+    "source": "itunes+lastfm"
+  },
   "1826734890": {
     "trackId": "1826734890",
     "title": "Viano",
@@ -1266,6 +1516,20 @@
     "enrichedAt": "2026-07-24T14:22:33.255Z",
     "source": "itunes+lastfm"
   },
+  "1856956728": {
+    "trackId": "1856956728",
+    "title": "Tu sais déjà",
+    "artist": "1D1R & Danyl",
+    "genre": "Hip-Hop/Rap",
+    "tags": [],
+    "language": "french",
+    "listeners": 7,
+    "duration": 151227,
+    "album": "Tu sais déjà - Single",
+    "releaseDate": "2025-12-05",
+    "enrichedAt": "2026-07-26T16:25:26.121Z",
+    "source": "itunes+lastfm"
+  },
   "1856997770": {
     "trackId": "1856997770",
     "title": "2012",
@@ -1352,6 +1616,27 @@
     "album": "PONGO - Single",
     "releaseDate": "2025-12-31",
     "enrichedAt": "2026-07-24T14:17:26.657Z",
+    "source": "itunes+lastfm"
+  },
+  "1889860646": {
+    "trackId": "1889860646",
+    "title": "Soleil",
+    "artist": "GIMS",
+    "genre": "Hip-Hop/Rap",
+    "tags": [
+      "french",
+      "rap",
+      "rnb",
+      "Hip-Hop",
+      "congo",
+      "pop"
+    ],
+    "language": "french",
+    "listeners": 14639,
+    "duration": 131564,
+    "album": "Soleil - Single",
+    "releaseDate": "2026-04-03",
+    "enrichedAt": "2026-07-26T15:00:46.370Z",
     "source": "itunes+lastfm"
   },
   "1894271865": {
@@ -2298,6 +2583,131 @@
     "album": "YouTube",
     "releaseDate": "2023-07-23T07:00:00Z",
     "enrichedAt": "2026-07-24T14:47:42.890Z",
+    "source": "itunes+lastfm"
+  },
+  "DxTwnypDzl0": {
+    "trackId": "DxTwnypDzl0",
+    "title": "The Art of Lamine Yamal 🇪🇸🌟",
+    "artist": "All Football",
+    "genre": "Unknown",
+    "tags": [],
+    "language": "other",
+    "enrichedAt": "2026-07-26T15:00:34.001Z",
+    "source": "search_only"
+  },
+  "6788997128": {
+    "trackId": "6788997128",
+    "title": "Fireflies",
+    "artist": "Martin Garrix & U2",
+    "genre": "Pop",
+    "tags": [],
+    "language": "english",
+    "listeners": 96,
+    "duration": 263768,
+    "album": "Fireflies - Single",
+    "releaseDate": "2026-07-24",
+    "enrichedAt": "2026-07-26T15:00:39.451Z",
+    "source": "itunes+lastfm"
+  },
+  "b8TAzptVk_U": {
+    "trackId": "b8TAzptVk_U",
+    "title": "Beretta (De Los Cerros La Escuela) | Letra",
+    "artist": "El De Las R’s",
+    "genre": "Pop",
+    "tags": [],
+    "language": "latin",
+    "listeners": 2,
+    "duration": 146000,
+    "album": "Beretta (Slowed + Reverb) - EP",
+    "releaseDate": "2025-05-28T12:00:00Z",
+    "enrichedAt": "2026-07-26T15:00:43.163Z",
+    "source": "itunes+lastfm"
+  },
+  "6766440193": {
+    "trackId": "6766440193",
+    "title": "des fleurs",
+    "artist": "Tove Lo & Stromae",
+    "genre": "Pop",
+    "tags": [],
+    "language": "french",
+    "listeners": 1394,
+    "duration": 172545,
+    "album": "ESTRUS",
+    "releaseDate": "2026-06-12",
+    "enrichedAt": "2026-07-26T15:00:45.228Z",
+    "source": "itunes+lastfm"
+  },
+  "U2t5Y89I2tE": {
+    "trackId": "U2t5Y89I2tE",
+    "title": "MON BÉBÉ",
+    "artist": "RnBoi",
+    "genre": "R&B/Soul",
+    "tags": [
+      "french",
+      "rap",
+      "rnb",
+      "france",
+      "nemours",
+      "melo"
+    ],
+    "language": "french",
+    "listeners": 50457,
+    "duration": 130500,
+    "album": "MON BÉBÉ - Single",
+    "releaseDate": "2025-10-24T12:00:00Z",
+    "enrichedAt": "2026-07-26T15:00:47.557Z",
+    "source": "itunes+lastfm"
+  },
+  "KeKgzoKzrn8": {
+    "trackId": "KeKgzoKzrn8",
+    "title": "OUI (Lyric Video)",
+    "artist": "RnBoi",
+    "genre": "Urbano / Pop",
+    "tags": [
+      "french",
+      "rap",
+      "rnb",
+      "france",
+      "nemours",
+      "melo"
+    ],
+    "language": "french",
+    "duration": 162000,
+    "album": "YouTube",
+    "enrichedAt": "2026-07-26T15:00:52.078Z",
+    "source": "itunes+lastfm"
+  },
+  "97XAfE3T3dg": {
+    "trackId": "97XAfE3T3dg",
+    "title": "El rama lama(ding dong) videoclip",
+    "artist": "3+2",
+    "genre": "Urbano / Pop",
+    "tags": [],
+    "language": "latin",
+    "duration": 158000,
+    "album": "YouTube",
+    "enrichedAt": "2026-07-26T15:00:55.975Z",
+    "source": "itunes+lastfm"
+  },
+  "6793197957": {
+    "trackId": "6793197957",
+    "title": "FANTAISIE",
+    "artist": "GIMS",
+    "genre": "Hip-Hop/Rap",
+    "tags": [
+      "french",
+      "rap",
+      "rnb",
+      "Hip-Hop",
+      "congo",
+      "pop"
+    ],
+    "language": "french",
+    "listeners": 274,
+    "duration": 160000,
+    "album": "FANTAISIE - Single",
+    "releaseDate": "2026-07-24",
+    "enrichedAt": "2026-07-26T15:01:00.423Z",
     "source": "itunes+lastfm"
   }
 }

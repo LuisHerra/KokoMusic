@@ -141,7 +141,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
             style={{
               background: 'rgba(29, 185, 84, 0.15)',
               border: '1px solid rgba(29, 185, 84, 0.4)',
-              color: '#1DB954',
+              color: 'var(--accent)',
               padding: '2px 8px',
               borderRadius: 6,
               fontSize: 11,
@@ -188,7 +188,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
               fontWeight: 600,
               border: 'none',
               cursor: 'pointer',
-              background: activeTab === 'listen' ? '#1DB954' : 'transparent',
+              background: activeTab === 'listen' ? 'var(--accent)' : 'transparent',
               color: activeTab === 'listen' ? '#000' : '#aaa',
               transition: 'all 0.2s',
             }}
@@ -204,7 +204,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
               fontWeight: 600,
               border: 'none',
               cursor: 'pointer',
-              background: activeTab === 'customize' ? '#1DB954' : 'transparent',
+              background: activeTab === 'customize' ? 'var(--accent)' : 'transparent',
               color: activeTab === 'customize' ? '#000' : '#aaa',
               transition: 'all 0.2s',
             }}
@@ -254,7 +254,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
                   height: 80,
                   borderRadius: '50%',
                   background: isListening
-                    ? 'linear-gradient(135deg, #1DB954, #1aa34a)'
+                    ? 'linear-gradient(135deg, var(--accent), var(--accent-dim))'
                     : 'linear-gradient(135deg, #2a2a35, #1f1f28)',
                   border: isListening ? '3px solid #ffffff' : '2px solid rgba(255,255,255,0.15)',
                   display: 'flex',
@@ -289,7 +289,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
               }}
             >
               {isListening ? (
-                <span style={{ fontSize: 14, fontWeight: 500, color: interimTranscript || transcript ? '#1DB954' : '#888' }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: interimTranscript || transcript ? 'var(--accent)' : '#888' }}>
                   {interimTranscript || transcript || 'Escuchando... di tu comando'}
                 </span>
               ) : (
@@ -306,7 +306,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
                   width: '100%',
                   background: 'rgba(29, 185, 84, 0.15)',
                   border: '1px solid rgba(29, 185, 84, 0.4)',
-                  color: '#1DB954',
+                  color: 'var(--accent)',
                   borderRadius: 12,
                   padding: '10px 14px',
                   fontSize: 13,
@@ -357,16 +357,16 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
                 }}
               >
                 <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px 12px', borderRadius: 8, color: '#ddd' }}>
-                  <span style={{ color: '#1DB954', fontWeight: 600 }}>"Siguiente"</span> / <span style={{ color: '#1DB954', fontWeight: 600 }}>"Anterior"</span>
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}>"Siguiente"</span> / <span style={{ color: 'var(--accent)', fontWeight: 600 }}>"Anterior"</span>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px 12px', borderRadius: 8, color: '#ddd' }}>
-                  <span style={{ color: '#1DB954', fontWeight: 600 }}>"Pausar"</span> / <span style={{ color: '#1DB954', fontWeight: 600 }}>"Reproducir"</span>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginBottom: 4 }}>
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}>"Pausar"</span> / <span style={{ color: 'var(--accent)', fontWeight: 600 }}>"Reproducir"</span>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px 12px', borderRadius: 8, color: '#ddd' }}>
-                  <span style={{ color: '#1DB954', fontWeight: 600 }}>"Subir volumen"</span> / <span style={{ color: '#1DB954', fontWeight: 600 }}>"Bajar"</span>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginBottom: 4 }}>
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}>"Subir volumen"</span> / <span style={{ color: 'var(--accent)', fontWeight: 600 }}>"Bajar"</span>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px 12px', borderRadius: 8, color: '#ddd' }}>
-                  <span style={{ color: '#1DB954', fontWeight: 600 }}>"Reproducir [canción/artista]"</span>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}>"Reproducir [canción/artista]"</span>
                 </div>
               </div>
             </div>
@@ -419,7 +419,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
                           style={{
                             background: 'rgba(29, 185, 84, 0.15)',
                             border: '1px solid rgba(29, 185, 84, 0.3)',
-                            color: '#1DB954',
+                            color: 'var(--accent)',
                             fontSize: 11,
                             fontWeight: 600,
                             padding: '3px 8px',
@@ -433,7 +433,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
                         <button
                           onClick={() => handleSaveEditing(action)}
                           style={{
-                            background: '#1DB954',
+                            background: 'var(--accent)',
                             border: 'none',
                             color: '#000000',
                             fontSize: 11,
@@ -457,7 +457,7 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
                         style={{
                           width: '100%',
                           background: 'rgba(0, 0, 0, 0.4)',
-                          border: '1px solid #1DB954',
+                          border: '1px solid var(--accent)',
                           color: '#ffffff',
                           padding: '6px 10px',
                           borderRadius: 6,

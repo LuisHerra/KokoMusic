@@ -68,9 +68,9 @@ export default function AppSplash({ onReady }: Props) {
       {/* Logo */}
       <div style={{
         width: 96, height: 96, borderRadius: 24,
-        background: 'linear-gradient(135deg, #1db954 0%, #0a7a35 100%)',
+        background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 0 48px rgba(29, 185, 84, 0.4)',
+        boxShadow: '0 0 48px var(--accent-glow)',
         animation: 'pulse 2s ease-in-out infinite',
       }}>
         <svg width="52" height="52" viewBox="0 0 24 24" fill="black">
@@ -80,8 +80,8 @@ export default function AppSplash({ onReady }: Props) {
 
       <style>{`
         @keyframes pulse {
-          0%, 100% { box-shadow: 0 0 48px rgba(29, 185, 84, 0.4); transform: scale(1); }
-          50%       { box-shadow: 0 0 72px rgba(29, 185, 84, 0.6); transform: scale(1.03); }
+          0%, 100% { box-shadow: 0 0 48px var(--accent-glow); transform: scale(1); }
+          50%       { box-shadow: 0 0 72px var(--accent-glow); transform: scale(1.03); }
         }
         @keyframes spin {
           to { transform: rotate(360deg); }
@@ -104,8 +104,8 @@ export default function AppSplash({ onReady }: Props) {
       {/* Spinner */}
       <div style={{
         width: 32, height: 32, borderRadius: '50%',
-        border: '3px solid rgba(29,185,84,0.15)',
-        borderTopColor: '#1db954',
+        border: '3px solid var(--accent-glow)',
+        borderTopColor: 'var(--accent)',
         animation: 'spin 1s linear infinite',
       }} />
 

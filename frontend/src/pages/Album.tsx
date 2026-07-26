@@ -219,7 +219,7 @@ export default function Album() {
     <div style={{ paddingBottom: 120 }}>
       {/* Hero */}
       <div className="playlist-hero" style={{
-        background: 'linear-gradient(180deg, rgba(29, 185, 84, 0.3) 0%, var(--bg-elevated) 100%)'
+        background: 'linear-gradient(180deg, var(--accent-glow) 0%, transparent 100%)'
       }}>
         <div className="playlist-cover-container">
           {album.cover && <img src={album.cover} alt={album.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}

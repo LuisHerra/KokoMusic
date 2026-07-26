@@ -412,7 +412,7 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
                  style={{ 
                     padding: '10px 24px', borderRadius: 8, border: 'none', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
                     background: isPreviewing ? 'rgba(255,255,255,0.1)' : 'rgba(29, 185, 84, 0.2)',
-                    color: isPreviewing ? '#fff' : '#1DB954'
+                    color: isPreviewing ? '#fff' : 'var(--accent)'
                  }}
                >
                  {isPreviewing ? (

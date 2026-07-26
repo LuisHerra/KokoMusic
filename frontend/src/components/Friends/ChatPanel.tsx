@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMessages, sendMessage, getProfileNames, cleanName, type Friendship, type KokoMessage, resolveImageUrl } from '../../lib/api';
+import { getMessages, sendMessage, getProfileNames, cleanName, type Friendship, type KokoMessage, resolveImageUrl, type Track } from '../../lib/api';
+import { usePlayerStore } from '../../store/playerStore';
 
 interface Props {
   userId: string;
@@ -12,7 +13,7 @@ function Avatar({ src, name, size = 36 }: { src?: string; name: string; size?: n
   const resolved = resolveImageUrl(src);
   if (resolved) return <img src={resolved} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,#1DB954,#0a7a35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 700, color: '#000', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,var(--accent),var(--accent-dim))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 700, color: '#000', flexShrink: 0 }}>
       {name.charAt(0).toUpperCase()}
     </div>
   );
@@ -79,13 +80,76 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
         )}
         {messages.map(m => {
           const isMe = m.sender_id === userId;
+          const isSongShare = m.content.startsWith('[SONG_SHARE]');
+          let songData: any = null;
+
+          if (isSongShare) {
+            try {
+              songData = JSON.parse(m.content.replace('[SONG_SHARE]', ''));
+            } catch (e) {
+              console.error('Error parsing shared song:', e);
+            }
+          }
+
           return (
             <div key={m.id} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', gap: 6, alignItems: 'flex-end' }}>
               {!isMe && <Avatar src={friend.avatar_url} name={cleanName(friend.display_name || friend.username || 'Amigo Koko')} size={24} />}
-              <div style={{ maxWidth: '78%' }}>
-                <div style={{ background: isMe ? 'var(--accent)' : 'rgba(255,255,255,0.09)', color: isMe ? '#000' : '#fff', borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px', padding: '8px 12px', fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word' }}>
-                  {m.content}
-                </div>
+              <div style={{ maxWidth: '82%' }}>
+                {isSongShare && songData ? (
+                  <div style={{
+                    background: isMe ? 'var(--accent-glow)' : 'rgba(255,255,255,0.08)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: 14,
+                    padding: 10,
+                    color: '#fff',
+                  }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: 4 }}>
+                      🎵 Canción recomendada
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <img src={songData.cover} alt={songData.title} style={{ width: 42, height: 42, borderRadius: 6, objectFit: 'cover' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{songData.title}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{songData.artist}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const { setTrack } = usePlayerStore.getState();
+                          const t: Track = {
+                            id: songData.id,
+                            title: songData.title,
+                            artist: songData.artist,
+                            album: 'Sencillo',
+                            cover: songData.cover,
+                            duration: 180,
+                            popularity: 80,
+                            preview_url: null,
+                          };
+                          setTrack(t, [t]);
+                        }}
+                        style={{
+                          background: 'var(--accent)',
+                          color: '#000',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: 32,
+                          height: 32,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: isMe ? 'var(--accent)' : 'rgba(255,255,255,0.09)', color: isMe ? '#000' : '#fff', borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px', padding: '8px 12px', fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word' }}>
+                    {m.content}
+                  </div>
+                )}
                 <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, textAlign: isMe ? 'right' : 'left', paddingInline: 4 }}>{fmt(m.created_at)}</div>
               </div>
             </div>

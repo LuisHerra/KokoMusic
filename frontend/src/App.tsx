@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import Sidebar from './components/Sidebar/Sidebar';
 import Player from './components/Player/Player';
 import BottomNav from './components/BottomNav';
@@ -61,20 +62,55 @@ function NotificationPoller() {
   return null;
 }
 
-// Barra de búsqueda global en el header
-function GlobalSearch() {
+function GlobalSearch({ onFocusChange }: { onFocusChange?: (focused: boolean) => void }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [value, setValue] = useState(params.get('q') ?? '');
+  const [isFocused, setIsFocused] = useState(false);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (value.trim()) navigate(`/search?q=${encodeURIComponent(value.trim())}`);
+    if (value.trim()) {
+      navigate(`/search?q=${encodeURIComponent(value.trim())}`);
+      setIsFocused(false);
+      onFocusChange?.(false);
+    }
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    onFocusChange?.(true);
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      setIsFocused(false);
+      onFocusChange?.(false);
+    }, 180);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="search-bar" style={{ flex: 1, maxWidth: 440 }}>
-      <span className="search-icon">
+    <motion.form
+      onSubmit={handleSubmit}
+      className="search-bar"
+      initial={false}
+      animate={{
+        maxWidth: isFocused ? (isMobile ? 320 : 560) : (isMobile ? 200 : 420),
+      }}
+      transition={{ type: 'spring', stiffness: 350, damping: 28 }}
+      style={{
+        flex: 1,
+        position: 'relative',
+        borderRadius: '9999px',
+        background: 'transparent',
+        boxShadow: 'none',
+        border: 'none',
+        padding: 0,
+        zIndex: isFocused ? 30 : 1,
+      }}
+    >
+      <span className="search-icon" style={{ color: isFocused ? 'var(--accent)' : 'var(--text-muted)' }}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
           <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
         </svg>
@@ -85,8 +121,35 @@ function GlobalSearch() {
         placeholder="Buscar canciones, artistas..."
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        style={{
+          borderRadius: '9999px',
+          borderColor: isFocused ? 'var(--accent)' : 'rgba(255, 255, 255, 0.12)',
+          background: isFocused ? 'var(--bg-highlight)' : 'var(--bg-card)',
+          boxShadow: isFocused ? '0 0 20px var(--accent-glow)' : 'none',
+          transition: 'all 0.2s ease',
+        }}
       />
-    </form>
+      {value && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          type="button"
+          onClick={() => { setValue(''); navigate('/search'); }}
+          style={{
+            position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 4
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </motion.button>
+      )}
+    </motion.form>
   );
 }
 
@@ -111,6 +174,8 @@ function PlayerErrorToast() {
 function AppShell() {
   const { isLyricsOpen, isQueueOpen, isVideoOpen, toggleVideo, currentTrack } = usePlayerStore();
   const location = useLocation();
+  const [isHeaderSearchFocused, setIsHeaderSearchFocused] = useState(false);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
   const voiceControl = useVoiceControl();
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
@@ -241,11 +306,11 @@ function AppShell() {
                 </button>
               </div>
 
-              {location.pathname !== '/search' && <GlobalSearch />}
+              {location.pathname !== '/search' && <GlobalSearch onFocusChange={setIsHeaderSearchFocused} />}
             </div>
 
-            {/* Right side header actions — always visible */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Right side header actions */}
+            <div style={{ display: (isHeaderSearchFocused && isMobile) ? 'none' : 'flex', alignItems: 'center', gap: 10 }}>
               <button
                 className="ctrl-btn"
                 onClick={() => {
@@ -261,14 +326,14 @@ function AppShell() {
                   width: 34,
                   height: 34,
                   borderRadius: '50%',
-                  background: voiceControl.isListening ? 'rgba(29, 185, 84, 0.2)' : 'rgba(255, 255, 255, 0.06)',
-                  border: voiceControl.isListening ? '1px solid #1DB954' : '1px solid rgba(255, 255, 255, 0.1)',
-                  color: voiceControl.isListening ? '#1DB954' : 'var(--text-secondary)',
+                  background: voiceControl.isListening ? 'var(--accent-glow)' : 'rgba(255, 255, 255, 0.06)',
+                  border: voiceControl.isListening ? '1px solid var(--accent)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  color: voiceControl.isListening ? 'var(--accent)' : 'var(--text-secondary)',
                   cursor: 'pointer',
                   transition: 'all var(--duration-fast)',
                 }}
               >
-                <IconMic size={18} color={voiceControl.isListening ? '#1DB954' : 'currentColor'} />
+                <IconMic size={18} color={voiceControl.isListening ? 'var(--accent)' : 'currentColor'} />
               </button>
               <NotificationBell />
               {isUUID && (
@@ -285,7 +350,7 @@ function AppShell() {
                   ) : (
                     <div style={{
                       width: 28, height: 28, borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #1DB954, #0a7a35)',
+                      background: 'linear-gradient(135deg, var(--accent), var(--accent-dim))',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 12, fontWeight: 700, color: '#000', flexShrink: 0
                     }}>

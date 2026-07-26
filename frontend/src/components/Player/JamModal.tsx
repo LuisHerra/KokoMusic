@@ -285,7 +285,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
         }
         .wave-bar {
           width: 3px;
-          background: #1DB954;
+          background: var(--accent);
           border-radius: 2px;
           animation: bounceBar 1.2s ease-in-out infinite;
         }
@@ -315,7 +315,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
           <div>
             <h3 style={{ fontSize: '19px', fontWeight: 800, letterSpacing: '-0.4px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="#1DB954">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--accent)">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15.5h-2v-2h2v2zm0-4.5h-2V7h2v6z"/>
               </svg>
               Sinfonía
@@ -353,7 +353,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                 padding: '12px 0',
                 background: 'transparent',
                 border: 'none',
-                borderBottom: tab === 'session' ? '2px solid #1DB954' : '2px solid transparent',
+                borderBottom: tab === 'session' ? '2px solid var(--accent)' : '2px solid transparent',
                 color: tab === 'session' ? '#fff' : 'var(--text-secondary)',
                 fontWeight: 700,
                 fontSize: '13px',
@@ -370,7 +370,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                 padding: '12px 0',
                 background: 'transparent',
                 border: 'none',
-                borderBottom: tab === 'queue' ? '2px solid #1DB954' : '2px solid transparent',
+                borderBottom: tab === 'queue' ? '2px solid var(--accent)' : '2px solid transparent',
                 color: tab === 'queue' ? '#fff' : 'var(--text-secondary)',
                 fontWeight: 700,
                 fontSize: '13px',
@@ -386,7 +386,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
               {queue.length > 0 && (
                 <span style={{ 
                   background: 'rgba(29, 185, 84, 0.15)', 
-                  color: '#1DB954', 
+                  color: 'var(--accent)', 
                   borderRadius: '10px', 
                   padding: '2px 7px', 
                   fontSize: '10px', 
@@ -436,19 +436,19 @@ export default function JamModal({ isOpen, onClose }: Props) {
               disabled={loading} 
               style={{ 
                 width: '100%', 
-                padding: '14px 0', 
-                borderRadius: '24px', 
-                background: '#1DB954', 
-                color: 'black', 
-                fontWeight: 800, 
-                fontSize: '14px', 
-                border: 'none', 
+                background: 'var(--accent)',
+                color: '#000',
+                fontWeight: 700,
+                border: 'none',
+                borderRadius: '500px',
+                padding: '12px 24px',
+                fontSize: '14px',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                boxShadow: '0 4px 12px rgba(29, 185, 84, 0.2)'
+                boxShadow: '0 4px 12px var(--accent-glow)'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1ed760'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1DB954'}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--accent-bright)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--accent)'}
             >
               {loading ? 'Iniciando Sinfonía...' : 'Iniciar una Sinfonía'}
             </button>
@@ -477,7 +477,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                   outline: 'none',
                   transition: 'border-color 0.2s'
                 }}
-                onFocus={(e) => e.currentTarget.style.borderColor = '#1DB954'}
+                onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
                 onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
                 value={inputCode}
                 onChange={e => setInputCode(e.target.value.toUpperCase().slice(0, 4))}
@@ -540,7 +540,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                   position: 'absolute',
                   cursor: 'pointer',
                   top: 0, left: 0, right: 0, bottom: 0,
-                  backgroundColor: isSinfoniaSyncEnabled ? '#1DB954' : 'rgba(255,255,255,0.12)',
+                  backgroundColor: isSinfoniaSyncEnabled ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
                   transition: '0.3s',
                   borderRadius: '34px'
                 }}>
@@ -581,7 +581,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                   </div>
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '10px', color: '#1DB954', fontWeight: 800, marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 800, marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Sintonizado en
                   </div>
                   <div style={{ fontWeight: 700, fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -749,7 +749,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                           fontSize: '8px', 
                           fontWeight: 800, 
                           color: 'black', 
-                          background: '#1DB954', 
+                          background: 'var(--accent)', 
                           borderRadius: '4px', 
                           padding: '1px 5px',
                           letterSpacing: '0.3px'
@@ -800,7 +800,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                             width: '8px',
                             height: '8px',
                             borderRadius: '50%',
-                            background: '#1DB954',
+                            background: 'var(--accent)',
                             border: '1.5px solid #0c0c0d'
                           }} />
                         </div>
@@ -814,7 +814,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                           padding: '6px 12px',
                           borderRadius: '14px',
                           border: 'none',
-                          background: inSession ? 'rgba(255,255,255,0.04)' : friend.status === 'inviting' ? 'rgba(255,255,255,0.08)' : '#1DB954',
+                          background: inSession ? 'rgba(255,255,255,0.04)' : friend.status === 'inviting' ? 'rgba(255,255,255,0.08)' : 'var(--accent)',
                           color: inSession ? 'var(--text-secondary)' : friend.status === 'inviting' ? '#fff' : '#000',
                           fontSize: '11px',
                           fontWeight: 700,
@@ -830,7 +830,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
               </div>
             </div>
 
-            {error && <div style={{ color: '#1DB954', fontSize: '12px', textAlign: 'center', fontWeight: 600 }}>{error}</div>}
+            {error && <div style={{ color: 'var(--accent)', fontSize: '12px', textAlign: 'center', fontWeight: 600 }}>{error}</div>}
 
             {/* Leave button */}
             <button 
@@ -939,7 +939,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                       <button 
                         onClick={() => handleVote(item.id)} 
                         style={{ 
-                          background: votedIds.has(item.id) ? '#1DB954' : 'rgba(255, 255, 255, 0.05)', 
+                          background: votedIds.has(item.id) ? 'var(--accent)' : 'rgba(255, 255, 255, 0.05)', 
                           border: 'none', 
                           borderRadius: '6px', 
                           padding: '6px 10px', 

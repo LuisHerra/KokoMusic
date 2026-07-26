@@ -43,6 +43,7 @@ import SleepTimer from './SleepTimer';
 import PlaylistModal from './PlaylistModal';
 import JamModal from './JamModal';
 import EqualizerPanel from './EqualizerPanel';
+import ShareTrackModal from '../ShareTrackModal';
 
 function formatTime(secs: number): string {
   if (!secs || isNaN(secs)) return '0:00';
@@ -170,7 +171,7 @@ import { getApiUrl } from '../../lib/backendResolver';
 
 export default function Player() {
   const {
-    currentTrack, isPlaying, volume, isMuted, progress, duration, isLoading, dominantColor,
+    currentTrack, isPlaying, volume, isMuted, progress, duration, isLoading,
     togglePlay, nextTrack, prevTrack, setVolume, toggleMute,
     isLyricsOpen, toggleLyrics,
     isQueueOpen, toggleQueue,
@@ -183,9 +184,32 @@ export default function Player() {
   const { isLiked, toggleLike } = useLikedSongs();
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [showJamModal, setShowJamModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showEq, setShowEq] = useState(false);
 
+  const userId = localStorage.getItem('koko_user_id') || '00000000-0000-0000-0000-000000000001';
+
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
+  const [cdnStage, setCdnStage] = useState({ progress: 20, label: '🔍 Buscando en caché local...' });
+
+  useEffect(() => {
+    if (!isLoading) return;
+    setCdnStage({ progress: 20, label: '🔍 Buscando audio en caché local...' });
+
+    const t1 = setTimeout(() => {
+      setCdnStage({ progress: 55, label: '📥 Extrayendo audio HQ desde YouTube / CDN...' });
+    }, 450);
+
+    const t2 = setTimeout(() => {
+      setCdnStage({ progress: 85, label: '⚡ Subiendo y procesando audio en CDN...' });
+    }, 1200);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isLoading, currentTrack?.id]);
 
 
   // Verificar y hacer polling al estado de descarga cuando cambie currentTrack.id o status
@@ -239,8 +263,8 @@ export default function Player() {
     };
   }, [currentTrack?.id]);
 
-  const handleDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDownload = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!currentTrack || downloadStatus !== 'none') return;
 
     setDownloadStatus('downloading');
@@ -281,10 +305,9 @@ export default function Player() {
   const progressPct = duration > 0 ? (progress / duration) * 100 : 0;
   const volumePct = isMuted ? 0 : volume * 100;
 
-  // Color dinámico del player según la carátula
+  // Layout style for player bar
   const playerStyle = {
     position: 'relative' as const,
-    ...(currentTrack ? { background: `linear-gradient(to right, ${dominantColor}22, var(--bg-elevated))` } : {})
   };
 
   const handlePlayerBarClick = (e: React.MouseEvent) => {
@@ -299,6 +322,48 @@ export default function Player() {
 
   return (
     <div className="player" style={playerStyle} onClick={handlePlayerBarClick}>
+      {isLoading && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '-42px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(14, 14, 18, 0.96)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid var(--accent)',
+            borderRadius: 14,
+            padding: '6px 14px',
+            fontSize: 11,
+            fontWeight: 700,
+            color: '#fff',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 4,
+            boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
+            zIndex: 100,
+            whiteSpace: 'nowrap',
+            minWidth: 260,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="spinner" style={{ width: 10, height: 10, borderWidth: 2 }} />
+            <span>{cdnStage.label}</span>
+          </div>
+          <div style={{ width: '100%', height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${cdnStage.progress}%`,
+                background: 'var(--accent)',
+                transition: 'width 0.4s ease',
+                boxShadow: '0 0 8px var(--accent)',
+              }}
+            />
+          </div>
+        </div>
+      )}
       {activeJamCode && (
         <div 
           onClick={(e) => { e.stopPropagation(); setShowJamModal(true); }}
@@ -358,7 +423,7 @@ export default function Player() {
                 </Link>
               </div>
               <button 
-                className="ctrl-btn" 
+                className="ctrl-btn hide-on-mobile" 
                 onClick={() => toggleLike(currentTrack.id)}
                 title="Añadir a Tus me gusta"
                 style={{ padding: 4, flexShrink: 0 }}
@@ -378,7 +443,7 @@ export default function Player() {
                 </svg>
               </button>
               <button 
-                className={`ctrl-btn ${downloadStatus === 'downloaded' ? 'downloaded' : ''}`}
+                className={`ctrl-btn hide-on-mobile ${downloadStatus === 'downloaded' ? 'downloaded' : ''}`}
                 onClick={handleDownload}
                 disabled={downloadStatus !== 'none'}
                 title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión" : downloadStatus === 'downloading' ? "Guardando..." : "Guardar sin conexión"}
@@ -399,6 +464,21 @@ export default function Player() {
                 ) : (
                   <IconCloudDownload />
                 )}
+              </button>
+              <button 
+                className="ctrl-btn show-on-mobile"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMobileMenu(true);
+                }}
+                title="Opciones"
+                style={{ padding: 4, flexShrink: 0 }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <circle cx="12" cy="19" r="2"/>
+                </svg>
               </button>
 
             </div>
@@ -571,8 +651,83 @@ export default function Player() {
           trackId={currentTrack.id}
         />
       )}
-      <JamModal isOpen={showJamModal} onClose={() => setShowJamModal(false)} />
+      <JamModal isOpen={showJamModal} onClose={() => setShowShareModal(false)} />
+      <ShareTrackModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} track={currentTrack} userId={userId} />
       {showEq && <EqualizerPanel onClose={() => setShowEq(false)} />}
+
+      {showMobileMenu && currentTrack && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+          }}
+          onClick={() => setShowMobileMenu(false)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 500,
+              background: 'rgba(18, 18, 22, 0.96)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '20px 20px 0 0',
+              padding: '20px 20px 32px 20px',
+              color: '#fff',
+              boxShadow: '0 -8px 32px rgba(0,0,0,0.6)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <img src={resolveImageUrl(currentTrack.cover)} alt={currentTrack.title} style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack.title}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{currentTrack.artist}</div>
+              </div>
+              <button onClick={() => setShowMobileMenu(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={() => { toggleLike(currentTrack.id); setShowMobileMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <IconHeart filled={isLiked(currentTrack.id)} />
+                <span>{isLiked(currentTrack.id) ? 'Quitar de Tus me gusta' : 'Añadir a Tus me gusta'}</span>
+              </button>
+
+              <button
+                onClick={() => { setShowShareModal(true); setShowMobileMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                <span>Compartir con un amigo</span>
+              </button>
+
+              <button
+                onClick={() => { setShowPlaylistModal(true); setShowMobileMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                <span>Añadir a lista de reproducción</span>
+              </button>
+
+              <button
+                onClick={() => { handleDownload(); setShowMobileMenu(false); }}
+                disabled={downloadStatus !== 'none'}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <IconCloudDownload />
+                <span>{downloadStatus === 'downloaded' ? 'Audio guardado sin conexión' : 'Guardar sin conexión'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

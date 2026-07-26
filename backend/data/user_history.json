@@ -1,22 +1,1317 @@
 [
   {
+    "trackId": "1492159754",
+    "title": "Corridos Tumbados",
+    "artist": "Natanael Cano",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/e6/42/78/e6427820-736e-bbdf-86a1-4e0a83dba95a/050742373795_cover.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-26T16:35:28.49+00:00",
+    "plays": [
+      "2026-07-26T16:35:28.490Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 156
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1713773553",
+    "title": "Por Clave El Fresa",
+    "artist": "Luis R Conriquez",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/a6/76/19/a676195b-03c4-a257-1879-3452ff29bd8c/709401226773_cover.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-26T16:32:43.883+00:00",
+    "plays": [
+      "2026-07-26T16:32:41.795Z",
+      "2026-07-26T16:32:43.883Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:32:25.312Z",
+        "seconds": 12
+      },
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 145
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "3Wnso2A4PZE",
+    "title": "LADY GAGA",
+    "artist": "Peso Pluma, Gabito Ballesteros & Junior H",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Video126/v4/9f/2a/59/9f2a594f-0838-2efc-79d3-e85ea808c061/197189420603_1_1.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-26T16:29:01.756+00:00",
+    "plays": [
+      "2026-07-24T14:57:10.684Z",
+      "2026-07-26T16:29:01.756Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T14:56:56.070Z",
+        "seconds": 100
+      },
+      {
+        "date": "2026-07-24T14:56:56.070Z",
+        "seconds": 113
+      },
+      {
+        "date": "2026-07-26T16:28:46.038Z",
+        "seconds": 32
+      },
+      {
+        "date": "2026-07-26T16:28:46.038Z",
+        "seconds": 182
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1622045626",
+    "title": "Después de la Playa",
+    "artist": "Bad Bunny",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/3e/04/eb/3e04ebf6-370f-f59d-ec84-2c2643db92f1/196626945068.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-26T16:19:18.997+00:00",
+    "plays": [
+      "2026-07-12T17:44:05.027Z",
+      "2026-07-26T16:19:18.997Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-12T17:43:51.486Z",
+        "seconds": 232
+      },
+      {
+        "date": "2026-07-26T16:19:07.902Z",
+        "seconds": 17
+      },
+      {
+        "date": "2026-07-26T16:19:07.902Z",
+        "seconds": 14
+      },
+      {
+        "date": "2026-07-26T16:19:07.902Z",
+        "seconds": 39
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1856956728",
+    "title": "Tu sais déjà",
+    "artist": "1D1R & Danyl",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/80/1b/b5/801bb57e-4015-a247-c0f3-99bd06befa78/cover.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-26T16:16:45.762+00:00",
+    "plays": [
+      "2026-07-26T16:16:45.762Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:16:25.289Z",
+        "seconds": 11
+      },
+      {
+        "date": "2026-07-26T16:16:25.289Z",
+        "seconds": 46
+      },
+      {
+        "date": "2026-07-26T16:16:25.289Z",
+        "seconds": 43
+      },
+      {
+        "date": "2026-07-26T16:16:25.289Z",
+        "seconds": 52
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1657271974",
+    "title": "Creepin'",
+    "artist": "Metro Boomin, The Weeknd & 21 Savage",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/09/72/3b/09723b88-9b18-e466-7ae0-05a17688bb52/22UM1IM35114.rgb.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-26T16:12:56.731+00:00",
+    "plays": [
+      "2026-07-26T16:12:56.731Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:12:43.572Z",
+        "seconds": 68
+      },
+      {
+        "date": "2026-07-26T16:12:43.572Z",
+        "seconds": 43
+      },
+      {
+        "date": "2026-07-26T16:12:43.572Z",
+        "seconds": 36
+      },
+      {
+        "date": "2026-07-26T16:12:43.572Z",
+        "seconds": 27
+      },
+      {
+        "date": "2026-07-26T16:12:43.572Z",
+        "seconds": 44
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "6788997128",
+    "title": "Fireflies",
+    "artist": "Martin Garrix & U2",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/79/60/85/79608529-9677-3363-f320-e0d8318e67d1/823375299752_Cover.jpg/170x170bb.png",
+    "playCount": 11,
+    "lastPlayed": "2026-07-26T16:01:27.401+00:00",
+    "plays": [
+      "2026-07-24T15:05:32.833Z",
+      "2026-07-24T15:05:39.351Z",
+      "2026-07-26T15:07:22.314Z",
+      "2026-07-26T15:07:23.039Z",
+      "2026-07-26T15:10:45.410Z",
+      "2026-07-26T15:10:48.053Z",
+      "2026-07-26T15:13:45.596Z",
+      "2026-07-26T15:26:55.356Z",
+      "2026-07-26T15:41:22.947Z",
+      "2026-07-26T15:51:25.335Z",
+      "2026-07-26T16:01:27.401Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T15:02:02.857Z",
+        "seconds": 24
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "IirGT9LelC8",
+    "title": "OUI",
+    "artist": "RnBoi",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/bd/a8/5e/bda85e57-34dc-50fa-a77d-a35e9f9e3d66/5056556174882_cover.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-26T11:50:22.721+00:00",
+    "plays": [
+      "2026-07-25T17:44:17.001Z",
+      "2026-07-26T11:50:22.721Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T17:44:19.887Z",
+        "seconds": 165
+      },
+      {
+        "date": "2026-07-26T11:49:27.651Z",
+        "seconds": 26
+      },
+      {
+        "date": "2026-07-26T11:49:27.651Z",
+        "seconds": 10
+      },
+      {
+        "date": "2026-07-26T11:49:27.651Z",
+        "seconds": 81
+      },
+      {
+        "date": "2026-07-26T11:49:27.651Z",
+        "seconds": 16
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1662159949",
+    "title": "MUÑECA",
+    "artist": "Quevedo & JC Reyes",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/42/dd/bb/42ddbb2d-ff39-cf04-7667-2872e77a6ca7/197338933862.jpg/600x600bb.jpg",
+    "playCount": 9,
+    "lastPlayed": "2026-07-26T11:49:18.962+00:00",
+    "plays": [
+      "2026-07-06T18:18:56.010Z",
+      "2026-07-10T16:43:32.479Z",
+      "2026-07-10T16:44:32.223Z",
+      "2026-07-10T17:39:12.587Z",
+      "2026-07-11T15:48:24.381Z",
+      "2026-07-11T17:36:47.253Z",
+      "2026-07-22T16:08:25.218Z",
+      "2026-07-22T20:56:04.495Z",
+      "2026-07-25T17:39:46.208Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-06T18:18:44.685Z",
+        "seconds": 97
+      },
+      {
+        "date": "2026-07-06T18:18:44.685Z",
+        "seconds": 114
+      },
+      {
+        "date": "2026-07-10T16:43:32.416Z",
+        "seconds": 9
+      },
+      {
+        "date": "2026-07-10T16:44:21.727Z",
+        "seconds": 207
+      },
+      {
+        "date": "2026-07-10T17:39:02.130Z",
+        "seconds": 72
+      },
+      {
+        "date": "2026-07-10T17:39:02.130Z",
+        "seconds": 138
+      },
+      {
+        "date": "2026-07-11T15:48:13.334Z",
+        "seconds": 210
+      },
+      {
+        "date": "2026-07-11T17:36:36.729Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-11T17:36:36.729Z",
+        "seconds": 205
+      },
+      {
+        "date": "2026-07-22T16:08:13.993Z",
+        "seconds": 73
+      },
+      {
+        "date": "2026-07-22T16:08:13.993Z",
+        "seconds": 137
+      },
+      {
+        "date": "2026-07-22T20:55:54.033Z",
+        "seconds": 7
+      },
+      {
+        "date": "2026-07-22T20:55:54.033Z",
+        "seconds": 204
+      },
+      {
+        "date": "2026-07-25T17:39:33.556Z",
+        "seconds": 211
+      },
+      {
+        "date": "2026-07-26T11:49:18.962Z",
+        "seconds": 6
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "6770956140",
+    "title": "Pilé (Gospel)",
+    "artist": "Mauvais Djo",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/dc/ed/53/dced5309-424f-51e2-9c7d-fbe3fd30f738/30211.jpg/600x600bb.jpg",
+    "playCount": 7,
+    "lastPlayed": "2026-07-26T11:47:28.533+00:00",
+    "plays": [
+      "2026-07-23T10:28:17.158Z",
+      "2026-07-23T10:29:16.097Z",
+      "2026-07-23T10:29:16.142Z",
+      "2026-07-25T11:28:28.365Z",
+      "2026-07-25T11:45:11.033Z",
+      "2026-07-25T17:53:03.297Z",
+      "2026-07-26T11:47:26.618Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-23T10:28:12.618Z",
+        "seconds": 63
+      },
+      {
+        "date": "2026-07-25T11:28:16.444Z",
+        "seconds": 47
+      },
+      {
+        "date": "2026-07-25T11:28:16.444Z",
+        "seconds": 79
+      },
+      {
+        "date": "2026-07-25T11:45:00.318Z",
+        "seconds": 35
+      },
+      {
+        "date": "2026-07-25T17:52:52.783Z",
+        "seconds": 65
+      },
+      {
+        "date": "2026-07-26T11:47:28.533Z",
+        "seconds": 8
+      },
+      {
+        "date": "2026-07-26T11:47:28.533Z",
+        "seconds": 102
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "rP9erYkcOmY",
+    "title": "RnBoi – BTRD (Remix) ft. R2 | Str8Lyrical",
+    "artist": "Str8 Lyrical",
+    "cover": "https://i.ytimg.com/vi/rP9erYkcOmY/maxresdefault.jpg",
+    "playCount": 3,
+    "lastPlayed": "2026-07-25T17:50:18.836+00:00",
+    "plays": [
+      "2026-07-10T17:12:08.464Z",
+      "2026-07-22T21:03:53.679Z",
+      "2026-07-25T17:50:18.836Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-10T17:11:47.117Z",
+        "seconds": 19
+      },
+      {
+        "date": "2026-07-10T17:11:47.117Z",
+        "seconds": 79
+      },
+      {
+        "date": "2026-07-10T17:11:47.117Z",
+        "seconds": 58
+      },
+      {
+        "date": "2026-07-25T17:50:08.120Z",
+        "seconds": 159
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "mYyIKtgGL20",
+    "title": "AVEC MOI (feat. Nono La Grinta)",
+    "artist": "RnBoi",
+    "cover": "https://i.ytimg.com/vi/mYyIKtgGL20/maxresdefault.jpg",
+    "playCount": 9,
+    "lastPlayed": "2026-07-25T17:47:16.253+00:00",
+    "plays": [
+      "2026-07-11T04:01:02.947Z",
+      "2026-07-11T05:27:11.866Z",
+      "2026-07-13T13:48:42.385Z",
+      "2026-07-22T17:18:29.686Z",
+      "2026-07-22T17:37:46.054Z",
+      "2026-07-22T21:03:32.609Z",
+      "2026-07-22T21:04:18.422Z",
+      "2026-07-23T11:01:00.842Z",
+      "2026-07-25T17:47:16.253Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-11T04:00:49.338Z",
+        "seconds": 6
+      },
+      {
+        "date": "2026-07-11T04:00:49.338Z",
+        "seconds": 130
+      },
+      {
+        "date": "2026-07-13T13:39:08.458Z",
+        "seconds": 7
+      },
+      {
+        "date": "2026-07-13T13:48:11.470Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-22T17:18:14.914Z",
+        "seconds": 48
+      },
+      {
+        "date": "2026-07-22T21:02:25.769Z",
+        "seconds": 28
+      },
+      {
+        "date": "2026-07-22T21:04:00.394Z",
+        "seconds": 180
+      },
+      {
+        "date": "2026-07-25T17:47:05.388Z",
+        "seconds": 91
+      },
+      {
+        "date": "2026-07-25T17:47:05.388Z",
+        "seconds": 91
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "IygjfarITns",
+    "title": "PIENXA EN MI",
+    "artist": "Feid & Sfera Ebbasta",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Video221/v4/d4/cf/7a/d4cf7a06-4299-8688-69f8-1dbae7e86e2f/26UMGIM76724.crop.jpg/600x600bb.jpg",
+    "playCount": 3,
+    "lastPlayed": "2026-07-25T17:35:52.917+00:00",
+    "plays": [
+      "2026-07-25T11:15:04.178Z",
+      "2026-07-25T17:32:29.333Z",
+      "2026-07-25T17:35:52.917Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:14:53.502Z",
+        "seconds": 33
+      },
+      {
+        "date": "2026-07-25T11:14:53.502Z",
+        "seconds": 150
+      },
+      {
+        "date": "2026-07-25T17:35:42.312Z",
+        "seconds": 174
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "DxTwnypDzl0",
+    "title": "The Art of Lamine Yamal 🇪🇸🌟",
+    "artist": "All Football",
+    "cover": "https://img.youtube.com/vi/DxTwnypDzl0/hqdefault.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-25T17:28:50.801+00:00",
+    "plays": [
+      "2026-07-25T12:54:09.560Z",
+      "2026-07-25T17:28:50.801Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T12:54:00.443Z",
+        "seconds": 22
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1088551720",
+    "title": "One More Night (2016 Remastered)",
+    "artist": "Phil Collins",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/ff/18/58/ff18584a-fdd8-f854-e67d-a38c89d3546c/603497885244.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-25T11:52:05.003+00:00",
+    "plays": [
+      "2026-07-25T11:51:29.442Z",
+      "2026-07-25T11:52:05.003Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:51:20.198Z",
+        "seconds": 42
+      },
+      {
+        "date": "2026-07-25T11:51:54.524Z",
+        "seconds": 18
+      },
+      {
+        "date": "2026-07-25T11:51:54.524Z",
+        "seconds": 16
+      },
+      {
+        "date": "2026-07-25T11:51:54.524Z",
+        "seconds": 16
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1005850935",
+    "title": "Easy Lover",
+    "artist": "Philip Bailey & Phil Collins",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/00/15/38/001538cd-ca00-1bf1-5d74-c95c7677767b/886445195347.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-25T11:51:18.217+00:00",
+    "plays": [
+      "2026-07-25T11:51:18.217Z"
+    ],
+    "minutesBySession": [],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1497358990",
+    "title": "Meleğim",
+    "artist": "Soolking & Dadju",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/0c/ca/86/0cca8695-5c44-86db-41c6-8bac8d1b577a/20UMGIM07368.rgb.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-25T11:37:58.574+00:00",
+    "plays": [
+      "2026-07-25T11:37:15.546Z",
+      "2026-07-25T11:37:58.574Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:37:15.478Z",
+        "seconds": 13
+      },
+      {
+        "date": "2026-07-25T11:37:46.102Z",
+        "seconds": 27
+      },
+      {
+        "date": "2026-07-25T11:37:46.102Z",
+        "seconds": 59
+      },
+      {
+        "date": "2026-07-25T11:37:46.102Z",
+        "seconds": 35
+      },
+      {
+        "date": "2026-07-25T11:37:46.102Z",
+        "seconds": 109
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "XYu1MDtMEaY",
+    "title": "Elle voulait #PlanèteRap",
+    "artist": "[EXCLU] RnBoi",
+    "cover": "https://img.youtube.com/vi/XYu1MDtMEaY/hqdefault.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-25T11:36:45.233+00:00",
+    "plays": [
+      "2026-07-06T17:12:22.946Z",
+      "2026-07-25T11:36:45.233Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-06T17:12:05.322Z",
+        "seconds": 64
+      },
+      {
+        "date": "2026-07-06T17:12:05.322Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-06T17:12:05.322Z",
+        "seconds": 9
+      },
+      {
+        "date": "2026-07-06T17:12:05.322Z",
+        "seconds": 24
+      },
+      {
+        "date": "2026-07-06T17:12:05.322Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-06T17:12:05.322Z",
+        "seconds": 40
+      },
+      {
+        "date": "2026-07-25T11:36:29.865Z",
+        "seconds": 10
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "UcLj3wLcQF4",
+    "title": "AVEC MOI (Clip Officiel)",
+    "artist": "RnBoi & Nono La Grinta",
+    "cover": "https://img.youtube.com/vi/UcLj3wLcQF4/hqdefault.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-25T11:33:43.907+00:00",
+    "plays": [
+      "2026-07-10T17:05:48.432Z",
+      "2026-07-25T11:33:43.907Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-10T17:05:32.665Z",
+        "seconds": 172
+      },
+      {
+        "date": "2026-07-25T11:33:29.220Z",
+        "seconds": 170
+      },
+      {
+        "date": "2026-07-25T11:33:29.220Z",
+        "seconds": 6
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "6766440193",
+    "title": "des fleurs",
+    "artist": "Tove Lo & Stromae",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/e2/ee/b1/e2eeb1c6-a96a-d768-643c-20e087bce6d8/00823375156413_Cover.jpg/170x170bb.png",
+    "playCount": 1,
+    "lastPlayed": "2026-07-25T11:30:43.886+00:00",
+    "plays": [
+      "2026-07-25T11:30:43.886Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:30:24.590Z",
+        "seconds": 9
+      },
+      {
+        "date": "2026-07-25T11:30:24.590Z",
+        "seconds": 166
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1889860646",
+    "title": "Soleil",
+    "artist": "GIMS",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/76/1b/29/761b2990-5c9e-e19a-9326-0d8720c95ee5/cover.jpg/170x170bb.png",
+    "playCount": 1,
+    "lastPlayed": "2026-07-25T11:26:12.516+00:00",
+    "plays": [
+      "2026-07-25T11:26:12.516Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:25:54.714Z",
+        "seconds": 134
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "U2t5Y89I2tE",
+    "title": "MON BÉBÉ",
+    "artist": "RnBoi",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/91/63/d2916340-6d83-9522-1644-62f339a8b54c/5056556170693_cover.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-25T11:23:35.915+00:00",
+    "plays": [
+      "2026-07-25T11:23:35.915Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:23:35.844Z",
+        "seconds": 128
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "380170164",
+    "title": "Pop Español",
+    "artist": "Guaraná",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music/cb/87/09/mzi.iaxkrupb.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-25T11:22:50.169+00:00",
+    "plays": [
+      "2026-07-25T11:22:50.169Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:22:32.370Z",
+        "seconds": 25
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1882157609",
+    "title": "PONGO",
+    "artist": "Rvssian, Rauw Alejandro & Wizkid",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/a9/fe/57/a9fe57f9-f0ab-7316-5d6a-4dff501f4a42/196874097311.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-25T11:19:33.307+00:00",
+    "plays": [
+      "2026-07-25T11:19:33.307Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T11:19:21.415Z",
+        "seconds": 71
+      },
+      {
+        "date": "2026-07-25T11:19:21.415Z",
+        "seconds": 45
+      },
+      {
+        "date": "2026-07-25T11:19:21.415Z",
+        "seconds": 71
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "Mzgx9dp0Jdw",
+    "title": "ELLE VOULAIT",
+    "artist": "RnBoi",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Video211/v4/b7/0d/d4/b70dd4ad-c7f9-68cf-d4f4-c7829ec7c6f4/FR9W12612519.jpg/600x600bb.jpg",
+    "playCount": 15,
+    "lastPlayed": "2026-07-25T11:18:07.851+00:00",
+    "plays": [
+      "2026-07-09T11:14:20.779Z",
+      "2026-07-10T16:55:48.401Z",
+      "2026-07-10T17:03:19.146Z",
+      "2026-07-10T17:24:19.712Z",
+      "2026-07-11T03:47:32.336Z",
+      "2026-07-12T06:13:51.533Z",
+      "2026-07-12T18:33:11.223Z",
+      "2026-07-13T05:53:15.157Z",
+      "2026-07-22T16:02:02.130Z",
+      "2026-07-22T17:02:45.455Z",
+      "2026-07-23T09:43:05.896Z",
+      "2026-07-23T10:23:25.532Z",
+      "2026-07-24T22:04:43.591Z",
+      "2026-07-25T10:52:58.650Z",
+      "2026-07-25T11:18:07.851Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-09T11:14:03.733Z",
+        "seconds": 8
+      },
+      {
+        "date": "2026-07-09T11:14:03.733Z",
+        "seconds": 12
+      },
+      {
+        "date": "2026-07-09T11:14:03.733Z",
+        "seconds": 23
+      },
+      {
+        "date": "2026-07-09T11:14:03.733Z",
+        "seconds": 49
+      },
+      {
+        "date": "2026-07-09T11:14:03.733Z",
+        "seconds": 8
+      },
+      {
+        "date": "2026-07-09T11:14:03.733Z",
+        "seconds": 41
+      },
+      {
+        "date": "2026-07-10T16:55:34.925Z",
+        "seconds": 14
+      },
+      {
+        "date": "2026-07-10T16:55:34.925Z",
+        "seconds": 128
+      },
+      {
+        "date": "2026-07-10T17:03:08.668Z",
+        "seconds": 139
+      },
+      {
+        "date": "2026-07-10T17:24:09.246Z",
+        "seconds": 139
+      },
+      {
+        "date": "2026-07-11T03:47:21.847Z",
+        "seconds": 94
+      },
+      {
+        "date": "2026-07-11T03:47:21.847Z",
+        "seconds": 47
+      },
+      {
+        "date": "2026-07-11T15:45:38.865Z",
+        "seconds": 141
+      },
+      {
+        "date": "2026-07-12T06:13:40.987Z",
+        "seconds": 35
+      },
+      {
+        "date": "2026-07-12T06:13:40.987Z",
+        "seconds": 54
+      },
+      {
+        "date": "2026-07-12T06:13:40.987Z",
+        "seconds": 53
+      },
+      {
+        "date": "2026-07-12T18:33:00.729Z",
+        "seconds": 6
+      },
+      {
+        "date": "2026-07-12T18:33:00.729Z",
+        "seconds": 107
+      },
+      {
+        "date": "2026-07-13T05:53:17.158Z",
+        "seconds": 38
+      },
+      {
+        "date": "2026-07-13T05:53:17.158Z",
+        "seconds": 103
+      },
+      {
+        "date": "2026-07-22T16:01:39.841Z",
+        "seconds": 79
+      },
+      {
+        "date": "2026-07-22T16:01:39.841Z",
+        "seconds": 61
+      },
+      {
+        "date": "2026-07-22T17:02:25.415Z",
+        "seconds": 11
+      },
+      {
+        "date": "2026-07-23T09:42:54.842Z",
+        "seconds": 16
+      },
+      {
+        "date": "2026-07-23T09:42:54.842Z",
+        "seconds": 68
+      },
+      {
+        "date": "2026-07-23T10:23:09.762Z",
+        "seconds": 144
+      },
+      {
+        "date": "2026-07-23T10:55:08.917Z",
+        "seconds": 23
+      },
+      {
+        "date": "2026-07-24T22:04:32.951Z",
+        "seconds": 45
+      },
+      {
+        "date": "2026-07-24T22:04:32.951Z",
+        "seconds": 36
+      },
+      {
+        "date": "2026-07-25T10:52:48.141Z",
+        "seconds": 144
+      },
+      {
+        "date": "2026-07-25T11:17:57.151Z",
+        "seconds": 84
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "-KK0gXX36J0",
+    "title": "UNA BALA (En Vivo Estadio de Morón)",
+    "artist": "Milo j",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/69/dd/e0/69dde0d5-abae-075b-835f-9e817a76d965/199066220863.jpg/600x600bb.jpg",
+    "playCount": 6,
+    "lastPlayed": "2026-07-25T11:08:19.885+00:00",
+    "plays": [
+      "2026-07-22T20:48:02.613Z",
+      "2026-07-22T21:08:36.115Z",
+      "2026-07-23T09:38:39.612Z",
+      "2026-07-23T10:31:58.770Z",
+      "2026-07-23T10:32:25.143Z",
+      "2026-07-25T11:08:19.885Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-22T20:47:14.907Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-22T20:47:52.004Z",
+        "seconds": 71
+      },
+      {
+        "date": "2026-07-22T20:47:52.004Z",
+        "seconds": 108
+      },
+      {
+        "date": "2026-07-22T21:08:25.361Z",
+        "seconds": 82
+      },
+      {
+        "date": "2026-07-23T10:31:44.370Z",
+        "seconds": 22
+      },
+      {
+        "date": "2026-07-23T10:32:21.573Z",
+        "seconds": 6
+      },
+      {
+        "date": "2026-07-25T11:08:09.071Z",
+        "seconds": 90
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "oLGRb9TH87U",
+    "title": "POR TI",
+    "artist": "Yapi & SOUNDPLUG",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/83/1f/9b/831f9b65-623a-af69-dbc1-c91977676a63/5026854715674.jpg/600x600bb.jpg",
+    "playCount": 6,
+    "lastPlayed": "2026-07-25T11:06:30.155+00:00",
+    "plays": [
+      "2026-07-11T07:54:13.535Z",
+      "2026-07-11T17:34:19.063Z",
+      "2026-07-22T17:16:38.831Z",
+      "2026-07-22T21:00:49.600Z",
+      "2026-07-23T09:45:53.235Z",
+      "2026-07-25T11:06:30.155Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-11T07:53:57.674Z",
+        "seconds": 103
+      },
+      {
+        "date": "2026-07-11T17:34:08.621Z",
+        "seconds": 33
+      },
+      {
+        "date": "2026-07-11T17:34:08.621Z",
+        "seconds": 18
+      },
+      {
+        "date": "2026-07-11T17:34:08.621Z",
+        "seconds": 56
+      },
+      {
+        "date": "2026-07-22T17:16:28.003Z",
+        "seconds": 43
+      },
+      {
+        "date": "2026-07-22T17:16:28.003Z",
+        "seconds": 64
+      },
+      {
+        "date": "2026-07-22T21:00:39.137Z",
+        "seconds": 17
+      },
+      {
+        "date": "2026-07-22T21:00:39.137Z",
+        "seconds": 90
+      },
+      {
+        "date": "2026-07-25T11:06:19.471Z",
+        "seconds": 109
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "KeKgzoKzrn8",
+    "title": "OUI (Lyric Video)",
+    "artist": "RnBoi",
+    "cover": "https://img.youtube.com/vi/KeKgzoKzrn8/hqdefault.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-25T10:55:28.198+00:00",
+    "plays": [
+      "2026-07-25T10:55:28.198Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-25T10:55:12.086Z",
+        "seconds": 44
+      },
+      {
+        "date": "2026-07-25T10:55:12.086Z",
+        "seconds": 11
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "97XAfE3T3dg",
+    "title": "El rama lama(ding dong) videoclip",
+    "artist": "3+2",
+    "cover": "https://img.youtube.com/vi/97XAfE3T3dg/hqdefault.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-24T22:11:48.274+00:00",
+    "plays": [
+      "2026-07-24T22:11:48.274Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T22:11:32.291Z",
+        "seconds": 14
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1713828004",
+    "title": "What's In a Kiss (Guitar Version)",
+    "artist": "Gilbert O'Sullivan",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/9e/b7/f0/9eb7f05c-9f8d-1756-0590-9145d097c248/0698458358783.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-24T22:10:47.875+00:00",
+    "plays": [],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T22:10:47.875Z",
+        "seconds": 6
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1742278284",
+    "title": "Hammer to the Heart",
+    "artist": "Teddy Swims",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/cd/b5/6f/cdb56fb5-c983-5b52-a818-7e34d81f7f55/093624841838.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-24T22:10:15.925+00:00",
+    "plays": [],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T22:10:15.925Z",
+        "seconds": 7
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "6793197957",
+    "title": "FANTAISIE",
+    "artist": "GIMS",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/6c/4e/70/6c4e70f8-521a-12e0-789e-3196c038abd3/cover.jpg/170x170bb.png",
+    "playCount": 1,
+    "lastPlayed": "2026-07-24T22:08:02.943+00:00",
+    "plays": [
+      "2026-07-24T22:08:02.943Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T22:07:46.768Z",
+        "seconds": 7
+      },
+      {
+        "date": "2026-07-24T22:07:46.768Z",
+        "seconds": 14
+      },
+      {
+        "date": "2026-07-24T22:07:46.768Z",
+        "seconds": 61
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1121699106",
+    "title": "La Roja Baila (Himno Oficial de la Selección Española)",
+    "artist": "Sergio Ramos, Niña Pastori & RedOne",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/8f/46/90/8f4690f5-1f49-678e-d10d-b3c2ab526afd/dj.pelwapnf.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-24T19:39:54.925+00:00",
+    "plays": [
+      "2026-07-24T18:48:07.522Z",
+      "2026-07-24T19:39:54.925Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T18:47:53.490Z",
+        "seconds": 82
+      },
+      {
+        "date": "2026-07-24T18:47:53.490Z",
+        "seconds": 274
+      },
+      {
+        "date": "2026-07-24T18:47:53.490Z",
+        "seconds": 35
+      }
+    ],
+    "userId": "773d55a4-0cd3-4504-a4e4-04c2b0b80052"
+  },
+  {
+    "trackId": "IygjfarITns",
+    "title": "PIENXA EN MI",
+    "artist": "Feid & Sfera Ebbasta",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Video221/v4/d4/cf/7a/d4cf7a06-4299-8688-69f8-1dbae7e86e2f/26UMGIM76724.crop.jpg/600x600bb.jpg",
+    "playCount": 4,
+    "lastPlayed": "2026-07-24T18:47:38.786+00:00",
+    "plays": [
+      "2026-07-23T11:57:47.417Z",
+      "2026-07-23T18:47:10.281Z",
+      "2026-07-24T15:48:09.226Z",
+      "2026-07-24T18:47:38.786Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-23T11:57:28.930Z",
+        "seconds": 57
+      },
+      {
+        "date": "2026-07-23T11:57:28.930Z",
+        "seconds": 126
+      },
+      {
+        "date": "2026-07-23T18:46:26.744Z",
+        "seconds": 8
+      },
+      {
+        "date": "2026-07-23T18:46:26.744Z",
+        "seconds": 175
+      },
+      {
+        "date": "2026-07-24T15:47:55.218Z",
+        "seconds": 28
+      }
+    ],
+    "userId": "773d55a4-0cd3-4504-a4e4-04c2b0b80052"
+  },
+  {
+    "trackId": "6768469976",
+    "title": "Dai Dai",
+    "artist": "Shakira & Burna Boy",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/61/49/8d/61498ded-f0dc-227d-cd1d-2051b5d9f195/196874328590.jpg/170x170bb.png",
+    "playCount": 4,
+    "lastPlayed": "2026-07-24T15:42:47.577+00:00",
+    "plays": [
+      "2026-07-23T18:57:33.493Z",
+      "2026-07-23T19:08:59.722Z",
+      "2026-07-23T19:29:54.206Z",
+      "2026-07-24T15:42:47.577Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-23T18:54:26.229Z",
+        "seconds": 6
+      },
+      {
+        "date": "2026-07-23T18:57:22.327Z",
+        "seconds": 27
+      },
+      {
+        "date": "2026-07-23T18:57:22.327Z",
+        "seconds": 47
+      },
+      {
+        "date": "2026-07-23T18:57:22.327Z",
+        "seconds": 151
+      },
+      {
+        "date": "2026-07-23T19:08:49.046Z",
+        "seconds": 46
+      },
+      {
+        "date": "2026-07-23T19:08:49.046Z",
+        "seconds": 60
+      }
+    ],
+    "userId": "773d55a4-0cd3-4504-a4e4-04c2b0b80052"
+  },
+  {
+    "trackId": "1817609508",
+    "title": "Let Alone The One You Love",
+    "artist": "Olivia Dean",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-24T15:11:54.32+00:00",
+    "plays": [
+      "2026-07-24T15:11:11.308Z",
+      "2026-07-24T15:11:51.048Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T15:10:54.721Z",
+        "seconds": 47
+      },
+      {
+        "date": "2026-07-24T15:11:54.320Z",
+        "seconds": 27
+      }
+    ],
+    "userId": "f799384a-355b-45e2-8d33-ff620d556825"
+  },
+  {
+    "trackId": "1817609509",
+    "title": "Man I Need",
+    "artist": "Olivia Dean",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-24T15:08:00.102+00:00",
+    "plays": [
+      "2026-07-24T15:08:00.102Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T15:07:49.091Z",
+        "seconds": 28
+      },
+      {
+        "date": "2026-07-24T15:07:49.091Z",
+        "seconds": 20
+      },
+      {
+        "date": "2026-07-24T15:07:49.091Z",
+        "seconds": 137
+      }
+    ],
+    "userId": "f799384a-355b-45e2-8d33-ff620d556825"
+  },
+  {
+    "trackId": "1817609509",
+    "title": "Man I Need",
+    "artist": "Olivia Dean",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-26T16:48:49.895Z",
+    "plays": [
+      "2026-07-24T15:02:27.304Z",
+      "2026-07-26T16:48:49.895Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T15:01:46.266Z",
+        "seconds": 220
+      },
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 49
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1301513530",
+    "title": "La Chona",
+    "artist": "Los Tucanes de Tijuana",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/fc/0b/00/fc0b0020-aaac-4804-e556-d10f73e7f905/018736747175_cover.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-24T15:00:50.533+00:00",
+    "plays": [
+      "2026-07-24T15:00:50.533Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T15:00:34.014Z",
+        "seconds": 66
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
     "trackId": "1878078755",
     "title": "OSSESSIONE",
     "artist": "Samurai Jay",
     "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/db/b4/68/dbb46848-09b6-0fb4-bb90-4b3f9c1fc214/26UMGIM20448.rgb.jpg/600x600bb.jpg",
     "playCount": 2,
-    "lastPlayed": "2026-07-24T14:56:17.806Z",
+    "lastPlayed": "2026-07-24T14:56:17.806+00:00",
     "plays": [
       "2026-07-24T14:51:14.937Z",
       "2026-07-24T14:56:17.806Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-24T14:55:37.338Z",
+        "date": "2026-07-24T14:51:03.345Z",
         "seconds": 185
       },
       {
-        "date": "2026-07-24T14:58:41.151Z",
+        "date": "2026-07-24T14:56:07.029Z",
         "seconds": 48
       }
     ],
@@ -27,13 +1322,15 @@
     "title": "Dichavate",
     "artist": "Ya Ice Dilan, Rey Tony, DJ Honda & Helabusador",
     "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/a6/ea/be/a6eabeb7-b493-8920-2fcc-5209f43f335d/8605020139741.png/600x600bb.jpg",
-    "playCount": 4,
-    "lastPlayed": "2026-07-24T14:55:57.842Z",
+    "playCount": 6,
+    "lastPlayed": "2026-07-26T17:00:37.146Z",
     "plays": [
       "2026-07-23T11:12:00.470Z",
       "2026-07-24T13:02:22.341Z",
       "2026-07-24T14:50:29.597Z",
-      "2026-07-24T14:55:57.842Z"
+      "2026-07-24T14:55:57.842Z",
+      "2026-07-26T17:00:19.125Z",
+      "2026-07-26T17:00:37.146Z"
     ],
     "minutesBySession": [
       {
@@ -45,12 +1342,31 @@
         "seconds": 17
       },
       {
-        "date": "2026-07-24T14:55:37.338Z",
+        "date": "2026-07-24T14:50:33.556Z",
         "seconds": 30
       },
       {
-        "date": "2026-07-24T14:58:41.151Z",
+        "date": "2026-07-24T14:55:47.535Z",
         "seconds": 19
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "b8TAzptVk_U",
+    "title": "Beretta (De Los Cerros La Escuela) | Letra",
+    "artist": "El De Las R’s",
+    "cover": "https://img.youtube.com/vi/b8TAzptVk_U/hqdefault.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-24T14:55:37.751+00:00",
+    "plays": [
+      "2026-07-24T14:54:31.264Z",
+      "2026-07-24T14:55:37.751Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-24T14:54:09.709Z",
+        "seconds": 76
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
@@ -338,46 +1654,6 @@
     "userId": "855c2f0f-80e9-4bd1-a6bd-9eb7512197e2"
   },
   {
-    "trackId": "6768469976",
-    "title": "Dai Dai",
-    "artist": "Shakira & Burna Boy",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/61/49/8d/61498ded-f0dc-227d-cd1d-2051b5d9f195/196874328590.jpg/170x170bb.png",
-    "playCount": 3,
-    "lastPlayed": "2026-07-23T19:29:54.206+00:00",
-    "plays": [
-      "2026-07-23T18:57:33.493Z",
-      "2026-07-23T19:08:59.722Z",
-      "2026-07-23T19:29:54.206Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-23T18:54:26.229Z",
-        "seconds": 6
-      },
-      {
-        "date": "2026-07-23T18:57:22.327Z",
-        "seconds": 27
-      },
-      {
-        "date": "2026-07-23T18:57:22.327Z",
-        "seconds": 47
-      },
-      {
-        "date": "2026-07-23T18:57:22.327Z",
-        "seconds": 151
-      },
-      {
-        "date": "2026-07-23T19:08:49.046Z",
-        "seconds": 46
-      },
-      {
-        "date": "2026-07-23T19:08:49.046Z",
-        "seconds": 60
-      }
-    ],
-    "userId": "773d55a4-0cd3-4504-a4e4-04c2b0b80052"
-  },
-  {
     "trackId": "rwLdp0jmeyg",
     "title": "PRET",
     "artist": "Santiago, Salento Guys & Romano",
@@ -615,37 +1891,6 @@
       {
         "date": "2026-07-23T19:01:10.667Z",
         "seconds": 17
-      }
-    ],
-    "userId": "773d55a4-0cd3-4504-a4e4-04c2b0b80052"
-  },
-  {
-    "trackId": "IygjfarITns",
-    "title": "PIENXA EN MI",
-    "artist": "Feid & Sfera Ebbasta",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Video221/v4/d4/cf/7a/d4cf7a06-4299-8688-69f8-1dbae7e86e2f/26UMGIM76724.crop.jpg/600x600bb.jpg",
-    "playCount": 2,
-    "lastPlayed": "2026-07-23T18:47:10.281+00:00",
-    "plays": [
-      "2026-07-23T11:57:47.417Z",
-      "2026-07-23T18:47:10.281Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-23T11:57:28.930Z",
-        "seconds": 57
-      },
-      {
-        "date": "2026-07-23T11:57:28.930Z",
-        "seconds": 126
-      },
-      {
-        "date": "2026-07-23T18:46:26.744Z",
-        "seconds": 8
-      },
-      {
-        "date": "2026-07-23T18:46:26.744Z",
-        "seconds": 175
       }
     ],
     "userId": "773d55a4-0cd3-4504-a4e4-04c2b0b80052"
@@ -939,55 +2184,6 @@
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "mYyIKtgGL20",
-    "title": "AVEC MOI (feat. Nono La Grinta)",
-    "artist": "RnBoi",
-    "cover": "https://img.youtube.com/vi/mYyIKtgGL20/hqdefault.jpg",
-    "playCount": 8,
-    "lastPlayed": "2026-07-23T11:01:00.842+00:00",
-    "plays": [
-      "2026-07-11T04:01:02.947Z",
-      "2026-07-11T05:27:11.866Z",
-      "2026-07-13T13:48:42.385Z",
-      "2026-07-22T17:18:29.686Z",
-      "2026-07-22T17:37:46.054Z",
-      "2026-07-22T21:03:32.609Z",
-      "2026-07-22T21:04:18.422Z",
-      "2026-07-23T11:01:00.842Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-11T04:00:49.338Z",
-        "seconds": 6
-      },
-      {
-        "date": "2026-07-11T04:00:49.338Z",
-        "seconds": 130
-      },
-      {
-        "date": "2026-07-13T13:39:08.458Z",
-        "seconds": 7
-      },
-      {
-        "date": "2026-07-13T13:48:11.470Z",
-        "seconds": 5
-      },
-      {
-        "date": "2026-07-22T17:18:14.914Z",
-        "seconds": 48
-      },
-      {
-        "date": "2026-07-22T21:02:25.769Z",
-        "seconds": 28
-      },
-      {
-        "date": "2026-07-22T21:04:00.394Z",
-        "seconds": 180
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
     "trackId": "Mzgx9dp0Jdw",
     "title": "ELLE VOULAIT",
     "artist": "RnBoi",
@@ -999,139 +2195,6 @@
     ],
     "minutesBySession": [],
     "userId": "af7d2c13-b1c6-47e8-b515-fd9cd174dc95"
-  },
-  {
-    "trackId": "Mzgx9dp0Jdw",
-    "title": "ELLE VOULAIT",
-    "artist": "RnBoi",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Video211/v4/b7/0d/d4/b70dd4ad-c7f9-68cf-d4f4-c7829ec7c6f4/FR9W12612519.jpg/600x600bb.jpg",
-    "playCount": 12,
-    "lastPlayed": "2026-07-23T10:55:08.917+00:00",
-    "plays": [
-      "2026-07-09T11:14:20.779Z",
-      "2026-07-10T16:55:48.401Z",
-      "2026-07-10T17:03:19.146Z",
-      "2026-07-10T17:24:19.712Z",
-      "2026-07-11T03:47:32.336Z",
-      "2026-07-12T06:13:51.533Z",
-      "2026-07-12T18:33:11.223Z",
-      "2026-07-13T05:53:15.157Z",
-      "2026-07-22T16:02:02.130Z",
-      "2026-07-22T17:02:45.455Z",
-      "2026-07-23T09:43:05.896Z",
-      "2026-07-23T10:23:25.532Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-09T11:14:03.733Z",
-        "seconds": 8
-      },
-      {
-        "date": "2026-07-09T11:14:03.733Z",
-        "seconds": 12
-      },
-      {
-        "date": "2026-07-09T11:14:03.733Z",
-        "seconds": 23
-      },
-      {
-        "date": "2026-07-09T11:14:03.733Z",
-        "seconds": 49
-      },
-      {
-        "date": "2026-07-09T11:14:03.733Z",
-        "seconds": 8
-      },
-      {
-        "date": "2026-07-09T11:14:03.733Z",
-        "seconds": 41
-      },
-      {
-        "date": "2026-07-10T16:55:34.925Z",
-        "seconds": 14
-      },
-      {
-        "date": "2026-07-10T16:55:34.925Z",
-        "seconds": 128
-      },
-      {
-        "date": "2026-07-10T17:03:08.668Z",
-        "seconds": 139
-      },
-      {
-        "date": "2026-07-10T17:24:09.246Z",
-        "seconds": 139
-      },
-      {
-        "date": "2026-07-11T03:47:21.847Z",
-        "seconds": 94
-      },
-      {
-        "date": "2026-07-11T03:47:21.847Z",
-        "seconds": 47
-      },
-      {
-        "date": "2026-07-11T15:45:38.865Z",
-        "seconds": 141
-      },
-      {
-        "date": "2026-07-12T06:13:40.987Z",
-        "seconds": 35
-      },
-      {
-        "date": "2026-07-12T06:13:40.987Z",
-        "seconds": 54
-      },
-      {
-        "date": "2026-07-12T06:13:40.987Z",
-        "seconds": 53
-      },
-      {
-        "date": "2026-07-12T18:33:00.729Z",
-        "seconds": 6
-      },
-      {
-        "date": "2026-07-12T18:33:00.729Z",
-        "seconds": 107
-      },
-      {
-        "date": "2026-07-13T05:53:17.158Z",
-        "seconds": 38
-      },
-      {
-        "date": "2026-07-13T05:53:17.158Z",
-        "seconds": 103
-      },
-      {
-        "date": "2026-07-22T16:01:39.841Z",
-        "seconds": 79
-      },
-      {
-        "date": "2026-07-22T16:01:39.841Z",
-        "seconds": 61
-      },
-      {
-        "date": "2026-07-22T17:02:25.415Z",
-        "seconds": 11
-      },
-      {
-        "date": "2026-07-23T09:42:54.842Z",
-        "seconds": 16
-      },
-      {
-        "date": "2026-07-23T09:42:54.842Z",
-        "seconds": 68
-      },
-      {
-        "date": "2026-07-23T10:23:09.762Z",
-        "seconds": 144
-      },
-      {
-        "date": "2026-07-23T10:55:08.917Z",
-        "seconds": 23
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1540386768",
@@ -1186,48 +2249,6 @@
       {
         "date": "2026-07-23T10:32:34.226Z",
         "seconds": 35
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "-KK0gXX36J0",
-    "title": "UNA BALA ft. Peso Pluma (Video Oficial)",
-    "artist": "MILO J",
-    "cover": "https://img.youtube.com/vi/-KK0gXX36J0/hqdefault.jpg",
-    "playCount": 5,
-    "lastPlayed": "2026-07-23T10:32:25.143+00:00",
-    "plays": [
-      "2026-07-22T20:48:02.613Z",
-      "2026-07-22T21:08:36.115Z",
-      "2026-07-23T09:38:39.612Z",
-      "2026-07-23T10:31:58.770Z",
-      "2026-07-23T10:32:25.143Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-22T20:47:14.907Z",
-        "seconds": 5
-      },
-      {
-        "date": "2026-07-22T20:47:52.004Z",
-        "seconds": 71
-      },
-      {
-        "date": "2026-07-22T20:47:52.004Z",
-        "seconds": 108
-      },
-      {
-        "date": "2026-07-22T21:08:25.361Z",
-        "seconds": 82
-      },
-      {
-        "date": "2026-07-23T10:31:44.370Z",
-        "seconds": 22
-      },
-      {
-        "date": "2026-07-23T10:32:21.573Z",
-        "seconds": 6
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
@@ -1344,26 +2365,6 @@
       {
         "date": "2026-07-23T10:29:59.374Z",
         "seconds": 26
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "6770956140",
-    "title": "Pilé (Gospel)",
-    "artist": "Mauvais Djo",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/dc/ed/53/dced5309-424f-51e2-9c7d-fbe3fd30f738/30211.jpg/170x170bb.png",
-    "playCount": 3,
-    "lastPlayed": "2026-07-23T10:29:16.142+00:00",
-    "plays": [
-      "2026-07-23T10:28:17.158Z",
-      "2026-07-23T10:29:16.097Z",
-      "2026-07-23T10:29:16.142Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-23T10:28:12.618Z",
-        "seconds": 63
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
@@ -1497,69 +2498,6 @@
         "seconds": 90
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "oLGRb9TH87U",
-    "title": "Yapi & SOUNDPLUG - POR TI (Video Oficial)",
-    "artist": "Yapi",
-    "cover": "https://i.ytimg.com/vi/oLGRb9TH87U/maxresdefault.jpg",
-    "playCount": 5,
-    "lastPlayed": "2026-07-23T09:45:53.235+00:00",
-    "plays": [
-      "2026-07-11T07:54:13.535Z",
-      "2026-07-11T17:34:19.063Z",
-      "2026-07-22T17:16:38.831Z",
-      "2026-07-22T21:00:49.600Z",
-      "2026-07-23T09:45:53.235Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-11T07:53:57.674Z",
-        "seconds": 103
-      },
-      {
-        "date": "2026-07-11T17:34:08.621Z",
-        "seconds": 33
-      },
-      {
-        "date": "2026-07-11T17:34:08.621Z",
-        "seconds": 18
-      },
-      {
-        "date": "2026-07-11T17:34:08.621Z",
-        "seconds": 56
-      },
-      {
-        "date": "2026-07-22T17:16:28.003Z",
-        "seconds": 43
-      },
-      {
-        "date": "2026-07-22T17:16:28.003Z",
-        "seconds": 64
-      },
-      {
-        "date": "2026-07-22T21:00:39.137Z",
-        "seconds": 17
-      },
-      {
-        "date": "2026-07-22T21:00:39.137Z",
-        "seconds": 90
-      }
-    ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "1468910018",
-    "title": "Señorita",
-    "artist": "Shawn Mendes & Camila Cabello",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/46/fe/4a/46fe4a39-feb4-7b8b-97b9-0187d49a46bd/19UMGIM53914.rgb.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-23T09:45:32.287+00:00",
-    "plays": [
-      "2026-07-23T09:45:32.287Z"
-    ],
-    "minutesBySession": [],
     "userId": "koko"
   },
   {
@@ -1574,6 +2512,19 @@
     ],
     "minutesBySession": [],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1468910018",
+    "title": "Señorita",
+    "artist": "Shawn Mendes & Camila Cabello",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/46/fe/4a/46fe4a39-feb4-7b8b-97b9-0187d49a46bd/19UMGIM53914.rgb.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-23T09:45:32.287+00:00",
+    "plays": [
+      "2026-07-23T09:45:32.287Z"
+    ],
+    "minutesBySession": [],
+    "userId": "koko"
   },
   {
     "trackId": "1468910018",
@@ -1751,7 +2702,7 @@
         "seconds": 7
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1440891171",
@@ -1773,7 +2724,7 @@
         "seconds": 7
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "6778984095",
@@ -1943,31 +2894,20 @@
         "seconds": 58
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
-    "trackId": "rP9erYkcOmY",
-    "title": "RnBoi – BTRD (Remix) ft. R2 (Lyrics) | Str8Lyrical",
-    "artist": "Str8 Lyrical",
-    "cover": "https://img.youtube.com/vi/rP9erYkcOmY/hqdefault.jpg",
-    "playCount": 2,
-    "lastPlayed": "2026-07-22T21:03:53.679+00:00",
-    "plays": [
-      "2026-07-10T17:12:08.464Z",
-      "2026-07-22T21:03:53.679Z"
-    ],
+    "trackId": "1532252603",
+    "title": "Free Mind",
+    "artist": "Tems",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/c6/4d/ed/c64ded15-9cd9-4bd7-a3ea-051178b2427d/195497234301.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-22T21:00:31.055+00:00",
+    "plays": [],
     "minutesBySession": [
       {
-        "date": "2026-07-10T17:11:47.117Z",
-        "seconds": 19
-      },
-      {
-        "date": "2026-07-10T17:11:47.117Z",
-        "seconds": 79
-      },
-      {
-        "date": "2026-07-10T17:11:47.117Z",
-        "seconds": 58
+        "date": "2026-07-22T21:00:31.055Z",
+        "seconds": 6
       }
     ],
     "userId": "koko"
@@ -1987,44 +2927,6 @@
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "1532252603",
-    "title": "Free Mind",
-    "artist": "Tems",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/c6/4d/ed/c64ded15-9cd9-4bd7-a3ea-051178b2427d/195497234301.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-22T21:00:31.055+00:00",
-    "plays": [],
-    "minutesBySession": [
-      {
-        "date": "2026-07-22T21:00:31.055Z",
-        "seconds": 6
-      }
-    ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "6792896783",
-    "title": "Scarborough to Dubai",
-    "artist": "Tory Lanez",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/34/8d/99/348d99ea-548b-80d4-30ba-7046b5739ff5/075679565983.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-22T20:59:43.677+00:00",
-    "plays": [
-      "2026-07-22T20:59:43.677Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-22T20:59:25.301Z",
-        "seconds": 22
-      },
-      {
-        "date": "2026-07-22T20:59:25.301Z",
-        "seconds": 33
-      }
-    ],
-    "userId": "koko"
   },
   {
     "trackId": "6792896783",
@@ -2049,77 +2951,26 @@
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "1662159949",
-    "title": "MUÑECA",
-    "artist": "Quevedo & JC Reyes",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/42/dd/bb/42ddbb2d-ff39-cf04-7667-2872e77a6ca7/197338933862.jpg/600x600bb.jpg",
-    "playCount": 8,
-    "lastPlayed": "2026-07-22T20:56:04.495+00:00",
+    "trackId": "6792896783",
+    "title": "Scarborough to Dubai",
+    "artist": "Tory Lanez",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/34/8d/99/348d99ea-548b-80d4-30ba-7046b5739ff5/075679565983.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-22T20:59:43.677+00:00",
     "plays": [
-      "2026-07-06T18:18:56.010Z",
-      "2026-07-10T16:43:32.479Z",
-      "2026-07-10T16:44:32.223Z",
-      "2026-07-10T17:39:12.587Z",
-      "2026-07-11T15:48:24.381Z",
-      "2026-07-11T17:36:47.253Z",
-      "2026-07-22T16:08:25.218Z",
-      "2026-07-22T20:56:04.495Z"
+      "2026-07-22T20:59:43.677Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-06T18:18:44.685Z",
-        "seconds": 97
+        "date": "2026-07-22T20:59:25.301Z",
+        "seconds": 22
       },
       {
-        "date": "2026-07-06T18:18:44.685Z",
-        "seconds": 114
-      },
-      {
-        "date": "2026-07-10T16:43:32.416Z",
-        "seconds": 9
-      },
-      {
-        "date": "2026-07-10T16:44:21.727Z",
-        "seconds": 207
-      },
-      {
-        "date": "2026-07-10T17:39:02.130Z",
-        "seconds": 72
-      },
-      {
-        "date": "2026-07-10T17:39:02.130Z",
-        "seconds": 138
-      },
-      {
-        "date": "2026-07-11T15:48:13.334Z",
-        "seconds": 210
-      },
-      {
-        "date": "2026-07-11T17:36:36.729Z",
-        "seconds": 5
-      },
-      {
-        "date": "2026-07-11T17:36:36.729Z",
-        "seconds": 205
-      },
-      {
-        "date": "2026-07-22T16:08:13.993Z",
-        "seconds": 73
-      },
-      {
-        "date": "2026-07-22T16:08:13.993Z",
-        "seconds": 137
-      },
-      {
-        "date": "2026-07-22T20:55:54.033Z",
-        "seconds": 7
-      },
-      {
-        "date": "2026-07-22T20:55:54.033Z",
-        "seconds": 204
+        "date": "2026-07-22T20:59:25.301Z",
+        "seconds": 33
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1662159949",
@@ -2210,7 +3061,7 @@
         "seconds": 23
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1504313618",
@@ -2228,25 +3079,7 @@
         "seconds": 23
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "1623218580",
-    "title": "ARGENTINA",
-    "artist": "Trueno & Nathy Peluso",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/9b/04/4f/9b044fe3-a3f8-584a-dffd-de7b48c1ff8f/196626936974.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-22T20:51:13.163+00:00",
-    "plays": [
-      "2026-07-22T20:51:13.163Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-22T20:50:56.175Z",
-        "seconds": 230
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1623218580",
@@ -2265,6 +3098,24 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "1623218580",
+    "title": "ARGENTINA",
+    "artist": "Trueno & Nathy Peluso",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/9b/04/4f/9b044fe3-a3f8-584a-dffd-de7b48c1ff8f/196626936974.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-22T20:51:13.163+00:00",
+    "plays": [
+      "2026-07-22T20:51:13.163Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-22T20:50:56.175Z",
+        "seconds": 230
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1739659142",
@@ -2531,7 +3382,7 @@
         "seconds": 62
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1440881708",
@@ -2568,33 +3419,7 @@
         "seconds": 62
       }
     ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "1691699836",
-    "title": "Lose Control",
-    "artist": "Teddy Swims",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/36/19/66/36196640-1561-dc5e-c6bc-1e5f4befa583/093624856771.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-22T16:17:03.696+00:00",
-    "plays": [
-      "2026-07-22T16:17:03.696Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-22T16:16:47.229Z",
-        "seconds": 10
-      },
-      {
-        "date": "2026-07-22T16:16:47.229Z",
-        "seconds": 46
-      },
-      {
-        "date": "2026-07-22T16:16:47.229Z",
-        "seconds": 89
-      }
-    ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1691699836",
@@ -2623,22 +3448,30 @@
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "6792896831",
-    "title": "I Know Everything",
-    "artist": "Tory Lanez",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/34/8d/99/348d99ea-548b-80d4-30ba-7046b5739ff5/075679565983.jpg/600x600bb.jpg",
+    "trackId": "1691699836",
+    "title": "Lose Control",
+    "artist": "Teddy Swims",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/36/19/66/36196640-1561-dc5e-c6bc-1e5f4befa583/093624856771.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-22T16:14:12.321+00:00",
+    "lastPlayed": "2026-07-22T16:17:03.696+00:00",
     "plays": [
-      "2026-07-22T16:14:12.321Z"
+      "2026-07-22T16:17:03.696Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-22T16:13:52.649Z",
-        "seconds": 165
+        "date": "2026-07-22T16:16:47.229Z",
+        "seconds": 10
+      },
+      {
+        "date": "2026-07-22T16:16:47.229Z",
+        "seconds": 46
+      },
+      {
+        "date": "2026-07-22T16:16:47.229Z",
+        "seconds": 89
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "6792896831",
@@ -2657,6 +3490,24 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "6792896831",
+    "title": "I Know Everything",
+    "artist": "Tory Lanez",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/34/8d/99/348d99ea-548b-80d4-30ba-7046b5739ff5/075679565983.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-22T16:14:12.321+00:00",
+    "plays": [
+      "2026-07-22T16:14:12.321Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-22T16:13:52.649Z",
+        "seconds": 165
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "6791305171",
@@ -2773,7 +3624,7 @@
         "seconds": 173
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "Db3Wpr0NMMY",
@@ -2810,22 +3661,6 @@
         "seconds": 173
       }
     ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "1500776329",
-    "title": "Pero Ya No",
-    "artist": "Bad Bunny",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/8c/0f/81/8c0f81f2-9f10-5e3d-b9de-5961a73e8e52/195081078724.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-22T16:01:14.475+00:00",
-    "plays": [],
-    "minutesBySession": [
-      {
-        "date": "2026-07-22T16:01:14.475Z",
-        "seconds": 8
-      }
-    ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
@@ -2843,6 +3678,22 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "1500776329",
+    "title": "Pero Ya No",
+    "artist": "Bad Bunny",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/8c/0f/81/8c0f81f2-9f10-5e3d-b9de-5961a73e8e52/195081078724.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-22T16:01:14.475+00:00",
+    "plays": [],
+    "minutesBySession": [
+      {
+        "date": "2026-07-22T16:01:14.475Z",
+        "seconds": 8
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1622045961",
@@ -2991,7 +3842,7 @@
         "seconds": 129
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "jg4mZak7wzQ",
@@ -3066,7 +3917,7 @@
         "seconds": 129
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "W1I5wf67Jpo",
@@ -3280,7 +4131,7 @@
         "seconds": 11
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1269286798",
@@ -3308,25 +4159,7 @@
         "seconds": 11
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "1239387901",
-    "title": "Best Latin Songs",
-    "artist": "Cuban Latin Collection",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music117/v4/85/40/f6/8540f641-a0ca-d179-7f36-592c480f1b69/8134130517175.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-12T17:48:23.988+00:00",
-    "plays": [
-      "2026-07-12T17:48:23.988Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-12T17:47:58.120Z",
-        "seconds": 17
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1239387901",
@@ -3347,55 +4180,37 @@
     "userId": "koko"
   },
   {
-    "trackId": "1622045626",
-    "title": "Después de la Playa",
-    "artist": "Bad Bunny",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/3e/04/eb/3e04ebf6-370f-f59d-ec84-2c2643db92f1/196626945068.jpg/600x600bb.jpg",
+    "trackId": "1239387901",
+    "title": "Best Latin Songs",
+    "artist": "Cuban Latin Collection",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music117/v4/85/40/f6/8540f641-a0ca-d179-7f36-592c480f1b69/8134130517175.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-12T17:44:05.027+00:00",
+    "lastPlayed": "2026-07-12T17:48:23.988+00:00",
     "plays": [
-      "2026-07-12T17:44:05.027Z"
+      "2026-07-12T17:48:23.988Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-12T17:43:51.486Z",
-        "seconds": 232
-      }
-    ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "1622045626",
-    "title": "Después de la Playa",
-    "artist": "Bad Bunny",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/3e/04/eb/3e04ebf6-370f-f59d-ec84-2c2643db92f1/196626945068.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-12T17:44:05.027+00:00",
-    "plays": [
-      "2026-07-12T17:44:05.027Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-12T17:43:51.486Z",
-        "seconds": 232
+        "date": "2026-07-12T17:47:58.120Z",
+        "seconds": 17
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "6772401045",
-    "title": "Complot (Tambora y Güira)",
-    "artist": "Damn Goldo & Ebenezer Guerra",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/79/73/f0/7973f012-de12-a45e-003d-d80cce647154/1200214136581.jpg/600x600bb.jpg",
+    "trackId": "1622045626",
+    "title": "Después de la Playa",
+    "artist": "Bad Bunny",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/3e/04/eb/3e04ebf6-370f-f59d-ec84-2c2643db92f1/196626945068.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-12T17:41:02.838+00:00",
+    "lastPlayed": "2026-07-12T17:44:05.027+00:00",
     "plays": [
-      "2026-07-12T17:41:02.838Z"
+      "2026-07-12T17:44:05.027Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-12T17:40:31.938Z",
-        "seconds": 169
+        "date": "2026-07-12T17:43:51.486Z",
+        "seconds": 232
       }
     ],
     "userId": "koko"
@@ -3417,6 +4232,24 @@
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "6772401045",
+    "title": "Complot (Tambora y Güira)",
+    "artist": "Damn Goldo & Ebenezer Guerra",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/79/73/f0/7973f012-de12-a45e-003d-d80cce647154/1200214136581.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-12T17:41:02.838+00:00",
+    "plays": [
+      "2026-07-12T17:41:02.838Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-12T17:40:31.938Z",
+        "seconds": 169
+      }
+    ],
+    "userId": "koko"
   },
   {
     "trackId": "ZlnLvLDP4Zg",
@@ -3691,7 +4524,7 @@
         "seconds": 146
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1714344148",
@@ -3714,75 +4547,6 @@
         "seconds": 146
       }
     ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "Pj5Wkb7O1tg",
-    "title": "Beretta - video oficial",
-    "artist": "El De Las R’s",
-    "cover": "https://i.ytimg.com/vi/Pj5Wkb7O1tg/maxresdefault.jpg",
-    "playCount": 8,
-    "lastPlayed": "2026-07-11T15:48:00.118+00:00",
-    "plays": [
-      "2026-07-07T10:09:49.375Z",
-      "2026-07-07T10:10:54.180Z",
-      "2026-07-07T11:02:51.328Z",
-      "2026-07-07T12:10:28.739Z",
-      "2026-07-08T09:33:47.576Z",
-      "2026-07-08T18:04:40.670Z",
-      "2026-07-10T16:52:20.558Z",
-      "2026-07-10T17:24:09.190Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-07T10:09:24.231Z",
-        "seconds": 15
-      },
-      {
-        "date": "2026-07-07T10:09:24.231Z",
-        "seconds": 31
-      },
-      {
-        "date": "2026-07-07T10:09:24.231Z",
-        "seconds": 13
-      },
-      {
-        "date": "2026-07-07T10:10:51.380Z",
-        "seconds": 23
-      },
-      {
-        "date": "2026-07-07T11:02:36.641Z",
-        "seconds": 19
-      },
-      {
-        "date": "2026-07-07T11:02:36.641Z",
-        "seconds": 38
-      },
-      {
-        "date": "2026-07-07T12:10:18.411Z",
-        "seconds": 143
-      },
-      {
-        "date": "2026-07-08T09:33:37.348Z",
-        "seconds": 143
-      },
-      {
-        "date": "2026-07-08T18:04:28.190Z",
-        "seconds": 10
-      },
-      {
-        "date": "2026-07-10T16:52:09.658Z",
-        "seconds": 142
-      },
-      {
-        "date": "2026-07-10T17:23:58.434Z",
-        "seconds": 10
-      },
-      {
-        "date": "2026-07-11T15:48:00.118Z",
-        "seconds": 6
-      }
-    ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
@@ -3855,19 +4619,70 @@
     "userId": "koko"
   },
   {
-    "trackId": "BPUFjunmNtU",
-    "title": "DONDE TE ESCONDES? (Video Oficial)",
-    "artist": "Yapi",
-    "cover": "https://img.youtube.com/vi/BPUFjunmNtU/hqdefault.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-11T08:04:15.561+00:00",
+    "trackId": "Pj5Wkb7O1tg",
+    "title": "Beretta - video oficial",
+    "artist": "El De Las R’s",
+    "cover": "https://i.ytimg.com/vi/Pj5Wkb7O1tg/maxresdefault.jpg",
+    "playCount": 8,
+    "lastPlayed": "2026-07-11T15:48:00.118+00:00",
     "plays": [
-      "2026-07-11T08:04:15.561Z"
+      "2026-07-07T10:09:49.375Z",
+      "2026-07-07T10:10:54.180Z",
+      "2026-07-07T11:02:51.328Z",
+      "2026-07-07T12:10:28.739Z",
+      "2026-07-08T09:33:47.576Z",
+      "2026-07-08T18:04:40.670Z",
+      "2026-07-10T16:52:20.558Z",
+      "2026-07-10T17:24:09.190Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-11T08:03:55.685Z",
-        "seconds": 27
+        "date": "2026-07-07T10:09:24.231Z",
+        "seconds": 15
+      },
+      {
+        "date": "2026-07-07T10:09:24.231Z",
+        "seconds": 31
+      },
+      {
+        "date": "2026-07-07T10:09:24.231Z",
+        "seconds": 13
+      },
+      {
+        "date": "2026-07-07T10:10:51.380Z",
+        "seconds": 23
+      },
+      {
+        "date": "2026-07-07T11:02:36.641Z",
+        "seconds": 19
+      },
+      {
+        "date": "2026-07-07T11:02:36.641Z",
+        "seconds": 38
+      },
+      {
+        "date": "2026-07-07T12:10:18.411Z",
+        "seconds": 143
+      },
+      {
+        "date": "2026-07-08T09:33:37.348Z",
+        "seconds": 143
+      },
+      {
+        "date": "2026-07-08T18:04:28.190Z",
+        "seconds": 10
+      },
+      {
+        "date": "2026-07-10T16:52:09.658Z",
+        "seconds": 142
+      },
+      {
+        "date": "2026-07-10T17:23:58.434Z",
+        "seconds": 10
+      },
+      {
+        "date": "2026-07-11T15:48:00.118Z",
+        "seconds": 6
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
@@ -3891,26 +4706,22 @@
     "userId": "koko"
   },
   {
-    "trackId": "F4l4n7zgfCA",
-    "title": "DONDE TE ESCONDES? 2.0 ft JC Reyes (Video Oficial)",
+    "trackId": "BPUFjunmNtU",
+    "title": "DONDE TE ESCONDES? (Video Oficial)",
     "artist": "Yapi",
-    "cover": "https://img.youtube.com/vi/F4l4n7zgfCA/hqdefault.jpg",
+    "cover": "https://img.youtube.com/vi/BPUFjunmNtU/hqdefault.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-11T08:01:15.148+00:00",
+    "lastPlayed": "2026-07-11T08:04:15.561+00:00",
     "plays": [
-      "2026-07-11T08:01:15.148Z"
+      "2026-07-11T08:04:15.561Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-11T08:00:59.219Z",
-        "seconds": 124
-      },
-      {
-        "date": "2026-07-11T08:00:59.219Z",
-        "seconds": 45
+        "date": "2026-07-11T08:03:55.685Z",
+        "seconds": 27
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "F4l4n7zgfCA",
@@ -3933,6 +4744,28 @@
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "F4l4n7zgfCA",
+    "title": "DONDE TE ESCONDES? 2.0 ft JC Reyes (Video Oficial)",
+    "artist": "Yapi",
+    "cover": "https://img.youtube.com/vi/F4l4n7zgfCA/hqdefault.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-11T08:01:15.148+00:00",
+    "plays": [
+      "2026-07-11T08:01:15.148Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-11T08:00:59.219Z",
+        "seconds": 124
+      },
+      {
+        "date": "2026-07-11T08:00:59.219Z",
+        "seconds": 45
+      }
+    ],
+    "userId": "koko"
   },
   {
     "trackId": "y88GdSmOOWw",
@@ -3986,7 +4819,7 @@
         "seconds": 137
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "YJYtd413d_w",
@@ -4004,33 +4837,6 @@
         "seconds": 137
       }
     ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "1479888342",
-    "title": "B11 (feat. Myke Towers)",
-    "artist": "Rvssian, Darell & Zion & Lennox",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/9d/e9/70/9de9705c-cd60-16f4-52af-ebcb047c0a71/886447955079.jpg/600x600bb.jpg",
-    "playCount": 2,
-    "lastPlayed": "2026-07-11T05:40:56.553+00:00",
-    "plays": [
-      "2026-07-09T15:11:33.241Z",
-      "2026-07-11T05:40:56.553Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-09T15:11:21.977Z",
-        "seconds": 14
-      },
-      {
-        "date": "2026-07-09T15:11:21.977Z",
-        "seconds": 39
-      },
-      {
-        "date": "2026-07-11T05:40:45.432Z",
-        "seconds": 248
-      }
-    ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
@@ -4059,6 +4865,33 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "1479888342",
+    "title": "B11 (feat. Myke Towers)",
+    "artist": "Rvssian, Darell & Zion & Lennox",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/9d/e9/70/9de9705c-cd60-16f4-52af-ebcb047c0a71/886447955079.jpg/600x600bb.jpg",
+    "playCount": 2,
+    "lastPlayed": "2026-07-11T05:40:56.553+00:00",
+    "plays": [
+      "2026-07-09T15:11:33.241Z",
+      "2026-07-11T05:40:56.553Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-09T15:11:21.977Z",
+        "seconds": 14
+      },
+      {
+        "date": "2026-07-09T15:11:21.977Z",
+        "seconds": 39
+      },
+      {
+        "date": "2026-07-11T05:40:45.432Z",
+        "seconds": 248
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1682377562",
@@ -4128,7 +4961,7 @@
         "seconds": 79
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1894271866",
@@ -4154,7 +4987,7 @@
         "seconds": 79
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1791666573",
@@ -4225,7 +5058,7 @@
         "seconds": 135
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1894271865",
@@ -4252,25 +5085,7 @@
         "seconds": 135
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "1377817652",
-    "title": "Felices los 4",
-    "artist": "Maluma",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/d8/86/a0/d886a0f9-dcdf-fe85-6d6c-9382b63305d1/886446853161.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-11T04:00:12.57+00:00",
-    "plays": [
-      "2026-07-11T04:00:12.570Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-11T03:59:57.194Z",
-        "seconds": 11
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1377817652",
@@ -4289,6 +5104,24 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "1377817652",
+    "title": "Felices los 4",
+    "artist": "Maluma",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/d8/86/a0/d886a0f9-dcdf-fe85-6d6c-9382b63305d1/886446853161.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-11T04:00:12.57+00:00",
+    "plays": [
+      "2026-07-11T04:00:12.570Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-11T03:59:57.194Z",
+        "seconds": 11
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1695169464",
@@ -4384,7 +5217,7 @@
         "seconds": 143
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1834470486",
@@ -4408,39 +5241,6 @@
         "seconds": 143
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "1743409332",
-    "title": "Hier encore",
-    "artist": "Charles Aznavour",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/6a/7a/f5/6a7af579-7120-5a49-edff-b40356f3bcb2/24UMGIM35043.rgb.jpg/600x600bb.jpg",
-    "playCount": 4,
-    "lastPlayed": "2026-07-10T17:50:03.673+00:00",
-    "plays": [
-      "2026-07-08T09:25:26.265Z",
-      "2026-07-08T18:38:02.517Z",
-      "2026-07-09T09:51:28.606Z",
-      "2026-07-10T17:50:03.673Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-08T09:25:10.556Z",
-        "seconds": 13
-      },
-      {
-        "date": "2026-07-08T09:25:10.556Z",
-        "seconds": 75
-      },
-      {
-        "date": "2026-07-08T18:37:50.653Z",
-        "seconds": 34
-      },
-      {
-        "date": "2026-07-10T17:49:52.723Z",
-        "seconds": 30
-      }
-    ],
     "userId": "koko"
   },
   {
@@ -4475,6 +5275,39 @@
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1743409332",
+    "title": "Hier encore",
+    "artist": "Charles Aznavour",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/6a/7a/f5/6a7af579-7120-5a49-edff-b40356f3bcb2/24UMGIM35043.rgb.jpg/600x600bb.jpg",
+    "playCount": 4,
+    "lastPlayed": "2026-07-10T17:50:03.673+00:00",
+    "plays": [
+      "2026-07-08T09:25:26.265Z",
+      "2026-07-08T18:38:02.517Z",
+      "2026-07-09T09:51:28.606Z",
+      "2026-07-10T17:50:03.673Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-08T09:25:10.556Z",
+        "seconds": 13
+      },
+      {
+        "date": "2026-07-08T09:25:10.556Z",
+        "seconds": 75
+      },
+      {
+        "date": "2026-07-08T18:37:50.653Z",
+        "seconds": 34
+      },
+      {
+        "date": "2026-07-10T17:49:52.723Z",
+        "seconds": 30
+      }
+    ],
+    "userId": "koko"
   },
   {
     "trackId": "1708274776",
@@ -4708,7 +5541,7 @@
         "seconds": 53
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "XbcoT9UbGxQ",
@@ -4726,24 +5559,6 @@
         "seconds": 53
       }
     ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "UcLj3wLcQF4",
-    "title": "AVEC MOI (Clip Officiel)",
-    "artist": "RnBoi & Nono La Grinta",
-    "cover": "https://img.youtube.com/vi/UcLj3wLcQF4/hqdefault.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-10T17:05:48.432+00:00",
-    "plays": [
-      "2026-07-10T17:05:48.432Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-10T17:05:32.665Z",
-        "seconds": 172
-      }
-    ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
@@ -4816,7 +5631,7 @@
         "seconds": 165
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1751972245",
@@ -4834,24 +5649,6 @@
         "seconds": 165
       }
     ],
-    "userId": "koko"
-  },
-  {
-    "trackId": "1733364279",
-    "title": "El Conjuntito",
-    "artist": "El Bobe & Omar Montes",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/30/1e/04/301e04b1-dfe1-9963-4e4d-43de227a0588/085365691445.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-10T16:48:14+00:00",
-    "plays": [
-      "2026-07-10T16:48:14.000Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-10T16:47:53.006Z",
-        "seconds": 42
-      }
-    ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
@@ -4871,6 +5668,24 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "1733364279",
+    "title": "El Conjuntito",
+    "artist": "El Bobe & Omar Montes",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/30/1e/04/301e04b1-dfe1-9963-4e4d-43de227a0588/085365691445.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-10T16:48:14+00:00",
+    "plays": [
+      "2026-07-10T16:48:14.000Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-10T16:47:53.006Z",
+        "seconds": 42
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1826734890",
@@ -4934,7 +5749,7 @@
         "seconds": 229
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1473336796",
@@ -4954,19 +5769,6 @@
         "seconds": 229
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "83090584",
-    "title": "Gasolina (Dj Buddha Remix)",
-    "artist": "Daddy Yankee, Lil Jon, Noriega & Pitbull",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Features114/v4/46/46/6a/46466a3b-bd39-5941-9d02-0bb5da7ee705/dj.vugpwnty.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-09T15:15:41.478+00:00",
-    "plays": [
-      "2026-07-09T15:15:41.478Z"
-    ],
-    "minutesBySession": [],
     "userId": "koko"
   },
   {
@@ -4983,26 +5785,17 @@
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "1500491200",
-    "title": "Azul",
-    "artist": "J Balvin",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/ae/b3/66/aeb36667-f9b2-c455-c3fc-a53bbd5ec4c1/20UMGIM10542.rgb.jpg/600x600bb.jpg",
+    "trackId": "83090584",
+    "title": "Gasolina (Dj Buddha Remix)",
+    "artist": "Daddy Yankee, Lil Jon, Noriega & Pitbull",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Features114/v4/46/46/6a/46466a3b-bd39-5941-9d02-0bb5da7ee705/dj.vugpwnty.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-09T15:02:10.609+00:00",
+    "lastPlayed": "2026-07-09T15:15:41.478+00:00",
     "plays": [
-      "2026-07-09T15:02:10.609Z"
+      "2026-07-09T15:15:41.478Z"
     ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-09T15:01:54.081Z",
-        "seconds": 11
-      },
-      {
-        "date": "2026-07-09T15:01:54.081Z",
-        "seconds": 131
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "minutesBySession": [],
+    "userId": "koko"
   },
   {
     "trackId": "1500491200",
@@ -5025,6 +5818,28 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "1500491200",
+    "title": "Azul",
+    "artist": "J Balvin",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/ae/b3/66/aeb36667-f9b2-c455-c3fc-a53bbd5ec4c1/20UMGIM10542.rgb.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-09T15:02:10.609+00:00",
+    "plays": [
+      "2026-07-09T15:02:10.609Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-09T15:01:54.081Z",
+        "seconds": 11
+      },
+      {
+        "date": "2026-07-09T15:01:54.081Z",
+        "seconds": 131
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1214658772",
@@ -5095,7 +5910,7 @@
         "seconds": 6
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1657584259",
@@ -5130,25 +5945,7 @@
         "seconds": 6
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "zBk2oPplTUE",
-    "title": "Cumbia Sonidera Mix [Vinyl Studio Session] with backyardmango",
-    "artist": "Humano Studios",
-    "cover": "https://img.youtube.com/vi/zBk2oPplTUE/hqdefault.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-08T18:04:05.717+00:00",
-    "plays": [
-      "2026-07-08T18:04:05.717Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-08T18:03:47.674Z",
-        "seconds": 27
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "zBk2oPplTUE",
@@ -5167,6 +5964,24 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "zBk2oPplTUE",
+    "title": "Cumbia Sonidera Mix [Vinyl Studio Session] with backyardmango",
+    "artist": "Humano Studios",
+    "cover": "https://img.youtube.com/vi/zBk2oPplTUE/hqdefault.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-08T18:04:05.717+00:00",
+    "plays": [
+      "2026-07-08T18:04:05.717Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-08T18:03:47.674Z",
+        "seconds": 27
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1716162447",
@@ -5205,7 +6020,7 @@
       "2026-07-08T09:27:46.233Z"
     ],
     "minutesBySession": [],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "6-EKG8fSy5A",
@@ -5218,29 +6033,7 @@
       "2026-07-08T09:27:46.233Z"
     ],
     "minutesBySession": [],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "6769064406",
-    "title": "ADRENALINA",
-    "artist": "Samurai Jay & Vito Salamanca",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/75/54/ef/7554efc6-9944-0d64-16c2-8cbc8ab38ff0/26UMGIM44223.rgb.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-08T09:22:58.289+00:00",
-    "plays": [
-      "2026-07-08T09:22:58.289Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-08T09:22:48.178Z",
-        "seconds": 11
-      },
-      {
-        "date": "2026-07-08T09:22:48.178Z",
-        "seconds": 132
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "6769064406",
@@ -5265,21 +6058,23 @@
     "userId": "koko"
   },
   {
-    "trackId": "ZOYiJbQPcPo",
-    "title": "Talento (Video Oficial)",
-    "artist": "Yan Block, Panda Black",
-    "cover": "https://img.youtube.com/vi/ZOYiJbQPcPo/hqdefault.jpg",
+    "trackId": "6769064406",
+    "title": "ADRENALINA",
+    "artist": "Samurai Jay & Vito Salamanca",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/75/54/ef/7554efc6-9944-0d64-16c2-8cbc8ab38ff0/26UMGIM44223.rgb.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-07T12:16:15.562+00:00",
-    "plays": [],
+    "lastPlayed": "2026-07-08T09:22:58.289+00:00",
+    "plays": [
+      "2026-07-08T09:22:58.289Z"
+    ],
     "minutesBySession": [
       {
-        "date": "2026-07-07T12:16:15.562Z",
-        "seconds": 10
+        "date": "2026-07-08T09:22:48.178Z",
+        "seconds": 11
       },
       {
-        "date": "2026-07-07T12:16:15.562Z",
-        "seconds": 147
+        "date": "2026-07-08T09:22:48.178Z",
+        "seconds": 132
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
@@ -5303,6 +6098,26 @@
       }
     ],
     "userId": "koko"
+  },
+  {
+    "trackId": "ZOYiJbQPcPo",
+    "title": "Talento (Video Oficial)",
+    "artist": "Yan Block, Panda Black",
+    "cover": "https://img.youtube.com/vi/ZOYiJbQPcPo/hqdefault.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-07T12:16:15.562+00:00",
+    "plays": [],
+    "minutesBySession": [
+      {
+        "date": "2026-07-07T12:16:15.562Z",
+        "seconds": 10
+      },
+      {
+        "date": "2026-07-07T12:16:15.562Z",
+        "seconds": 147
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1849570183",
@@ -5444,7 +6259,7 @@
         "seconds": 56
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1826826198",
@@ -5472,6 +6287,32 @@
       {
         "date": "2026-07-07T12:06:27.230Z",
         "seconds": 56
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "369570892",
+    "title": "93 'Til Infinity",
+    "artist": "Souls of Mischief",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music/22/6e/b6/mzi.xyhsjlep.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-07T11:42:14.109+00:00",
+    "plays": [
+      "2026-07-07T11:42:14.109Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-07T11:41:49.987Z",
+        "seconds": 155
+      },
+      {
+        "date": "2026-07-07T11:41:49.987Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-07T11:41:49.987Z",
+        "seconds": 52
       }
     ],
     "userId": "koko"
@@ -5503,27 +6344,19 @@
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "369570892",
-    "title": "93 'Til Infinity",
-    "artist": "Souls of Mischief",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music/22/6e/b6/mzi.xyhsjlep.jpg/600x600bb.jpg",
+    "trackId": "1645032135",
+    "title": "Feliz Cumpleaños Ferxxo",
+    "artist": "Feid",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/54/90/df/5490dfaf-d6a4-579c-f6e4-81fd59f6ae3f/22UM1IM04831.rgb.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-07T11:42:14.109+00:00",
+    "lastPlayed": "2026-07-07T10:51:49.085+00:00",
     "plays": [
-      "2026-07-07T11:42:14.109Z"
+      "2026-07-07T10:51:49.085Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-07T11:41:49.987Z",
-        "seconds": 155
-      },
-      {
-        "date": "2026-07-07T11:41:49.987Z",
-        "seconds": 5
-      },
-      {
-        "date": "2026-07-07T11:41:49.987Z",
-        "seconds": 52
+        "date": "2026-07-07T10:51:24.581Z",
+        "seconds": 15
       }
     ],
     "userId": "koko"
@@ -5545,24 +6378,6 @@
       }
     ],
     "userId": "83b44ae7-4aab-4323-9be1-1eeb2992e40f"
-  },
-  {
-    "trackId": "1645032135",
-    "title": "Feliz Cumpleaños Ferxxo",
-    "artist": "Feid",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/54/90/df/5490dfaf-d6a4-579c-f6e4-81fd59f6ae3f/22UM1IM04831.rgb.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-07T10:51:49.085+00:00",
-    "plays": [
-      "2026-07-07T10:51:49.085Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-07T10:51:24.581Z",
-        "seconds": 15
-      }
-    ],
-    "userId": "koko"
   },
   {
     "trackId": "700051039",
@@ -5948,7 +6763,7 @@
       "2026-07-07T10:16:21.566Z"
     ],
     "minutesBySession": [],
-    "userId": "koko"
+    "userId": "5499bf10-c86c-4a73-a175-1ffcbd4212a0"
   },
   {
     "trackId": "923691591",
@@ -5961,52 +6776,6 @@
       "2026-07-07T10:16:21.566Z"
     ],
     "minutesBySession": [],
-    "userId": "5499bf10-c86c-4a73-a175-1ffcbd4212a0"
-  },
-  {
-    "trackId": "1781353929",
-    "title": "Not Like Us",
-    "artist": "Kendrick Lamar",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/31/3a/3f/313a3fbc-bb8f-80c7-b5a2-e226869a38cd/24UMGIM51924.rgb.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-07T10:13:46.876+00:00",
-    "plays": [
-      "2026-07-07T10:13:46.876Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 48
-      },
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 12
-      },
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 5
-      },
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 7
-      },
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 11
-      },
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 19
-      },
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 30
-      },
-      {
-        "date": "2026-07-07T10:13:35.600Z",
-        "seconds": 11
-      }
-    ],
     "userId": "koko"
   },
   {
@@ -6056,23 +6825,47 @@
     "userId": "5499bf10-c86c-4a73-a175-1ffcbd4212a0"
   },
   {
-    "trackId": "1671067741",
-    "title": "El Azul",
-    "artist": "Junior H & Peso Pluma",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/94/22/30/9422301b-2b98-e11e-6f26-e3db43019163/5054197559709.jpg/600x600bb.jpg",
+    "trackId": "1781353929",
+    "title": "Not Like Us",
+    "artist": "Kendrick Lamar",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/31/3a/3f/313a3fbc-bb8f-80c7-b5a2-e226869a38cd/24UMGIM51924.rgb.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-07T10:08:03.879+00:00",
+    "lastPlayed": "2026-07-07T10:13:46.876+00:00",
     "plays": [
-      "2026-07-07T10:08:03.879Z"
+      "2026-07-07T10:13:46.876Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-07T10:07:50.459Z",
-        "seconds": 50
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 48
       },
       {
-        "date": "2026-07-07T10:07:50.459Z",
-        "seconds": 40
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 12
+      },
+      {
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 5
+      },
+      {
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 7
+      },
+      {
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 11
+      },
+      {
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 19
+      },
+      {
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 30
+      },
+      {
+        "date": "2026-07-07T10:13:35.600Z",
+        "seconds": 11
       }
     ],
     "userId": "koko"
@@ -6098,6 +6891,28 @@
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1671067741",
+    "title": "El Azul",
+    "artist": "Junior H & Peso Pluma",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/94/22/30/9422301b-2b98-e11e-6f26-e3db43019163/5054197559709.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-07T10:08:03.879+00:00",
+    "plays": [
+      "2026-07-07T10:08:03.879Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-07T10:07:50.459Z",
+        "seconds": 50
+      },
+      {
+        "date": "2026-07-07T10:07:50.459Z",
+        "seconds": 40
+      }
+    ],
+    "userId": "koko"
   },
   {
     "trackId": "1670252659",
@@ -6235,7 +7050,7 @@
         "seconds": 120
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "tFXnN6Onrbg",
@@ -6257,7 +7072,7 @@
         "seconds": 120
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1663066826",
@@ -6349,7 +7164,7 @@
         "seconds": 180
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1657583932",
@@ -6367,29 +7182,7 @@
         "seconds": 180
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "5ISPjMo0loQ",
-    "title": "Real G (Official Video)",
-    "artist": "Bad Gyal, Quevedo",
-    "cover": "https://img.youtube.com/vi/5ISPjMo0loQ/hqdefault.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-06T18:45:29.445+00:00",
-    "plays": [
-      "2026-07-06T18:45:29.445Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-06T18:45:16.067Z",
-        "seconds": 11
-      },
-      {
-        "date": "2026-07-06T18:45:16.067Z",
-        "seconds": 58
-      }
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "5ISPjMo0loQ",
@@ -6414,19 +7207,23 @@
     "userId": "koko"
   },
   {
-    "trackId": "RHUKLQ6nWpc",
-    "title": "TRUENO || BZRP Freestyle Sessions #6",
-    "artist": "Bizarrap",
-    "cover": "https://img.youtube.com/vi/RHUKLQ6nWpc/hqdefault.jpg",
+    "trackId": "5ISPjMo0loQ",
+    "title": "Real G (Official Video)",
+    "artist": "Bad Gyal, Quevedo",
+    "cover": "https://img.youtube.com/vi/5ISPjMo0loQ/hqdefault.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-06T18:38:00.336+00:00",
+    "lastPlayed": "2026-07-06T18:45:29.445+00:00",
     "plays": [
-      "2026-07-06T18:38:00.336Z"
+      "2026-07-06T18:45:29.445Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-06T18:37:43.223Z",
-        "seconds": 197
+        "date": "2026-07-06T18:45:16.067Z",
+        "seconds": 11
+      },
+      {
+        "date": "2026-07-06T18:45:16.067Z",
+        "seconds": 58
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
@@ -6450,30 +7247,22 @@
     "userId": "koko"
   },
   {
-    "trackId": "JWRlTezTF2k",
-    "title": "DANCE CRIP (Video Oficial)",
-    "artist": "Trueno",
-    "cover": "https://img.youtube.com/vi/JWRlTezTF2k/hqdefault.jpg",
+    "trackId": "RHUKLQ6nWpc",
+    "title": "TRUENO || BZRP Freestyle Sessions #6",
+    "artist": "Bizarrap",
+    "cover": "https://img.youtube.com/vi/RHUKLQ6nWpc/hqdefault.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-06T18:35:01.989+00:00",
+    "lastPlayed": "2026-07-06T18:38:00.336+00:00",
     "plays": [
-      "2026-07-06T18:35:01.989Z"
+      "2026-07-06T18:38:00.336Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-06T18:34:45.912Z",
-        "seconds": 6
-      },
-      {
-        "date": "2026-07-06T18:34:45.912Z",
-        "seconds": 119
-      },
-      {
-        "date": "2026-07-06T18:34:45.912Z",
-        "seconds": 47
+        "date": "2026-07-06T18:37:43.223Z",
+        "seconds": 197
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "JWRlTezTF2k",
@@ -6502,19 +7291,27 @@
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "1801545914",
-    "title": "FLIPA",
-    "artist": "JC Reyes & Dei V",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/e1/80/95/e18095c1-5d43-e939-5948-1aed0be65138/5034644539706.jpg/600x600bb.jpg",
+    "trackId": "JWRlTezTF2k",
+    "title": "DANCE CRIP (Video Oficial)",
+    "artist": "Trueno",
+    "cover": "https://img.youtube.com/vi/JWRlTezTF2k/hqdefault.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-06T18:22:59.047+00:00",
+    "lastPlayed": "2026-07-06T18:35:01.989+00:00",
     "plays": [
-      "2026-07-06T18:22:59.047Z"
+      "2026-07-06T18:35:01.989Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-06T18:22:40.461Z",
-        "seconds": 163
+        "date": "2026-07-06T18:34:45.912Z",
+        "seconds": 6
+      },
+      {
+        "date": "2026-07-06T18:34:45.912Z",
+        "seconds": 119
+      },
+      {
+        "date": "2026-07-06T18:34:45.912Z",
+        "seconds": 47
       }
     ],
     "userId": "koko"
@@ -6536,6 +7333,24 @@
       }
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1801545914",
+    "title": "FLIPA",
+    "artist": "JC Reyes & Dei V",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/e1/80/95/e18095c1-5d43-e939-5948-1aed0be65138/5034644539706.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-06T18:22:59.047+00:00",
+    "plays": [
+      "2026-07-06T18:22:59.047Z"
+    ],
+    "minutesBySession": [
+      {
+        "date": "2026-07-06T18:22:40.461Z",
+        "seconds": 163
+      }
+    ],
+    "userId": "koko"
   },
   {
     "trackId": "1834995240",
@@ -6638,7 +7453,7 @@
         "seconds": 15
       }
     ],
-    "userId": "koko"
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "ic2A-IAGMcE",
@@ -6669,28 +7484,6 @@
         "seconds": 15
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "Ro18BjrfFg4",
-    "title": "Piensan (Video Oficial)",
-    "artist": "Myke Towers",
-    "cover": "https://img.youtube.com/vi/Ro18BjrfFg4/hqdefault.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-06T17:42:34.651+00:00",
-    "plays": [
-      "2026-07-06T17:42:34.651Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-06T17:42:18.725Z",
-        "seconds": 10
-      },
-      {
-        "date": "2026-07-06T17:42:18.725Z",
-        "seconds": 170
-      }
-    ],
     "userId": "koko"
   },
   {
@@ -6716,22 +7509,26 @@
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
-    "trackId": "1672426176",
-    "title": "Las Bratz (Remix) [feat. Nickzzy, El Bobe, Juseph & Gio]",
-    "artist": "Aissa, SAIKO & JC Reyes",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/a2/4d/f1/a24df1ae-efc8-fbc8-17f2-e4c364895bf0/197188183578.jpg/600x600bb.jpg",
+    "trackId": "Ro18BjrfFg4",
+    "title": "Piensan (Video Oficial)",
+    "artist": "Myke Towers",
+    "cover": "https://img.youtube.com/vi/Ro18BjrfFg4/hqdefault.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-06T17:37:36.018+00:00",
+    "lastPlayed": "2026-07-06T17:42:34.651+00:00",
     "plays": [
-      "2026-07-06T17:37:36.018Z"
+      "2026-07-06T17:42:34.651Z"
     ],
     "minutesBySession": [
       {
-        "date": "2026-07-06T17:37:22.624Z",
-        "seconds": 56
+        "date": "2026-07-06T17:42:18.725Z",
+        "seconds": 10
+      },
+      {
+        "date": "2026-07-06T17:42:18.725Z",
+        "seconds": 170
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+    "userId": "koko"
   },
   {
     "trackId": "1672426176",
@@ -6752,17 +7549,22 @@
     "userId": "koko"
   },
   {
-    "trackId": "1570323056",
-    "title": "Yonaguni",
-    "artist": "Bad Bunny",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/b6/12/da/b612daba-6c68-c2ab-7492-fb2e079074d5/196006829308.jpg/600x600bb.jpg",
+    "trackId": "1672426176",
+    "title": "Las Bratz (Remix) [feat. Nickzzy, El Bobe, Juseph & Gio]",
+    "artist": "Aissa, SAIKO & JC Reyes",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/a2/4d/f1/a24df1ae-efc8-fbc8-17f2-e4c364895bf0/197188183578.jpg/600x600bb.jpg",
     "playCount": 1,
-    "lastPlayed": "2026-07-06T17:22:35.298+00:00",
+    "lastPlayed": "2026-07-06T17:37:36.018+00:00",
     "plays": [
-      "2026-07-06T17:22:35.298Z"
+      "2026-07-06T17:37:36.018Z"
     ],
-    "minutesBySession": [],
-    "userId": "koko"
+    "minutesBySession": [
+      {
+        "date": "2026-07-06T17:37:22.624Z",
+        "seconds": 56
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   },
   {
     "trackId": "1570323056",
@@ -6776,6 +7578,19 @@
     ],
     "minutesBySession": [],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1570323056",
+    "title": "Yonaguni",
+    "artist": "Bad Bunny",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/b6/12/da/b612daba-6c68-c2ab-7492-fb2e079074d5/196006829308.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-06T17:22:35.298+00:00",
+    "plays": [
+      "2026-07-06T17:22:35.298Z"
+    ],
+    "minutesBySession": [],
+    "userId": "koko"
   },
   {
     "trackId": "dn3d8awSA0c",
@@ -6849,192 +7664,126 @@
         "seconds": 40
       }
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
-  },
-  {
-    "trackId": "XYu1MDtMEaY",
-    "title": "Elle voulait #PlanèteRap",
-    "artist": "[EXCLU] RnBoi",
-    "cover": "https://img.youtube.com/vi/XYu1MDtMEaY/hqdefault.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-06T17:12:22.946+00:00",
-    "plays": [
-      "2026-07-06T17:12:22.946Z"
-    ],
-    "minutesBySession": [
-      {
-        "date": "2026-07-06T17:12:05.322Z",
-        "seconds": 64
-      },
-      {
-        "date": "2026-07-06T17:12:05.322Z",
-        "seconds": 5
-      },
-      {
-        "date": "2026-07-06T17:12:05.322Z",
-        "seconds": 9
-      },
-      {
-        "date": "2026-07-06T17:12:05.322Z",
-        "seconds": 24
-      },
-      {
-        "date": "2026-07-06T17:12:05.322Z",
-        "seconds": 5
-      },
-      {
-        "date": "2026-07-06T17:12:05.322Z",
-        "seconds": 40
-      }
-    ],
     "userId": "koko"
   },
   {
-    "trackId": "b8TAzptVk_U",
-    "title": "Beretta (De Los Cerros La Escuela) | Letra",
-    "artist": "El De Las R’s",
-    "cover": "https://img.youtube.com/vi/b8TAzptVk_U/hqdefault.jpg",
+    "trackId": "1786262016",
+    "title": "COQUETA",
+    "artist": "Fuerza Regida & Grupo Frontera",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/ba/96/9e/ba969e5d-857d-bbda-08e2-edc08642d188/196872772869.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-26T16:38:09.576Z",
+    "plays": [
+      "2026-07-26T16:38:09.576Z"
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 242
+      }
+    ]
+  },
+  {
+    "trackId": "1712363845",
+    "title": "EXCESOS",
+    "artist": "Fuerza Regida",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/21/e3/b7/21e3b74f-571b-07ce-567b-a2aa8274c7b2/196871548922.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-26T16:42:17.962Z",
+    "plays": [
+      "2026-07-26T16:42:17.962Z"
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 149
+      }
+    ]
+  },
+  {
+    "trackId": "ju_Av4gD11c",
+    "title": "Golfista",
+    "artist": "Camin & Rvfv",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/94/ab/71/94ab7165-9ee4-7a92-3cae-8f6345419188/5026854702353.jpg/600x600bb.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-26T16:50:10.467Z",
+    "plays": [
+      "2026-07-26T16:50:10.467Z"
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 156
+      }
+    ]
+  },
+  {
+    "trackId": "MD4fFAkTMjU",
+    "title": "DIFERENTE 2.0 (Prod.by Pablomas)",
+    "artist": "RVFV",
+    "cover": "https://img.youtube.com/vi/MD4fFAkTMjU/hqdefault.jpg",
+    "playCount": 1,
+    "lastPlayed": "2026-07-26T16:52:56.821Z",
+    "plays": [
+      "2026-07-26T16:52:56.821Z"
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 134
+      }
+    ]
+  },
+  {
+    "trackId": "1440650961",
+    "title": "Beauty and a Beat (feat. Nicki Minaj)",
+    "artist": "Justin Bieber",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/73/08/1a/73081a96-0f7c-b5f8-2757-5c17fb714323/12UMGIM31899.rgb.jpg/600x600bb.jpg",
     "playCount": 3,
-    "lastPlayed": "2026-07-24T14:55:37.751Z",
+    "lastPlayed": "2026-07-26T16:56:29.317Z",
     "plays": [
-      "2026-07-24T14:54:31.264Z",
-      "2026-07-24T14:55:37.723Z",
-      "2026-07-24T14:55:37.751Z"
+      "2026-07-26T16:55:26.799Z",
+      "2026-07-26T16:56:29.303Z",
+      "2026-07-26T16:56:29.317Z"
     ],
     "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
     "minutesBySession": [
       {
-        "date": "2026-07-24T14:55:37.338Z",
-        "seconds": 76
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 70
       }
     ]
   },
   {
-    "trackId": "3Wnso2A4PZE",
-    "title": "LADY GAGA",
-    "artist": "Peso Pluma, Gabito Ballesteros & Junior H",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Video126/v4/9f/2a/59/9f2a594f-0838-2efc-79d3-e85ea808c061/197189420603_1_1.jpg/600x600bb.jpg",
+    "trackId": "1442452725",
+    "title": "Summertime Sadness",
+    "artist": "Lana Del Rey",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/c5/df/dd/c5dfdd9c-24f2-de01-246c-fcc5e028f705/12UMGIM53864.rgb.jpg/600x600bb.jpg",
+    "playCount": 0,
+    "lastPlayed": "2026-07-26T16:56:26.971Z",
+    "plays": [],
+    "minutesBySession": [
+      {
+        "date": "2026-07-26T16:56:26.971Z",
+        "seconds": 7
+      }
+    ],
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
+  },
+  {
+    "trackId": "1839077087",
+    "title": "Vino Y Cemento",
+    "artist": "Taburete",
+    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/31/d8/dd/31d8dd4b-12e0-959e-44ce-fc2a58c04287/cover.jpg/170x170bb.png",
     "playCount": 1,
-    "lastPlayed": "2026-07-24T14:57:10.684Z",
+    "lastPlayed": "2026-07-26T16:59:17.230Z",
     "plays": [
-      "2026-07-24T14:57:10.684Z"
+      "2026-07-26T16:59:17.230Z"
     ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
-    "minutesBySession": [
-      {
-        "date": "2026-07-24T14:58:41.151Z",
-        "seconds": 100
-      },
-      {
-        "date": "2026-07-24T15:05:38.919Z",
-        "seconds": 113
-      }
-    ]
-  },
-  {
-    "trackId": "1301513530",
-    "title": "La Chona",
-    "artist": "Los Tucanes de Tijuana",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/fc/0b/00/fc0b0020-aaac-4804-e556-d10f73e7f905/018736747175_cover.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-24T15:00:50.533Z",
-    "plays": [
-      "2026-07-24T15:00:50.533Z"
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
-    "minutesBySession": [
-      {
-        "date": "2026-07-24T15:05:38.919Z",
-        "seconds": 66
-      }
-    ]
-  },
-  {
-    "trackId": "1817609509",
-    "title": "Man I Need",
-    "artist": "Olivia Dean",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-24T15:02:27.304Z",
-    "plays": [
-      "2026-07-24T15:02:27.304Z"
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
-    "minutesBySession": [
-      {
-        "date": "2026-07-24T15:05:38.919Z",
-        "seconds": 220
-      }
-    ]
-  },
-  {
-    "trackId": "6788997128",
-    "title": "Fireflies",
-    "artist": "Martin Garrix & U2",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/79/60/85/79608529-9677-3363-f320-e0d8318e67d1/823375299752_Cover.jpg/170x170bb.png",
-    "playCount": 3,
-    "lastPlayed": "2026-07-24T15:05:39.351Z",
-    "plays": [
-      "2026-07-24T15:05:32.833Z",
-      "2026-07-24T15:05:39.306Z",
-      "2026-07-24T15:05:39.351Z"
-    ],
-    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67",
-    "minutesBySession": [
-      {
-        "date": "2026-07-24T15:05:38.919Z",
-        "seconds": 24
-      }
-    ]
-  },
-  {
-    "trackId": "1817609509",
-    "title": "Man I Need",
-    "artist": "Olivia Dean",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/600x600bb.jpg",
-    "playCount": 1,
-    "lastPlayed": "2026-07-24T15:08:00.102Z",
-    "plays": [
-      "2026-07-24T15:08:00.102Z"
-    ],
-    "userId": "f799384a-355b-45e2-8d33-ff620d556825",
-    "minutesBySession": [
-      {
-        "date": "2026-07-24T15:08:17.802Z",
-        "seconds": 28
-      },
-      {
-        "date": "2026-07-24T15:08:38.141Z",
-        "seconds": 20
-      },
-      {
-        "date": "2026-07-24T15:11:49.304Z",
-        "seconds": 137
-      }
-    ]
-  },
-  {
-    "trackId": "1817609508",
-    "title": "Let Alone The One You Love",
-    "artist": "Olivia Dean",
-    "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/600x600bb.jpg",
-    "playCount": 3,
-    "lastPlayed": "2026-07-24T15:11:51.048Z",
-    "plays": [
-      "2026-07-24T15:11:11.308Z",
-      "2026-07-24T15:11:51.028Z",
-      "2026-07-24T15:11:51.048Z"
-    ],
-    "userId": "f799384a-355b-45e2-8d33-ff620d556825",
-    "minutesBySession": [
-      {
-        "date": "2026-07-24T15:11:49.304Z",
-        "seconds": 47
-      },
-      {
-        "date": "2026-07-24T15:12:21.805Z",
-        "seconds": 27
-      }
-    ]
+    "userId": "9847b87c-04e7-4595-af2f-3c02448ebf67"
   }
 ]
