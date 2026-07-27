@@ -84,6 +84,10 @@ interface PlayerState {
   isKaraokeMode: boolean;
   toggleKaraoke: () => void;
 
+  // Gamer Mode (Ultra Low GPU / High Performance for Gaming)
+  isGamerMode: boolean;
+  toggleGamerMode: () => void;
+
   // Actions
   setTrack: (track: Track, queue?: Track[]) => void;
   setQueue: (tracks: Track[], startIndex?: number) => void;
@@ -200,6 +204,14 @@ const savedSessionPlayedTrackIds: string[] = (() => {
   } catch {
     return [];
   }
+})();
+
+const savedGamerMode = (() => {
+  const g = localStorage.getItem('koko_gamer_mode') === 'true';
+  if (typeof document !== 'undefined' && g) {
+    document.body.classList.add('gamer-mode-active');
+  }
+  return g;
 })();
 
 function recordPlayedTrack(trackId: string, setFn: any, getFn: any) {
@@ -463,6 +475,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setVolume: (v) => set({ volume: Math.max(0, Math.min(1, v)), isMuted: false }),
   toggleMute: () => set((s) => ({ isMuted: !s.isMuted })),
+
+  isGamerMode: savedGamerMode,
+  toggleGamerMode: () => set((s) => {
+    const next = !s.isGamerMode;
+    localStorage.setItem('koko_gamer_mode', String(next));
+    if (typeof document !== 'undefined') {
+      if (next) document.body.classList.add('gamer-mode-active');
+      else document.body.classList.remove('gamer-mode-active');
+    }
+    return { isGamerMode: next };
+  }),
+
   setProgress: (s) => set({ progress: s }),
   setDuration: (s) => set({ duration: s }),
   setLoading: (v) => set({ isLoading: v }),

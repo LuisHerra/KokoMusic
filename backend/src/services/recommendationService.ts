@@ -25,6 +25,20 @@ function normalizeStr(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
 }
 
+/** Cleans track titles by removing remix/feat/version noise for strict title deduplication */
+function cleanTrackTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/ft\..*?$/i, '')
+    .replace(/feat\..*?$/i, '')
+    .replace(/remix/i, '')
+    .replace(/radio edit/i, '')
+    .trim()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 const LFM_KEY = process.env.LASTFM_KEY || '';
 const LFM_BASE = 'https://ws.audioscrobbler.com/2.0/';
 
@@ -226,7 +240,14 @@ export async function getRecommendations(
   mood?: string,
   seedTrackId?: string,
   seedTrackIds?: string[],
-  excludeTrackIds?: string[]
+  excludeTrackIds?: string[],
+  earlySkipIds?: string[],
+  algoOptions?: {
+    explorationRatio?: number;
+    maxArtistTracks?: number;
+    cultureStrictness?: 'strict' | 'flexible' | 'off';
+    popularityWeight?: 'low' | 'balanced' | 'high';
+  }
 ): Promise<TrackMetadata[]> {
   const effectiveSeeds = seedTrackIds && seedTrackIds.length > 0 ? seedTrackIds : (seedTrackId ? [seedTrackId] : []);
   const activeSeedId = effectiveSeeds.length > 0 ? effectiveSeeds[effectiveSeeds.length - 1] : undefined;
@@ -254,7 +275,15 @@ export async function getRecommendations(
     ...Array.from(recentlyPlayedIds)
   ].map(id => id.toLowerCase().trim()));
 
-  const cacheKey = `recs:${userId || 'global'}:${mood || 'none'}:${effectiveSeeds.join('_') || 'none'}:${limit}`;
+  // Build early-skip penalty set: tracks the user bailed on in < 10s get a -300 score penalty.
+  // Soft downrank (not hard exclude) so the engine can still surface them if there's nothing else.
+  const earlySkipSet = new Set<string>((earlySkipIds || []).map(id => id.toLowerCase().trim()));
+
+  // Cache key includes a short hash of earlySkipIds so skipping a song forces a fresh computation
+  const skipHash = earlySkipIds && earlySkipIds.length > 0
+    ? earlySkipIds.slice().sort().join(',').split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) & 0xFFFFFF, 0).toString(16)
+    : 'none';
+  const cacheKey = `recs:${userId || 'global'}:${mood || 'none'}:${effectiveSeeds.join('_') || 'none'}:${limit}:${skipHash}`;
   if (!excludeTrackIds || excludeTrackIds.length === 0) {
     const cached = cache.get(cacheKey);
     if (cached) return JSON.parse(cached);
@@ -262,6 +291,8 @@ export async function getRecommendations(
 
   const trackPlayCounts = new Map<string, number>();
   const artistPlayCounts = new Map<string, number>();
+  // Genre affinity from history: derive what genres the user gravitates toward
+  const genrePlayCounts = new Map<string, number>();
   let totalPlays = 0;
 
   history.forEach(h => {
@@ -271,8 +302,19 @@ export async function getRecommendations(
       const norm = h.artist.toLowerCase().trim();
       artistPlayCounts.set(norm, (artistPlayCounts.get(norm) || 0) + pc);
     }
+    // Build genre taste vector — what genres does this user actually listen to?
+    const genre = (h as any).genre;
+    if (genre) {
+      const gnorm = genre.toLowerCase().trim();
+      genrePlayCounts.set(gnorm, (genrePlayCounts.get(gnorm) || 0) + pc);
+    }
     totalPlays += pc;
   });
+
+  // Total plays and maximum artist play count used for normalizing affinity bonuses
+  const maxGenrePlays = genrePlayCounts.size > 0 ? Math.max(...genrePlayCounts.values()) : 1;
+  const maxArtistPlays = artistPlayCounts.size > 0 ? Math.max(...artistPlayCounts.values()) : 1;
+  const numUniqueArtists = artistPlayCounts.size;
 
   // Load taste profile if history is empty / small
   let tasteProfile: any = null;
@@ -288,8 +330,8 @@ export async function getRecommendations(
     }
   }
 
-  // Exploitation vs discovery ratio — ramps with user maturity
-  const explorationRatio = getExplorationRatio(totalPlays);
+  // Exploitation vs discovery ratio — ramps with user maturity or respects custom user preference
+  const explorationRatio = algoOptions?.explorationRatio ?? getExplorationRatio(totalPlays);
   const exploitationSlots = Math.floor(limit * (1 - explorationRatio));
   const discoverySlots    = limit - exploitationSlots;
 
@@ -399,8 +441,10 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
         // Use the unified culture detector (evaluates tags, genre, title, and artist)
         seedCulture = detectTrackCulture(seedTrack.artist, seedTrack.title, seedTrack.genre || '', seedTags);
 
-        // Evaluate Session Culture Trajectory across recent queue seeds
-        if (effectiveSeeds.length > 1) {
+        // Evaluate Session Culture Trajectory across recent queue seeds.
+        // Requires 4 consecutive matching-culture tracks before locking the session —
+        // 2 was too aggressive and would kill variety after just one genre run.
+        if (effectiveSeeds.length > 3) {
           try {
             const seedCultures = await Promise.all(
               effectiveSeeds.map(async (id) => {
@@ -411,11 +455,12 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
               })
             );
             const valid = seedCultures.filter(c => c !== 'other');
-            if (valid.length >= 2) {
-              const lastTwo = valid.slice(-2);
-              if (lastTwo[0] === lastTwo[1]) {
-                seedCulture = lastTwo[1];
-                console.log(`[Recs] SESSION TRAJECTORY LOCKED: >>> ${seedCulture.toUpperCase()} <<< based on ${valid.length} consecutive played tracks`);
+            if (valid.length >= 4) {
+              const lastFour = valid.slice(-4);
+              // All 4 must be the same culture
+              if (lastFour.every(c => c === lastFour[0])) {
+                seedCulture = lastFour[0];
+                console.log(`[Recs] SESSION TRAJECTORY LOCKED: >>> ${seedCulture.toUpperCase()} <<< after ${valid.length} consecutive played tracks`);
               }
             }
           } catch {}
@@ -582,26 +627,28 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
     }
   }
 
-  // 1. Inject regional country top chart tracks — ONLY if they match seed culture or seed is generic
-  for (const track of regionalChartTracks) {
+  // 1. Inject regional country top chart tracks — randomly sampled to rotate popular songs on every call
+  const sampledRegional = [...regionalChartTracks].sort(() => Math.random() - 0.5).slice(0, 8);
+  for (const track of sampledRegional) {
     if (exploitPool.has(track.id) || discoverPool.has(track.id)) continue;
     if (seedCulture !== 'other') {
       const cult = detectTrackCulture(track.artist, track.title, track.genre || '');
       if (cult !== seedCulture) continue; // Block non-matching regional chart tracks under active seed
     }
     if (seedGenre && track.genre && track.genre.toLowerCase() !== seedGenre.toLowerCase()) continue;
-    discoverPool.set(track.id, { track, source: 'regional_chart', baseScore: 60 });
+    discoverPool.set(track.id, { track, source: 'regional_chart', baseScore: 50 });
   }
 
-  // 2. Inject trending tracks as discovery candidates — ONLY if matching seed culture or seed is generic
-  for (const track of trendTracks) {
+  // 2. Inject trending tracks as discovery candidates — randomly sampled to ensure variety
+  const sampledTrending = [...trendTracks].sort(() => Math.random() - 0.5).slice(0, 8);
+  for (const track of sampledTrending) {
     if (exploitPool.has(track.id) || discoverPool.has(track.id)) continue;
     if (seedCulture !== 'other') {
       const cult = detectTrackCulture(track.artist, track.title, track.genre || '');
       if (cult !== seedCulture) continue; // Block non-matching trending tracks under active seed
     }
     if (seedGenre && track.genre && track.genre.toLowerCase() !== seedGenre.toLowerCase()) continue;
-    discoverPool.set(track.id, { track, source: 'trending', baseScore: 45 });
+    discoverPool.set(track.id, { track, source: 'trending', baseScore: 40 });
   }
 
   // 3. Resolve ListenBrainz open collaborative filtering recordings
@@ -905,13 +952,23 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
     const artistNorm   = track.artist.toLowerCase().trim();
     const artistPlays  = artistPlayCounts.get(artistNorm) || 0;
 
-    // Sub-linear history score (heavily capped to prevent taste-bubble bias)
-    const rawHistoryScore = Math.min(playCount * 0.5, 5) + Math.min(artistPlays * 0.5, 5);
+    // Sub-linear history score: kept intentionally LOW for individual tracks.
+    // We don't want to replay the same songs — history is used to infer TASTE, not create loops.
+    // The artist affinity and genre affinity signals below do the real taste-driven work.
+    const rawHistoryScore = Math.min(playCount * 0.5, 5);
 
-    // USER FAVORITE ARTIST AFFINITY BOOST:
-    // If user has listened to this artist before (e.g. RnBoi), give a moderate boost (+45 to +80).
-    // Boosts favorite artists when exploring their culture without locking user in a bubble.
-    const favoriteArtistBonus = artistPlays >= 10 ? 80 : artistPlays >= 3 ? 45 : 0;
+    // USER ARTIST TASTE SIGNAL — normalized relative to user's overall artist distribution.
+    // DIVERSITY GUARD: If user has < 3 distinct artists in history, cap bonus at +45
+    // so a single early artist doesn't create a 100% single-artist monopoly loop.
+    // When history is rich (3+ artists), scale 0 → +90 based on relative rank (artistPlays / maxArtistPlays).
+    let favoriteArtistBonus = 0;
+    if (artistPlays > 0) {
+      if (numUniqueArtists < 3) {
+        favoriteArtistBonus = Math.min(45, Math.round(45 * (artistPlays / maxArtistPlays)));
+      } else {
+        favoriteArtistBonus = Math.round(90 * (artistPlays / maxArtistPlays));
+      }
+    }
 
     // SPOTIFY NOVELTY & TRENDING DISCOVERY BOOSTS:
     // 1. Novelty bonus for new, never-heard tracks
@@ -921,6 +978,19 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
     let recentReleaseBonus = 0;
     if (track.releaseDate && (track.releaseDate.includes('2025') || track.releaseDate.includes('2026'))) {
       recentReleaseBonus = 80;
+    }
+
+    // 3. GENRE TASTE AFFINITY from history:
+    // If the candidate's genre matches a genre the user frequently listens to, reward it.
+    // This makes history drive genre-level discovery without causing song-level replays.
+    let historyGenreBonus = 0;
+    const trackGenreForAffinity = (track.genre || '').toLowerCase().trim();
+    if (trackGenreForAffinity && genrePlayCounts.size > 0) {
+      const genrePlaysForTrack = genrePlayCounts.get(trackGenreForAffinity) || 0;
+      if (genrePlaysForTrack > 0) {
+        // Scale 0→+80 based on how dominant this genre is in the user's history
+        historyGenreBonus = Math.round(80 * (genrePlaysForTrack / maxGenrePlays));
+      }
     }
 
     // ANTI-LOOP FIX: CDN/local cache is a mild penalty, NOT a bonus.
@@ -944,33 +1014,40 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
     const candCulture = detectTrackCulture(track.artist, track.title, track.genre || '', candTags);
     let cultureCoherenceScore = 0;
 
-    if (seedCulture !== 'other') {
+    // Culture strictness option (user-defined or auto)
+    const strictness = algoOptions?.cultureStrictness ?? 'strict';
+    if (seedCulture !== 'other' && strictness !== 'off') {
       if (candCulture === seedCulture) {
         // Strong reward for matching seed language/culture (e.g. Latin under Latin seed)
         cultureCoherenceScore = +250;
       } else if (candCulture !== seedCulture) {
-        // STRICT LANGUAGE BOUNDARY: If seed is Latin and candidate is English/French, block it!
-        if (candCulture === 'english' || candCulture === 'french' || (seedCulture === 'latin' && candCulture !== 'latin')) {
-          cultureCoherenceScore = -1000;
+        if (strictness === 'strict') {
+          // STRICT LANGUAGE BOUNDARY: If seed is Latin and candidate is English/French, block it!
+          if (candCulture === 'english' || candCulture === 'french' || (seedCulture === 'latin' && candCulture !== 'latin')) {
+            cultureCoherenceScore = -1000;
+          } else {
+            cultureCoherenceScore = -350;
+          }
         } else {
-          cultureCoherenceScore = -350;
+          // Flexible mode: milder penalty
+          cultureCoherenceScore = -100;
         }
       }
     }
 
-    // Overall Listens Metric (Last.fm listener count log-scaled 0-100):
-    // Gives organic weight to well-known, high-quality songs (+0 to +60 max)
-    // without defaulting to temporary trending chart hits.
+    // Overall Listens Metric (Last.fm listener count log-scaled 0-100) — respects custom popularity weight option
+    const popWeightFactor = algoOptions?.popularityWeight === 'high' ? 0.6 : algoOptions?.popularityWeight === 'low' ? 0.1 : 0.25;
+    const maxPopBonus = algoOptions?.popularityWeight === 'high' ? 50 : algoOptions?.popularityWeight === 'low' ? 10 : 25;
     const organicPop = getPopularityScore(track.id);
-    const organicPopularityBonus = Math.min(60, Math.round(organicPop * 0.6));
+    const organicPopularityBonus = Math.min(maxPopBonus, Math.round(organicPop * popWeightFactor));
 
     // Mild trending track boost (relative tie-breaker, not a dictatorial score override)
     const isTrendingTrack = trendTracks.some(t => t.id === track.id || normalizeStr(`${t.title}-${t.artist}`) === normalizeStr(`${track.title}-${track.artist}`));
-    const trendingTrackBonus = isTrendingTrack && (!seedGenre || genreCoherenceScore >= 0) ? 25 : 0;
+    const trendingTrackBonus = isTrendingTrack && (!seedGenre || genreCoherenceScore >= 0) ? 15 : 0;
 
     // Trending genre boost — suppressed when genre mismatch under seed
     const isTrendingGenre = trendGenres.some(g => g.toLowerCase().trim() === track.genre?.toLowerCase().trim());
-    const trendingGenreBonus = isTrendingGenre && (!seedGenre || genreCoherenceScore >= 0) ? 35 : 0;
+    const trendingGenreBonus = isTrendingGenre && (!seedGenre || genreCoherenceScore >= 0) ? 20 : 0;
 
     // HARD EXCLUSION: If track is already in active queue session, eliminate completely
     if (hardExcludeSet.has(track.id.toLowerCase().trim()) || hardExcludeSet.has(normalizeStr(`${track.title}-${track.artist}`))) {
@@ -1002,7 +1079,10 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
       else if (elapsedHours < 24) artistRecencyPenalty = -50;
     }
 
-    const totalScore = c.baseScore + rawHistoryScore + favoriteArtistBonus + organicPopularityBonus + noveltyBonus + recentReleaseBonus + cacheBonus + genreCoherenceScore + cultureCoherenceScore + trendingTrackBonus + trendingGenreBonus + trackRecencyPenalty + artistRecencyPenalty;
+    // Early-skip penalty: user bailed on this track in < 10s — downrank it significantly
+    const earlySkipPenalty = earlySkipSet.has(c.track.id.toLowerCase().trim()) ? -300 : 0;
+
+    const totalScore = c.baseScore + rawHistoryScore + favoriteArtistBonus + historyGenreBonus + organicPopularityBonus + noveltyBonus + recentReleaseBonus + cacheBonus + genreCoherenceScore + cultureCoherenceScore + trendingTrackBonus + trendingGenreBonus + trackRecencyPenalty + artistRecencyPenalty + earlySkipPenalty;
 
     // Calibrated jitter: ±15% — enough variety without chaos
     const jitter = 0.85 + Math.random() * 0.30;
@@ -1012,20 +1092,38 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
 
   // ── 8. SORT, DEDUPLICATE, RETURN (with hard discovery guarantee) ─────────────
 
+  // FIX: Filter out negative/hard-excluded candidates FIRST before deduplication & highlights log!
+  const validScoredCandidates = scoredCandidates.filter(sc => sc.score > 0);
+
   const seenIds = new Set<string>();
-  const deduplicated = scoredCandidates
+  const seenTitles = new Set<string>();
+
+  // Add titles of effective seeds to seenTitles so we NEVER recommend a track with the same title as currently playing track!
+  for (const seedId of effectiveSeeds) {
+    getTrackById(seedId).then(t => {
+      if (t?.title) seenTitles.add(cleanTrackTitle(t.title));
+    }).catch(() => {});
+  }
+
+  const deduplicated = validScoredCandidates
     .sort((a, b) => b.score - a.score)
     .filter(sc => {
       if (seenIds.has(sc.track.id)) return false;
+      const cleanTitle = cleanTrackTitle(sc.track.title);
+      // HARD TITLE DEDUPLICATION: Prevent duplicate song titles in the same recommendation batch!
+      if (cleanTitle && seenTitles.has(cleanTitle)) return false;
       seenIds.add(sc.track.id);
+      if (cleanTitle) seenTitles.add(cleanTitle);
       return true;
     });
 
-  // ANTI-LOOP FIX: Hard-exclude tracks played in the last 7 days from the final output.
-  const withoutRecent = deduplicated.filter(sc => !recentlyPlayedIds.has(sc.track.id));
-  const recentAsBackfill = deduplicated.filter(sc => recentlyPlayedIds.has(sc.track.id));
+  const validCandidates = deduplicated;
 
-  // Guarantee at least 40% of results are genuine discoveries (never heard before).
+  // ANTI-LOOP FIX: Hard-exclude tracks played in the last 7 days from the final output.
+  const withoutRecent = validCandidates.filter(sc => !recentlyPlayedIds.has(sc.track.id));
+  const recentAsBackfill = validCandidates.filter(sc => recentlyPlayedIds.has(sc.track.id));
+
+  // Guarantee discovery proportion based on explorationRatio
   const discoveryItems = withoutRecent.filter(sc => !seen.has(sc.track.id));
   const nonDiscoveryItems = withoutRecent.filter(sc => seen.has(sc.track.id));
 
@@ -1034,7 +1132,22 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
   const remainingSlots = limit - discoverySlice.length;
   const nonDiscoverySlice = nonDiscoveryItems.slice(0, remainingSlots);
 
-  // Interleave: 1 discovery per 2 non-discovery for natural feel
+  // Interleave: 1 discovery per 2 non-discovery for natural feel, with a HARD ARTIST CAP (user configurable)
+  const maxPerArtistInOutput = algoOptions?.maxArtistTracks ?? Math.max(2, Math.floor(limit * 0.25));
+  const outputArtistCount = new Map<string, number>();
+
+  const canAddTrack = (track: TrackMetadata) => {
+    const normArt = track.artist.toLowerCase().trim();
+    const count = outputArtistCount.get(normArt) || 0;
+    return count < maxPerArtistInOutput;
+  };
+
+  const addTrack = (sc: typeof deduplicated[0]) => {
+    const normArt = sc.track.artist.toLowerCase().trim();
+    outputArtistCount.set(normArt, (outputArtistCount.get(normArt) || 0) + 1);
+    interleaved.push(sc);
+  };
+
   const interleaved: typeof deduplicated = [];
   const dIter = discoverySlice[Symbol.iterator]();
   const nIter = nonDiscoverySlice[Symbol.iterator]();
@@ -1043,14 +1156,18 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
   while (interleaved.length < limit) {
     if (!dDone) {
       const d = dIter.next();
-      if (!d.done) interleaved.push(d.value); else dDone = true;
+      if (!d.done) {
+        if (canAddTrack(d.value.track)) addTrack(d.value);
+      } else dDone = true;
     }
     if (interleaved.length >= limit) break;
     if (!nDone) {
       // Add up to 2 non-discovery per 1 discovery
       for (let i = 0; i < 2 && interleaved.length < limit; i++) {
         const n = nIter.next();
-        if (!n.done) { interleaved.push(n.value); } else { nDone = true; break; }
+        if (!n.done) {
+          if (canAddTrack(n.value.track)) addTrack(n.value);
+        } else { nDone = true; break; }
       }
     }
     if (dDone && nDone) break;
@@ -1073,8 +1190,8 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
 
   let finalRecs = interleaved.map(sc => sc.track).slice(0, limit);
 
-  // Debug log top candidates and final recommendations
-  console.log(`[Recs] --- SCORING HIGHLIGHTS (Top Candidates Pool: ${deduplicated.length}) ---`);
+  // Debug log top candidates and final recommendations (ONLY valid candidates with score > 0)
+  console.log(`[Recs] --- SCORING HIGHLIGHTS (Top Valid Pool: ${deduplicated.length}) ---`);
   deduplicated.slice(0, 8).forEach((sc, i) => {
     const cult = detectTrackCulture(sc.track.artist, sc.track.title, sc.track.genre || '', getTagsForTrack(sc.track.id));
     console.log(`[Recs] #${i + 1} Score: ${sc.score.toFixed(1).padStart(6)} | Culture: ${cult.toUpperCase().padEnd(7)} | Source: ${sc.source.padEnd(16)} | "${sc.track.artist} - ${sc.track.title}"`);
@@ -1154,7 +1271,7 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
   });
   console.log(`[Recs] ==================================================================\n`);
 
-  // ANTI-LOOP FIX: Cache TTL reduced to 3 minutes so fresh plays invalidate recs faster.
-  cache.setex(cacheKey, 180, JSON.stringify(finalRecs));
+  // Cache TTL: 60s — fresh enough that new plays update recs quickly without hammering APIs.
+  cache.setex(cacheKey, 60, JSON.stringify(finalRecs));
   return finalRecs;
 }

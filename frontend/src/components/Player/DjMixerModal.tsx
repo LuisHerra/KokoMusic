@@ -188,10 +188,10 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 100000, position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: '#121212', borderRadius: 16, padding: 32, width: '100%', maxWidth: 600, border: '1px solid rgba(255,255,255,0.1)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Mezcla de DJ (Transición)</h2>
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 100000, position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 12px', overflowY: 'auto' }}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: '#121212', borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Mezcla de DJ (Transición)</h2>
           <button 
             onClick={() => {
                if (fromSections.length > 0) setFromTime(fromSections[fromSections.length - 1].startTime);
@@ -406,7 +406,7 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
                </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
                <button 
                  onClick={playPreview} 
                  style={{ 

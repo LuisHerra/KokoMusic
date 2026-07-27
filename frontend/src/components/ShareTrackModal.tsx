@@ -15,21 +15,23 @@ export default function ShareTrackModal({ isOpen, onClose, track, userId }: Shar
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
 
+  const effectiveUserId = userId || (typeof window !== 'undefined' ? localStorage.getItem('koko_device_id') ?? '' : '');
+
   useEffect(() => {
-    if (!isOpen || !userId) return;
+    if (!isOpen || !effectiveUserId) return;
     setLoading(true);
-    getFriends(userId)
+    getFriends(effectiveUserId)
       .then((res: any) => {
         setFriends(res.friends || []);
       })
       .catch((err: any) => console.error('Error loading friends for sharing:', err))
       .finally(() => setLoading(false));
-  }, [isOpen, userId]);
+  }, [isOpen, effectiveUserId]);
 
   if (!isOpen || !track) return null;
 
   const handleSendToFriend = async (friendId: string) => {
-    if (!userId || sendingId) return;
+    if (!effectiveUserId || sendingId) return;
     setSendingId(friendId);
     try {
       const payload = JSON.stringify({
@@ -40,7 +42,7 @@ export default function ShareTrackModal({ isOpen, onClose, track, userId }: Shar
         cover: track.cover,
       });
 
-      await sendMessage(userId, friendId, `[SONG_SHARE]${payload}`);
+      await sendMessage(effectiveUserId, friendId, `[SONG_SHARE]${payload}`);
       setSentMap((prev) => ({ ...prev, [friendId]: true }));
     } catch (err) {
       console.error('Error sending song:', err);

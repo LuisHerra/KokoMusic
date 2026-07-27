@@ -19,6 +19,7 @@ import Friends from './pages/Friends';
 import FriendProfile from './pages/FriendProfile';
 import Profile from './pages/Profile';
 import DjMode from './pages/DjMode';
+import KaraokeStudioPage from './pages/KaraokeStudio';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useListeningSession } from './hooks/useListeningSession';
 import { usePlayerStore } from './store/playerStore';
@@ -47,6 +48,21 @@ const queryClient = new QueryClient({
 // Hook que inicializa el reproductor de audio a nivel de app — se monta UNA SOLA VEZ
 function AudioEngine() {
   useAudioPlayer();
+
+  useEffect(() => {
+    if ((window as any).electronAPI) {
+      (window as any).electronAPI.onMediaKey((action: string) => {
+        const store = usePlayerStore.getState();
+        if (action === 'play-pause') store.togglePlay();
+        else if (action === 'next-track') store.nextTrack();
+        else if (action === 'prev-track') store.prevTrack();
+        else if (action === 'toggle-voice') {
+          window.dispatchEvent(new CustomEvent('koko-toggle-voice'));
+        }
+      });
+    }
+  }, []);
+
   return null;
 }
 
@@ -489,6 +505,7 @@ function AppShell() {
             <Route path="/events" element={<Events />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/dj" element={<DjMode />} />
+            <Route path="/karaoke" element={<KaraokeStudioPage />} />
           </Routes>
         </main>
       )}

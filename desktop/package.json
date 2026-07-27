@@ -1,0 +1,12 @@
+{
+  "name": "kokomusic-desktop",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

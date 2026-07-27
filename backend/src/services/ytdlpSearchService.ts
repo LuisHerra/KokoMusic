@@ -9,7 +9,7 @@
  *   - getVideoByIdYtdlp(videoId) → obtiene metadatos de un video concreto
  */
 
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { getCookiesArg } from './ytdlpService';
 
 // ── Circuit breaker global de yt-search ────────────────────────────────────────
@@ -69,21 +69,19 @@ function parseYtdlpVideo(v: any): any | null {
 export function searchYtdlp(query: string, limit = 5): Promise<any[]> {
   return new Promise((resolve) => {
     const cookiesArg = getCookiesArg();
-    // Sanear query: quitar comillas dobles y saltos de línea
-    const safeQuery = query.replace(/"/g, "'").replace(/[\n\r]/g, ' ').trim();
-    const cmd = [
-      'yt-dlp',
-      cookiesArg || '',
+    // Build args as an array — execFile does NOT use a shell, so no injection risk
+    const args = [
+      ...(cookiesArg ? cookiesArg.split(' ').filter(Boolean) : []),
       '--force-ipv4',
-      `"ytsearch${limit}:${safeQuery}"`,
+      `ytsearch${limit}:${query}`,
       '--dump-json',
       '--no-playlist',
       '--flat-playlist',
       '--no-warnings',
       '--no-progress',
-    ].filter(Boolean).join(' ');
+    ];
 
-    exec(cmd, { timeout: 20000 }, (err, stdout) => {
+    execFile('yt-dlp', args, { timeout: 20000 }, (err, stdout) => {
       if (!stdout?.trim()) return resolve([]);
       try {
         const videos = stdout.trim()
@@ -108,18 +106,18 @@ export function searchYtdlp(query: string, limit = 5): Promise<any[]> {
 export function getVideoByIdYtdlp(videoId: string): Promise<any | null> {
   return new Promise((resolve) => {
     const cookiesArg = getCookiesArg();
-    const cmd = [
-      'yt-dlp',
-      cookiesArg || '',
+    // Build args as an array — no shell expansion, no injection risk
+    const args = [
+      ...(cookiesArg ? cookiesArg.split(' ').filter(Boolean) : []),
       '--force-ipv4',
-      `"https://www.youtube.com/watch?v=${videoId}"`,
+      `https://www.youtube.com/watch?v=${videoId}`,
       '--dump-json',
       '--skip-download',
       '--no-playlist',
       '--no-warnings',
-    ].filter(Boolean).join(' ');
+    ];
 
-    exec(cmd, { timeout: 15000 }, (err, stdout) => {
+    execFile('yt-dlp', args, { timeout: 15000 }, (err, stdout) => {
       if (!stdout?.trim()) return resolve(null);
       try {
         resolve(parseYtdlpVideo(JSON.parse(stdout.trim())));

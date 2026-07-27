@@ -483,11 +483,17 @@ export function useVoiceControl(): VoiceControlState {
       }
     };
 
+    const handleCustomToggle = () => {
+      toggleListening();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('koko-toggle-voice', handleCustomToggle);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('koko-toggle-voice', handleCustomToggle);
     };
   }, [toggleListening]);
 

@@ -6,6 +6,10 @@
 
 import { getApiUrl, getCachedBaseUrl } from './backendResolver';
 
+export function isDesktopApp(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as any).electronAPI);
+}
+
 if (typeof window !== 'undefined' && !localStorage.getItem('koko_device_id')) {
   localStorage.setItem('koko_device_id', crypto.randomUUID());
 }
@@ -134,7 +138,7 @@ export const getTrackVideo = (trackId: string) => apiFetch<VideoData>(`/tracks/$
 
 export const logTrackPlay = (
   trackId: string,
-  track: { title: string; artist: string; cover: string },
+  track: { title: string; artist: string; cover: string; genre?: string },
   userId?: string,
   deviceId?: string
 ) =>
@@ -146,11 +150,31 @@ export const logTrackPlay = (
     { method: 'POST', body: JSON.stringify(track) }
   );
 
-export const getRecommendations = (limit = 10, mood?: string, seedTrackId?: string, seedTrackIds?: string[]) => {
+export const getRecommendations = (limit = 10, mood?: string, seedTrackId?: string, seedTrackIds?: string[], excludeTrackIds?: string[]) => {
   const params = new URLSearchParams({ limit: String(limit) });
   if (mood) params.append('mood', mood);
   if (seedTrackId) params.append('seedTrackId', seedTrackId);
   if (seedTrackIds && seedTrackIds.length > 0) params.append('seedTrackIds', seedTrackIds.join(','));
+  if (excludeTrackIds && excludeTrackIds.length > 0) params.append('excludeTrackIds', excludeTrackIds.join(','));
+  // Attach early-skip list so the engine can downrank disliked tracks
+  try {
+    const raw = localStorage.getItem('koko_early_skips');
+    if (raw) {
+      const skips: { id: string }[] = JSON.parse(raw);
+      const ids = skips.map(s => s.id).filter(Boolean);
+      if (ids.length > 0) params.append('earlySkipIds', ids.join(','));
+    }
+
+    // Attach user-customized algorithm parameters from Profile Settings
+    const ratio = localStorage.getItem('koko_algo_exploration_ratio');
+    if (ratio) params.append('explorationRatio', ratio);
+    const maxArt = localStorage.getItem('koko_algo_max_artist_tracks');
+    if (maxArt) params.append('maxArtistTracks', maxArt);
+    const strictness = localStorage.getItem('koko_algo_culture_strictness');
+    if (strictness) params.append('cultureStrictness', strictness);
+    const popWeight = localStorage.getItem('koko_algo_popularity_weight');
+    if (popWeight) params.append('popularityWeight', popWeight);
+  } catch {}
   return apiFetch<Track[]>(`/tracks/recommendations?${params.toString()}`);
 };
 

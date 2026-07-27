@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMyProfile, updateProfile, getAvailableAccounts, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, type KokoProfile } from '../lib/api';
+import { getMyProfile, updateProfile, getAvailableAccounts, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, type KokoProfile } from '../lib/api';
+import { usePlayerStore } from '../store/playerStore';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -99,6 +100,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function ProfilePage() {
   const queryClient = useQueryClient();
+  const { isGamerMode, toggleGamerMode } = usePlayerStore();
   const rawId = localStorage.getItem('koko_device_id') ?? '';
   const isUUID = UUID_RE.test(rawId);
 
@@ -110,6 +112,13 @@ export default function ProfilePage() {
     return saved ? parseInt(saved) : 3;
   });
   const [useYtPlayer, setUseYtPlayer] = useState(() => localStorage.getItem('koko_use_youtube_player') === 'true');
+
+  // Recommendation Algorithm Customization Settings
+  const [explorationRatio, setExplorationRatio] = useState(() => localStorage.getItem('koko_algo_exploration_ratio') ?? '0.4');
+  const [maxArtistTracks, setMaxArtistTracks] = useState(() => localStorage.getItem('koko_algo_max_artist_tracks') ?? '2');
+  const [cultureStrictness, setCultureStrictness] = useState(() => localStorage.getItem('koko_algo_culture_strictness') ?? 'strict');
+  const [popularityWeight, setPopularityWeight] = useState(() => localStorage.getItem('koko_algo_popularity_weight') ?? 'balanced');
+
   const [savedId, setSavedId] = useState(rawId);
   const [uuidInput, setUuidInput] = useState(rawId);
   const [uuidError, setUuidError] = useState('');
@@ -630,6 +639,14 @@ export default function ProfilePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           
           <Section title="Preferencia de Interfaz">
+            {isDesktopApp() && (
+              <ToggleRow
+                label="Modo Gamer (Bajo Consumo de GPU/CPU)"
+                description="Desactiva animaciones de lienzo, ecualizador visual y desenfoques para garantizar 0% de impacto en el rendimiento al jugar (Fortnite, juegos 3D)."
+                checked={isGamerMode}
+                onChange={toggleGamerMode}
+              />
+            )}
             <ToggleRow
               label="Mostrar pestaña de Eventos"
               description="Activa esta opción para mostrar la sección de conciertos y eventos en la barra de navegación lateral."
@@ -702,25 +719,158 @@ export default function ProfilePage() {
             </p>
           </Section>
 
-          <Section title="Seguridad de Base de Datos">
-            <div style={{ background: 'rgba(255,75,75,0.06)', border: '1px solid rgba(255,75,75,0.2)', borderRadius: 12, padding: '16px', display: 'flex', gap: 14 }}>
-              <div style={{ marginTop: 2 }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="#ff4b4b"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          <Section title="Personalización del Algoritmo">
+            {/* Exploration Ratio */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+            }}>
+              <div style={{ paddingRight: 16, flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Equilibrio de Descubrimiento</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                  Ajusta la proporción entre canciones nuevas para descubrir y artistas de tu historial.
+                </div>
               </div>
-              <div>
-                <h4 style={{ margin: '0 0 6px', fontSize: 13, color: '#ff4b4b', fontWeight: 700 }}>Seguridad (Row Level Security)</h4>
-                <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Las tablas de chat, perfiles y amistades de KokoWorks tienen RLS (Row Level Security) desactivado por defecto en la base de datos de desarrollo.
-                </p>
-                <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Para producción, puedes activarlo ejecutando en el SQL Editor de Supabase:
-                </p>
-                <pre style={{ margin: '8px 0 0', background: 'rgba(0,0,0,0.4)', padding: 10, borderRadius: 6, fontSize: 10, overflowX: 'auto', fontFamily: 'monospace', color: 'var(--accent)' }}>
-{`ALTER TABLE kokomusic.koko_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE kokomusic.friendships ENABLE ROW LEVEL SECURITY;
-ALTER TABLE kokomusic.messages ENABLE ROW LEVEL SECURITY;`}
-                </pre>
+              <select
+                value={explorationRatio}
+                onChange={(e) => {
+                  setExplorationRatio(e.target.value);
+                  localStorage.setItem('koko_algo_exploration_ratio', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                }}
+              >
+                <option value="0.2" style={{ background: '#181818' }}>20% (Favoritos)</option>
+                <option value="0.4" style={{ background: '#181818' }}>40% (Equilibrado)</option>
+                <option value="0.6" style={{ background: '#181818' }}>60% (Explorador)</option>
+                <option value="0.8" style={{ background: '#181818' }}>80% (Nuevos)</option>
+              </select>
+            </div>
+
+            {/* Max Artist Tracks */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+            }}>
+              <div style={{ paddingRight: 16, flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Variedad de Artistas</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                  Número máximo de canciones del mismo artista permitidas por lote de recomendación.
+                </div>
               </div>
+              <select
+                value={maxArtistTracks}
+                onChange={(e) => {
+                  setMaxArtistTracks(e.target.value);
+                  localStorage.setItem('koko_algo_max_artist_tracks', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                }}
+              >
+                <option value="1" style={{ background: '#181818' }}>Máx 1 por artista</option>
+                <option value="2" style={{ background: '#181818' }}>Máx 2 por artista</option>
+                <option value="3" style={{ background: '#181818' }}>Máx 3 por artista</option>
+                <option value="99" style={{ background: '#181818' }}>Sin límite</option>
+              </select>
+            </div>
+
+            {/* Culture Strictness */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+            }}>
+              <div style={{ paddingRight: 16, flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Filtro de Idioma y Cultura</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                  Previene saltos bruscos de idioma (ej. cambiar de urbano español a rap francés de golpe).
+                </div>
+              </div>
+              <select
+                value={cultureStrictness}
+                onChange={(e) => {
+                  setCultureStrictness(e.target.value);
+                  localStorage.setItem('koko_algo_culture_strictness', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                }}
+              >
+                <option value="strict" style={{ background: '#181818' }}>Estricto (Recomendado)</option>
+                <option value="flexible" style={{ background: '#181818' }}>Flexible</option>
+                <option value="off" style={{ background: '#181818' }}>Sin filtro</option>
+              </select>
+            </div>
+
+            {/* Popularity Weight */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 0',
+            }}>
+              <div style={{ paddingRight: 16, flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Peso de Canciones Populares</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                  Controla cuánto influyen las listas de éxitos en la cola de reproducción.
+                </div>
+              </div>
+              <select
+                value={popularityWeight}
+                onChange={(e) => {
+                  setPopularityWeight(e.target.value);
+                  localStorage.setItem('koko_algo_popularity_weight', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                }}
+              >
+                <option value="low" style={{ background: '#181818' }}>Primar Nicho</option>
+                <option value="balanced" style={{ background: '#181818' }}>Equilibrado</option>
+                <option value="high" style={{ background: '#181818' }}>Primar Éxitos</option>
+              </select>
             </div>
           </Section>
 

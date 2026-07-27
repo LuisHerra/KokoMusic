@@ -255,6 +255,8 @@ export default function AudioVisualizer({ height = '100%', width = '100%' }: Aud
     const draw = () => {
       animationRef.current = requestAnimationFrame(draw);
 
+      if (usePlayerStore.getState().isGamerMode) return;
+
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;

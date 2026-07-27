@@ -167,14 +167,13 @@ function streamLocalFile(req: Request, res: Response, filePath: string, contentT
 }
 
 /** Proxy hacia URL directa de audio (googlevideo.com u otras) con soporte Range */
-async function proxyAudioStream(req: Request, res: Response, rawUrl: string): Promise<void> {
+async function proxyAudioStream(req: Request, res: Response, rawUrl: string, youtubeId?: string): Promise<boolean> {
   const requestHeaders: Record<string, string> = {
-    // googlevideo.com requiere un User-Agent moderno
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    // Evitar que googlevideo cachee para IPs específicas
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Referer': 'https://www.youtube.com/',
+    'Origin': 'https://www.youtube.com',
     'Connection': 'keep-alive',
   };
-  // Pasar Range header para soporte de seeking
   if (req.headers.range) {
     requestHeaders['Range'] = req.headers.range;
   }
@@ -184,8 +183,18 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string): Pr
 
     if (!upstream.ok && upstream.status !== 206) {
       console.error(`[Stream] Proxy error ${upstream.status} para URL: ${rawUrl.substring(0, 80)}...`);
-      if (!res.headersSent) res.status(upstream.status).end();
-      return;
+      if (youtubeId) {
+        cache.del(`stream-url:${youtubeId}`);
+      }
+      if (!res.headersSent) {
+        if (upstream.status === 403 || upstream.status === 404) {
+          // Send 403 with JSON so client can fallback to embedMode or fresh fetch
+          res.status(403).json({ error: 'Stream URL expired', embedFallback: true });
+        } else {
+          res.status(upstream.status).end();
+        }
+      }
+      return false;
     }
 
     const responseHeaders: Record<string, string> = {
@@ -269,10 +278,38 @@ async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false): Pro
   }
 }
 
+// ── POST /api/stream/:itunesId/purge-cache ────────────────────────────────────
+
+router.post('/:itunesId/purge-cache', async (req: Request, res: Response) => {
+  const { itunesId } = req.params;
+  if (!itunesId) return res.status(400).json({ error: 'itunesId requerido' });
+
+  try {
+    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
+    if (youtubeId) {
+      cache.del(`cdn-url:${youtubeId}`);
+      cache.del(`yt-res:${itunesId}`);
+      cache.del(`stream-url:${youtubeId}`);
+      cache.del(`downloading:${youtubeId}`);
+
+      const localPath = getAudioPath(youtubeId);
+      if (fs.existsSync(localPath)) {
+        try { fs.unlinkSync(localPath); } catch {}
+      }
+      console.log(`[Stream] 🧹 Purged corrupted cache for track ${itunesId} (YouTube: ${youtubeId})`);
+    }
+    return res.json({ success: true, message: `Cache purgado para ${itunesId}` });
+  } catch (err) {
+    console.error('[Stream] Error al purgar cache:', err);
+    return res.status(500).json({ error: 'Error al purgar cache' });
+  }
+});
+
 // ── GET /api/stream/:itunesId ─────────────────────────────────────────────────
 
 router.get('/:itunesId', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
+  const bypassCache = req.query.bypassCache === 'true';
 
   if (!itunesId) {
     return res.status(400).json({ error: 'itunesId requerido' });
@@ -299,7 +336,7 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
         // Continúa al flujo normal de YouTube abajo
       } else {
         // Upload directo → stream desde disco o redirigir a CDN
-        if (customTrack.audioUrl) {
+        if (customTrack.audioUrl && !bypassCache) {
           console.log(`[Stream] Redirigiendo a CDN para track custom: ${customTrack.audioUrl}`);
           return res.redirect(302, customTrack.audioUrl);
         }
@@ -320,7 +357,7 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
         // ID de YouTube directo (desde búsqueda YouTube o legacy)
         isDirectYouTube = true;
         const cachedRes = cache.get(`yt-res:${itunesId}`);
-        if (cachedRes) {
+        if (cachedRes && !bypassCache) {
           youtubeId = cachedRes;
         } else {
           const hashedId = stringToSafeIntegerHash(itunesId);
@@ -354,13 +391,11 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
       }
     }
 
-    // ── Modo Embed desactivado para asegurar un único player de audio gestionado por KokoMusic ──
-
     // ── Flujo CDN-first ───────────────────────────────────────────────────────
 
     // 1. ¿Existe localmente con contenido válido? Servir directamente
     const localPath = getAudioPath(youtubeId);
-    if (fs.existsSync(localPath) && fs.statSync(localPath).size > 1024) {
+    if (!bypassCache && fs.existsSync(localPath) && fs.statSync(localPath).size > 1024) {
       console.log(`[Stream] 💾 Local hit: ${youtubeId}`);
       streamLocalFile(req, res, localPath, 'audio/ogg; codecs=opus');
       return;
@@ -368,12 +403,12 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
 
     // 2. Comprobar si ya está en CDN (caché de URL local primero — evita HeadObject)
     const cachedCDNUrl = cache.get(`cdn-url:${youtubeId}`);
-    if (cachedCDNUrl) {
+    if (cachedCDNUrl && !bypassCache) {
       console.log(`[Stream] 🚀 CDN hit (caché local): ${youtubeId}`);
       return res.redirect(302, cachedCDNUrl as string);
     }
 
-    if (isCDNEnabled()) {
+    if (isCDNEnabled() && !bypassCache) {
       const cdnUrl = await findTrackInCDN(youtubeId);
       if (cdnUrl) {
         cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
@@ -392,7 +427,7 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
         rawUrl = await getYTStreamUrl(youtubeId);
         cache.setex(streamUrlCacheKey, 1800, rawUrl);
         console.log(`[Stream] ✅ yt-dlp stream URL lista para ${youtubeId}`);
-        await proxyAudioStream(req, res, rawUrl);
+        await proxyAudioStream(req, res, rawUrl, youtubeId);
       } catch (ytdlpErr) {
         console.error(`[Stream] yt-dlp falló para ${youtubeId}:`, ytdlpErr);
         if (!res.headersSent) {
@@ -400,7 +435,7 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
         }
       }
     } else {
-      await proxyAudioStream(req, res, rawUrl);
+      await proxyAudioStream(req, res, rawUrl, youtubeId);
     }
 
     // 4. En background: descargar + transcodificar + cachear (solo si autoDownload !== 'false')

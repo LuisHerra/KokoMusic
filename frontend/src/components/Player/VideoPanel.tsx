@@ -401,8 +401,8 @@ export default function VideoPanel() {
               allow="autoplay; encrypted-media"
               style={{
                 position: 'absolute',
-                width: '177.78vh',
-                height: '100vh',
+                width: '177.78dvh',
+                height: '100dvh',
                 minWidth: '100%',
                 minHeight: '100%',
                 top: '50%',

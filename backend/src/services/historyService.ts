@@ -35,6 +35,7 @@ export interface HistoryEntry {
   plays?: string[];
   minutesBySession?: { date: string; seconds: number }[];
   userId?: string;
+  genre?: string;
 }
 
 export interface SessionEntry {
@@ -443,7 +444,7 @@ async function updateEventSeconds(
  */
 export function logTrackPlay(
   trackId: string,
-  trackInfo: { title: string; artist: string; cover: string },
+  trackInfo: { title: string; artist: string; cover: string; genre?: string },
   userId?: string,
   deviceId?: string
 ): HistoryEntry {
@@ -465,6 +466,7 @@ export function logTrackPlay(
       title: trackInfo.title,
       artist: trackInfo.artist,
       cover: trackInfo.cover,
+      ...(trackInfo.genre ? { genre: trackInfo.genre } : {}),
       playCount: 1,
       lastPlayed: now,
       plays: [now],

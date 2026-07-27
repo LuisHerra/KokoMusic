@@ -29,3 +29,7 @@ Thumbs.db
 
 # Scripts con keys — no subir al repo
 scripts/upload-secrets.mjs
+
+# Local runtime JSON databases & caches (Survives git pull & git checkout)
+backend/data/*.json
+backend/data/**/*.json

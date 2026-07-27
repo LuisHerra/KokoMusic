@@ -69,7 +69,23 @@ router.get('/recommendations', async (req: Request, res: Response) => {
     const seedTrackId = req.query.seedTrackId as string | undefined;
     const seedTrackIds = req.query.seedTrackIds ? (req.query.seedTrackIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
     const excludeTrackIds = req.query.excludeTrackIds ? (req.query.excludeTrackIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
-    const recommendations = await getRecommendations(limit, userId, mood, seedTrackId, seedTrackIds, excludeTrackIds);
+    // earlySkipIds: tracks the user bailed on in < 10s — passed from localStorage client-side
+    const earlySkipIds = req.query.earlySkipIds ? (req.query.earlySkipIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
+    
+    // Custom user-defined algorithm options (from Profile Settings)
+    const explorationRatio = req.query.explorationRatio ? parseFloat(req.query.explorationRatio as string) : undefined;
+    const maxArtistTracks = req.query.maxArtistTracks ? parseInt(req.query.maxArtistTracks as string, 10) : undefined;
+    const cultureStrictness = req.query.cultureStrictness as 'strict' | 'flexible' | 'off' | undefined;
+    const popularityWeight = req.query.popularityWeight as 'low' | 'balanced' | 'high' | undefined;
+
+    const algoOptions = (explorationRatio || maxArtistTracks || cultureStrictness || popularityWeight) ? {
+      explorationRatio: !isNaN(explorationRatio!) ? explorationRatio : undefined,
+      maxArtistTracks: !isNaN(maxArtistTracks!) ? maxArtistTracks : undefined,
+      cultureStrictness,
+      popularityWeight,
+    } : undefined;
+
+    const recommendations = await getRecommendations(limit, userId, mood, seedTrackId, seedTrackIds, excludeTrackIds, earlySkipIds, algoOptions);
     return res.json(recommendations);
   } catch (error) {
     console.error('[Tracks] Error al obtener recomendaciones:', error);
@@ -80,7 +96,10 @@ router.get('/recommendations', async (req: Request, res: Response) => {
 // POST /api/tracks/history/session — save accumulated listening minutes on app exit
 router.post('/history/session', async (req: Request, res: Response) => {
   const { sessions } = req.body;
-  const { userId, deviceId } = req.query as { userId?: string; deviceId?: string };
+  // Read userId from header first (apiFetch always sends x-user-id),
+  // fall back to query param for backward compatibility.
+  const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string) || undefined;
+  const deviceId = (req.query.deviceId as string) || undefined;
   if (!Array.isArray(sessions)) {
     return res.status(400).json({ error: 'sessions debe ser un array' });
   }
@@ -1112,15 +1131,18 @@ router.get('/:id/lyrics', async (req: Request, res: Response) => {
 // POST /api/tracks/:id/play
 router.post('/:id/play', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, artist, cover } = req.body;
-  const { userId, deviceId } = req.query as { userId?: string; deviceId?: string };
+  const { title, artist, cover, genre } = req.body;
+  // Read userId from header first (apiFetch always sends x-user-id),
+  // fall back to query param for backward compatibility.
+  const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string) || undefined;
+  const deviceId = (req.query.deviceId as string) || undefined;
 
   if (!title || !artist) {
     return res.status(400).json({ error: 'Faltan title o artist en el body' });
   }
 
   try {
-    const entry = logTrackPlay(id, { title, artist, cover: cover || '' }, userId, deviceId);
+    const entry = logTrackPlay(id, { title, artist, cover: cover || '', genre }, userId, deviceId);
     return res.json({ success: true, entry });
   } catch (error) {
     console.error('[Tracks] Error al registrar reproducción:', error);

@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../../store/playerStore';
 
 function IconCloudDownload() {
@@ -37,13 +37,14 @@ function IconLoadingSpinner() {
     </svg>
   );
 }
-import { seekAudio } from '../../hooks/useAudioPlayer';
+import { seekAudio, recordEarlySkip } from '../../hooks/useAudioPlayer';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
 import SleepTimer from './SleepTimer';
 import PlaylistModal from './PlaylistModal';
 import JamModal from './JamModal';
 import EqualizerPanel from './EqualizerPanel';
 import ShareTrackModal from '../ShareTrackModal';
+import KaraokeStudioModal from './KaraokeStudioModal';
 
 function formatTime(secs: number): string {
   if (!secs || isNaN(secs)) return '0:00';
@@ -166,10 +167,11 @@ function IconVideo() {
 }
 
 import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
-import { resolveImageUrl } from '../../lib/api';
+import { resolveImageUrl, isDesktopApp } from '../../lib/api';
 import { getApiUrl } from '../../lib/backendResolver';
 
 export default function Player() {
+  const navigate = useNavigate();
   const {
     currentTrack, isPlaying, volume, isMuted, progress, duration, isLoading,
     togglePlay, nextTrack, prevTrack, setVolume, toggleMute,
@@ -178,7 +180,8 @@ export default function Player() {
     isVideoOpen, toggleVideo,
     isShuffle, toggleShuffle,
     repeatMode, cycleRepeat,
-    activeJamCode, activeJamHostName, isJamHost
+    activeJamCode, activeJamHostName, isJamHost,
+    isGamerMode, toggleGamerMode
   } = usePlayerStore();
 
   const { isLiked, toggleLike } = useLikedSongs();
@@ -187,8 +190,18 @@ export default function Player() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showEq, setShowEq] = useState(false);
+  const [showKaraokeStudio, setShowKaraokeStudio] = useState(false);
 
-  const userId = localStorage.getItem('koko_user_id') || '00000000-0000-0000-0000-000000000001';
+  const userId = localStorage.getItem('koko_device_id') || localStorage.getItem('koko_user_id') || '00000000-0000-0000-0000-000000000001';
+
+  // Wrap nextTrack with an early-skip signal: if the user skips before 10s,
+  // record the track so the recommendation engine can downrank it.
+  const handleSkip = useCallback(() => {
+    if (currentTrack && progress < 10) {
+      recordEarlySkip(currentTrack.id, currentTrack.artist, currentTrack.title);
+    }
+    nextTrack();
+  }, [currentTrack, progress, nextTrack]);
 
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
   const [cdnStage, setCdnStage] = useState({ progress: 20, label: '🔍 Buscando en caché local...' });
@@ -525,7 +538,7 @@ export default function Player() {
             )}
           </button>
 
-          <button className="ctrl-btn" onClick={nextTrack} title="Siguiente">
+          <button className="ctrl-btn" onClick={handleSkip} title="Siguiente">
             <IconNext />
           </button>
 
@@ -556,6 +569,19 @@ export default function Player() {
 
       {/* Right: Queue, Lyrics, Video, Sleep, Volume */}
       <div className="player-right">
+        {isDesktopApp() && (
+          <button
+            className="ctrl-btn"
+            onClick={toggleGamerMode}
+            title={isGamerMode ? 'Modo Gamer Activo (Ultra rendimiento GPU/RAM para juegos)' : 'Activar Modo Gamer (Optimizado para Fortnite / Juegos)'}
+            style={{ color: isGamerMode ? '#ff0055' : undefined }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H9v2H7v-2H5v-2h2V9h2v2h2v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm3-3c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+            </svg>
+          </button>
+        )}
+
         <button
           className="ctrl-btn"
           onClick={() => setShowJamModal(true)}
@@ -654,6 +680,7 @@ export default function Player() {
       <JamModal isOpen={showJamModal} onClose={() => setShowShareModal(false)} />
       <ShareTrackModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} track={currentTrack} userId={userId} />
       {showEq && <EqualizerPanel onClose={() => setShowEq(false)} />}
+      <KaraokeStudioModal isOpen={showKaraokeStudio} onClose={() => setShowKaraokeStudio(false)} track={currentTrack} />
 
       {showMobileMenu && currentTrack && (
         <div
@@ -723,6 +750,33 @@ export default function Player() {
               >
                 <IconCloudDownload />
                 <span>{downloadStatus === 'downloaded' ? 'Audio guardado sin conexión' : 'Guardar sin conexión'}</span>
+              </button>
+
+              <button
+                onClick={() => { setShowEq(true); setShowMobileMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="3" y="9" width="2" height="6" rx="1"/>
+                  <rect x="7" y="6" width="2" height="9" rx="1"/>
+                  <rect x="11" y="11" width="2" height="4" rx="1"/>
+                  <rect x="15" y="7" width="2" height="8" rx="1"/>
+                  <rect x="19" y="4" width="2" height="11" rx="1"/>
+                </svg>
+                <span>Ecualizador (EQ 5-Bandas)</span>
+              </button>
+
+              <button
+                onClick={() => { navigate('/karaoke'); setShowMobileMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                <span>Estudio Karaoke & Auto-Tune</span>
               </button>
             </div>
           </div>

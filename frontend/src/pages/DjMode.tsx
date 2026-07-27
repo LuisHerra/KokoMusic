@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { setAudioPlaybackRate, seekAudio } from '../hooks/useAudioPlayer';
 
@@ -30,6 +31,15 @@ interface TimelineTrack {
 }
 
 export default function DjMode() {
+  const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const {
     currentTrack,
     queue,
@@ -505,18 +515,58 @@ export default function DjMode() {
       minHeight: 'calc(100vh - var(--player-height) - 70px)',
       fontFamily: "'DM Sans', sans-serif",
       display: 'flex',
-      overflow: 'hidden',
+      flexDirection: isMobile ? 'column' : 'row',
+      overflowY: isMobile ? 'auto' : 'hidden',
+      overflowX: 'hidden',
+      paddingBottom: isMobile ? 100 : 0,
     }}>
+
+      {isMobile && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          backgroundColor: '#13111c',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+        }}>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              background: 'rgba(255,255,255,0.1)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '8px 14px',
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            ⬅ Salir del Modo DJ
+          </button>
+          <span style={{ fontWeight: 800, color: '#39ff14', fontSize: 14, letterSpacing: 1 }}>
+            🎛️ Consola DJ Mobile
+          </span>
+        </div>
+      )}
       
       {/* 1. ADAPTIVE SIDE PANEL */}
       <div style={{
-        width: `${browserWidth}px`,
-        minWidth: `${browserWidth}px`,
+        width: isMobile ? '100%' : `${browserWidth}px`,
+        minWidth: isMobile ? '100%' : `${browserWidth}px`,
         backgroundColor: '#13111c',
-        borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+        borderRight: isMobile ? 'none' : '1px solid rgba(255, 255, 255, 0.05)',
+        borderBottom: isMobile ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
         display: 'flex',
         flexDirection: 'column',
-        height: 'calc(100vh - var(--player-height) - 70px)',
+        height: isMobile ? 'auto' : 'calc(100vh - var(--player-height) - 70px)',
         userSelect: 'none',
       }}>
         <div style={{ padding: browserWidth < 200 ? '12px 8px' : '16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -705,26 +755,28 @@ export default function DjMode() {
         </div>
       </div>
 
-      {/* DRAG RESIZER SPLITTER */}
-      <div
-        onMouseDown={startResizing}
-        style={{
-          width: '6px',
-          cursor: 'col-resize',
-          backgroundColor: isDraggingBrowser ? '#39ff14' : 'transparent',
-          borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
-          borderRight: '1px solid rgba(255, 255, 255, 0.05)',
-          zIndex: 10,
-          transition: 'background-color 0.2s'
-        }}
-      ></div>
+      {/* DRAG RESIZER SPLITTER (DESKTOP ONLY) */}
+      {!isMobile && (
+        <div
+          onMouseDown={startResizing}
+          style={{
+            width: '6px',
+            cursor: 'col-resize',
+            backgroundColor: isDraggingBrowser ? '#39ff14' : 'transparent',
+            borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+            zIndex: 10,
+            transition: 'background-color 0.2s'
+          }}
+        ></div>
+      )}
 
       {/* 2. MAIN WORKSPACE */}
       <div style={{
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        height: 'calc(100vh - var(--player-height) - 70px)',
+        height: isMobile ? 'auto' : 'calc(100vh - var(--player-height) - 70px)',
         overflowY: 'auto',
       }}>
         
@@ -849,7 +901,7 @@ export default function DjMode() {
             {/* Professional Decks + Mixer */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 300px 1fr',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 300px 1fr',
               gap: '16px',
               alignItems: 'stretch'
             }}>
@@ -951,7 +1003,7 @@ export default function DjMode() {
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', display: 'block', textAlign: 'center' }}>DJ MIXER CHANNEL</span>
                 
                 {/* Double 3-Band EQ Columns */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', margin: '8px 0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '12px', margin: '8px 0' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '8px', color: '#39ff14', fontWeight: 'bold', textAlign: 'center' }}>EQ DECK A</span>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1115,7 +1167,7 @@ export default function DjMode() {
               <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#39ff14', textTransform: 'uppercase', marginBottom: '12px' }}>
                 Separador Vocal y Stems en Directo
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '10px' }}>
                 {[
                   { name: 'VOCALES', val: stemVocalA, set: setStemVocalA, color: '#39ff14' },
                   { name: 'BASS (BAJO)', val: stemBassA, set: setStemBassA, color: '#00e5ff' },
@@ -1139,7 +1191,7 @@ export default function DjMode() {
               padding: '16px',
             }}>
               <span style={{ fontSize: '13px', fontWeight: 800, color: '#ffea00', display: 'block', marginBottom: '10px' }}>Pads de Efectos 4x4</span>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(8, 1fr)', gap: '10px' }}>
                 {[...Array(16)].map((_, idx) => (
                   <button
                     key={idx}

@@ -281,11 +281,31 @@ export function seekAudio(seconds: number) {
   usePlayerStore.getState().setProgress(seconds);
 }
 
+/**
+ * Records a track as "early-skipped" (< 10s played) in localStorage.
+ * The recommendation engine reads this list and applies a score penalty
+ * to these tracks so they surface less often in future sessions.
+ */
+export function recordEarlySkip(trackId: string, artist: string, title: string) {
+  try {
+    const raw = localStorage.getItem('koko_early_skips');
+    const skips: { id: string; artist: string; title: string; skippedAt: number }[] = raw ? JSON.parse(raw) : [];
+    // Avoid duplicate entries for the same track
+    const filtered = skips.filter(s => s.id !== trackId);
+    filtered.unshift({ id: trackId, artist, title, skippedAt: Date.now() });
+    localStorage.setItem('koko_early_skips', JSON.stringify(filtered.slice(0, 50)));
+  } catch {}
+}
+
 export function useAudioPlayer() {
   const lastLoggedTrackId = useRef<string | null>(null);
   const crossfadeTriggered = useRef(false);
   const fadeIntervalRef = useRef<any>(null);
   const fadeOutIntervalRef = useRef<any>(null);
+  // ── Race-condition guard: each new track load gets a unique generation number.
+  // playWhenReady captures its generation at creation time; if a newer load has
+  // already started by the time canplay fires, the listener self-destructs.
+  const loadGenerationRef = useRef(0);
 
   const {
     currentTrack,
@@ -333,6 +353,7 @@ export function useAudioPlayer() {
     }
 
     if (!crossfadeTriggered.current) {
+      // Track ended naturally — not an early skip, no penalty needed
       nextTrack();
     }
   }, [sleepTimerMinutes, clearSleepTimer, setIsPlaying, repeatMode, nextTrack]);
@@ -391,6 +412,11 @@ export function useAudioPlayer() {
         if (shouldCrossfade && !crossfadeTriggered.current) {
           if (repeatMode !== 'one') {
             crossfadeTriggered.current = true;
+            // Log as early skip if the track was skipped before 10 seconds
+            const state = usePlayerStore.getState();
+            if (state.currentTrack && audio.currentTime < 10) {
+              recordEarlySkip(state.currentTrack.id, state.currentTrack.artist, state.currentTrack.title);
+            }
             nextTrack();
           }
         }
@@ -419,6 +445,15 @@ export function useAudioPlayer() {
       if (e.target === getActiveAudio()) {
         const currentT = usePlayerStore.getState().currentTrack;
         if (!currentT) return;
+
+        // Purge backend stream cache on Format error (code 4)
+        if (audioEl.error?.code === 4) {
+          try {
+            const API_BASE = await getApiUrl();
+            await fetch(`${API_BASE}/stream/${currentT.id}/purge-cache`, { method: 'POST' });
+            logToServer('INFO', `[useAudioPlayer] Purgado caché corrupto para track: ${currentT.id}`);
+          } catch {}
+        }
 
         const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(currentT.id) && isNaN(Number(currentT.id));
         const isEmbedModeStore = usePlayerStore.getState().isEmbedMode;
@@ -502,6 +537,10 @@ export function useAudioPlayer() {
   useEffect(() => {
     if (!currentTrack || !currentTrack.id) return;
     if (globalLastLoadedTrackId === currentTrack.id) return;
+
+    // Increment generation — any in-flight canplay listener from a previous load
+    // will see the mismatch and self-destruct without starting audio playback.
+    loadGenerationRef.current += 1;
 
     const prevTrackId = globalLastLoadedTrackId;
     globalLastLoadedTrackId = currentTrack.id;
@@ -612,7 +651,19 @@ export function useAudioPlayer() {
       const targetVolume = isMuted ? 0 : volume;
       const currentEqBands = usePlayerStore.getState().eqBands;
 
+      // Capture generation at the moment this load started.
+      // If loadGenerationRef increments before canplay fires (i.e. user skipped),
+      // this listener is stale and must self-destruct without doing anything.
+      const myGeneration = loadGenerationRef.current;
+
       const playWhenReady = () => {
+        // Stale listener guard — bail out immediately if a newer load has started
+        if (loadGenerationRef.current !== myGeneration) {
+          nextAudio.removeEventListener('canplay', playWhenReady);
+          logToServer('INFO', `[useAudioPlayer] playWhenReady: stale generation (${myGeneration} vs ${loadGenerationRef.current}), discarding.`);
+          return;
+        }
+
         const { isPlaying: shouldPlay } = usePlayerStore.getState();
         logToServer('INFO', `[useAudioPlayer] playWhenReady callback fired. shouldPlay: ${shouldPlay}`);
         
@@ -740,7 +791,15 @@ export function useAudioPlayer() {
     });
 
     return () => {
-      // Cleanup: nada que hacer aquí ya que el listener se auto-remueve
+      // Ensure any in-flight fade intervals are killed when the track changes
+      if (fadeIntervalRef.current) {
+        clearInterval(fadeIntervalRef.current);
+        fadeIntervalRef.current = null;
+      }
+      if (fadeOutIntervalRef.current) {
+        clearInterval(fadeOutIntervalRef.current);
+        fadeOutIntervalRef.current = null;
+      }
     };
   }, [currentTrack, setLoading, setIsPlaying, volume, isMuted]);
 
@@ -802,7 +861,7 @@ export function useAudioPlayer() {
       const myId = localStorage.getItem('koko_device_id') ?? '';
       logTrackPlay(
         currentTrack.id,
-        { title: currentTrack.title, artist: currentTrack.artist, cover: currentTrack.cover },
+        { title: currentTrack.title, artist: currentTrack.artist, cover: currentTrack.cover, genre: currentTrack.genre },
         myId,
         myId   // deviceId = same as userId (koko_device_id is device-scoped)
       ).catch((err) => console.error('[PlayLog] Error:', err));
