@@ -16,6 +16,7 @@ import { getStreamUrl, logTrackPlay } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
 import { logToServer } from '../lib/logger';
+import { usePrefetchAudio } from './usePrefetchAudio';
 
 let currentBlobUrl: string | null = null;
 
@@ -306,6 +307,9 @@ export function useAudioPlayer() {
   // playWhenReady captures its generation at creation time; if a newer load has
   // already started by the time canplay fires, the listener self-destructs.
   const loadGenerationRef = useRef(0);
+
+  // Predictive prefetch: start downloading next 2 queued tracks in background
+  usePrefetchAudio();
 
   const {
     currentTrack,

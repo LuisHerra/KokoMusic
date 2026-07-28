@@ -269,6 +269,15 @@ export default function Search() {
 
   const { currentTrack, isPlaying, setTrack, activeJamCode, addToQueue, setError } = usePlayerStore();
 
+  // Debounce: auto-fire search 350ms after the user stops typing
+  useEffect(() => {
+    if (!input.trim()) return;
+    const timer = setTimeout(() => {
+      setQuery(input.trim());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [input]);
+
   const [recentSearches, setRecentSearches] = useState<any[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('koko_recent_searches') || '[]');
@@ -286,7 +295,7 @@ export default function Search() {
       return searchTracks(query, 50, source as any);
     },
     enabled: query.trim().length > 0 || (!!mood && !query),
-    staleTime: 60_000,
+    staleTime: 10 * 60 * 1000,
   });
 
   // Sync URL

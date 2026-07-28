@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylist, getTrack, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, BASE } from '../lib/api';
+import { getPlaylist, getTrack, getTracksBatch, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, BASE } from '../lib/api';
 import type { Track, Friendship } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useLikedSongs } from '../hooks/useLikedSongs';
@@ -29,14 +29,18 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
   onDragEnd?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
 }) {
+  // N+1 fix: use staleTime so this query hits the React Query cache
+  // (populated by the batch fetch in the parent Playlist component)
   const { data: track, isLoading } = useQuery({
     queryKey: ['track', trackId],
     queryFn: () => getTrack(trackId),
+    staleTime: 10 * 60 * 1000,
   });
   const { data: prevTrack } = useQuery({
     queryKey: ['track', prevTrackId],
     queryFn: () => getTrack(prevTrackId!),
     enabled: !!prevTrackId,
+    staleTime: 10 * 60 * 1000,
   });
   const { currentTrack, isPlaying, activeJamCode, addToQueue, setError } = usePlayerStore();
   const { isLiked, toggleLike } = useLikedSongs();
@@ -1099,6 +1103,24 @@ export default function Playlist() {
         cover: resolveImageUrl(p.cover),
       };
     },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Batch prefetch: after playlist loads, fetch ALL track metadata in ONE request
+  // and seed the React Query cache — TrackRow queries then get instant cache hits
+  const trackIds = (pl?.tracks ?? []).map((t: any) => t.trackId).filter(Boolean) as string[];
+  useQuery({
+    queryKey: ['playlist-tracks-batch', id, trackIds.join(',')],
+    queryFn: async () => {
+      const batchResult = await getTracksBatch(trackIds);
+      // Seed individual ['track', id] cache entries so TrackRow never re-fetches
+      for (const [tid, trackData] of Object.entries(batchResult)) {
+        qc.setQueryData(['track', tid], trackData);
+      }
+      return batchResult;
+    },
+    enabled: trackIds.length > 0,
+    staleTime: 10 * 60 * 1000,
   });
 
   // Config: auto-aceptar upgrades ambiguos (el usuario puede desactivar esto)

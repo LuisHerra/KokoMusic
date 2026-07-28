@@ -103,6 +103,83 @@ export const getTrack = async (id: string) => {
   }
 };
 
+/**
+ * Batch fetch metadata for multiple track IDs in a single request.
+ * Replaces N individual getTrack() calls (e.g. in Playlist.tsx).
+ * Returns a map of { [id]: Track } for all found tracks.
+ */
+export const getTracksBatch = async (ids: string[]): Promise<Record<string, Track>> => {
+  if (ids.length === 0) return {};
+  // Split into chunks of 50 (server max)
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    chunks.push(ids.slice(i, i + 50));
+  }
+  const results = await Promise.all(
+    chunks.map(chunk =>
+      apiFetch<{ tracks: Record<string, Track> }>('/tracks/batch', {
+        method: 'POST',
+        body: JSON.stringify({ ids: chunk }),
+      })
+    )
+  );
+  return results.reduce((acc, r) => ({ ...acc, ...r.tracks }), {} as Record<string, Track>);
+};
+
+/** In-session cache of audio-ready status — never re-checks the same ID twice */
+const _audioReadyCache = new Map<string, boolean>();
+
+/**
+ * Check whether tracks are already cached locally on the backend server.
+ * Uses an in-session Map so the same ID is never re-checked.
+ */
+export const getAudioStatus = async (ids: string[]): Promise<Record<string, boolean>> => {
+  const unchecked = ids.filter(id => !_audioReadyCache.has(id));
+  if (unchecked.length > 0) {
+    try {
+      const apiBase = await import('./backendResolver').then(m => m.getApiUrl());
+      const res = await fetch(`${apiBase}/stream/status?ids=${encodeURIComponent(unchecked.join(','))}`);
+      if (res.ok) {
+        const json = await res.json() as { status: Record<string, boolean> };
+        for (const [id, ready] of Object.entries(json.status)) {
+          _audioReadyCache.set(id, ready);
+        }
+      }
+    } catch {
+      // Non-critical — just play normally if this fails
+    }
+  }
+  const result: Record<string, boolean> = {};
+  for (const id of ids) {
+    result[id] = _audioReadyCache.get(id) ?? false;
+  }
+  return result;
+};
+
+/** Signal to the in-session cache that a track is now locally ready */
+export const markAudioReady = (id: string): void => {
+  _audioReadyCache.set(id, true);
+};
+
+/** Schedule background prefetch of upcoming tracks (fire-and-forget) */
+export const prefetchAudio = async (ids: string[]): Promise<void> => {
+  if (ids.length === 0) return;
+  const toFetch = ids.filter(id => !_audioReadyCache.get(id));
+  if (toFetch.length === 0) return;
+  try {
+    const apiBase = await import('./backendResolver').then(m => m.getApiUrl());
+    fetch(`${apiBase}/stream/prefetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: toFetch.slice(0, 5) }),
+    }).catch(() => {});
+  } catch {
+    // fire and forget — failures are silent
+  }
+};
+
+
+
 export const getStreamUrl = (trackId: string) => {
   const cached = getCachedBaseUrl();
   const apiBase = cached ? `${cached}/api` : BASE;

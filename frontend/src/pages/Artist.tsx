@@ -177,7 +177,8 @@ export default function Artist() {
     },
     enabled: !!id,
     retry: 1,
-    refetchOnWindowFocus: true,
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Follow hook — resolves after data loads (artistId from itunesArtistId)
@@ -198,30 +199,16 @@ export default function Artist() {
 
   const displayedTracks = data?.topTracks ? (showAllTracks ? data.topTracks.slice(0, 10) : data.topTracks.slice(0, 5)) : [];
 
+  // Use simulated play counts based on popularity score—avoids 5-10 extra network
+  // requests that were previously fired per track to fetch real YouTube view counts.
   useEffect(() => {
-    if (data?.topTracks) {
-      const fetchRealPlays = async () => {
-        for (const track of displayedTracks) {
-          try {
-            // We only fetch if it's missing (prevent refetching on every re-render)
-            setRealPlays((prev) => {
-              if (prev[track.id]) return prev;
-              // Make fetch call outside of setState
-              fetch(`${BASE}/search?q=${encodeURIComponent(track.title + ' ' + track.artist)}&limit=1&source=youtube`)
-                .then(res => res.json())
-                .then(json => {
-                  if (json.tracks && json.tracks[0] && json.tracks[0].popularity) {
-                    setRealPlays(current => ({ ...current, [track.id]: json.tracks[0].popularity }));
-                  }
-                }).catch(e => console.error(e));
-              return { ...prev, [track.id]: -1 }; // -1 indicates loading started
-            });
-          } catch (e) { }
-        }
-      };
-      fetchRealPlays();
-    }
-  }, [data?.topTracks, showAllTracks]);
+    if (!data?.topTracks) return;
+    const simulated: Record<string, number> = {};
+    data.topTracks.forEach((track: any, index: number) => {
+      simulated[track.id] = getSimulatedPlays(track, index);
+    });
+    setRealPlays(simulated);
+  }, [data?.topTracks]);
 
   if (isLoading) {
     return (

@@ -93,6 +93,40 @@ router.get('/recommendations', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/tracks/batch — fetch metadata for multiple track IDs in one request
+// Fixes N+1 query pattern in Playlist.tsx (previously: 1 request per track row)
+router.post('/batch', async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids?: string[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids debe ser un array no vacío' });
+  }
+  if (ids.length > 50) {
+    return res.status(400).json({ error: 'Máximo 50 IDs por petición' });
+  }
+
+  try {
+    // Fetch all tracks in parallel — each internally uses L1/L2/iTunes cache chain
+    const results = await Promise.allSettled(
+      ids.map((id) => getTrackById(id.startsWith('custom_') ? id : (isNaN(Number(id)) ? id : Number(id)) as any))
+    );
+
+    const tracks: Record<string, any> = {};
+    for (let i = 0; i < ids.length; i++) {
+      const r = results[i];
+      if (r.status === 'fulfilled' && r.value) {
+        tracks[ids[i]] = r.value;
+      }
+    }
+
+    return res.json({ tracks });
+  } catch (error) {
+    console.error('[Tracks] Error en batch fetch:', error);
+    return res.status(500).json({ error: 'Error al obtener tracks en batch' });
+  }
+});
+
+
+
 // POST /api/tracks/history/session — save accumulated listening minutes on app exit
 router.post('/history/session', async (req: Request, res: Response) => {
   const { sessions } = req.body;

@@ -2,8 +2,17 @@ import { Router, Request, Response } from 'express';
 import { searchTracks, type SearchSource } from '../services/metadataService';
 import { getHistoryForUser } from '../services/historyService';
 import { boostSearchResults } from '../services/trendingService';
+import { cache } from '../services/cacheService';
+import { getSearchCache, setSearchCache } from '../services/searchCacheService';
 
 const router = Router();
+
+// L1 TTL constants (in-memory cache)
+const L1_TTL: Record<SearchSource, number> = {
+  itunes:  6 * 60 * 60,  // 6h
+  youtube: 2 * 60 * 60,  // 2h
+  lyrics:  4 * 60 * 60,  // 4h
+};
 
 // GET /api/search?q=bad+bunny&limit=20&source=itunes
 router.get('/', async (req: Request, res: Response) => {
@@ -21,10 +30,31 @@ router.get('/', async (req: Request, res: Response) => {
     searchSource = 'lyrics';
   }
 
+  const normalizedQ = q.trim().toLowerCase();
+  const l1Key = `search:${searchSource}:${normalizedQ}`;
+
   try {
+    // ── L1: In-memory cache ──────────────────────────────────────────────────
+    const l1Hit = cache.get(l1Key);
+    if (l1Hit) {
+      console.log(`[Search] L1 hit: "${normalizedQ}" (${searchSource})`);
+      return res.json({ tracks: JSON.parse(l1Hit), source: searchSource, cached: true });
+    }
+
+    // ── L2: Supabase persistent cache ────────────────────────────────────────
+    const l2Hit = await getSearchCache(searchSource, normalizedQ);
+    if (l2Hit) {
+      console.log(`[Search] L2 hit: "${normalizedQ}" (${searchSource})`);
+      // Warm L1 from L2 result
+      cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify(l2Hit));
+      return res.json({ tracks: l2Hit, source: searchSource, cached: true });
+    }
+
+    // ── L3: Live API (iTunes / YouTube / Lyrics) ─────────────────────────────
+    console.log(`[Search] Cache miss — fetching live: "${normalizedQ}" (${searchSource})`);
     let tracks = await searchTracks(q.trim(), Number(limit) || 20, searchSource);
 
-    // Obtener puntuación de historial y canciones previamente escuchadas del usuario
+    // Personalisation boost — user history + trending
     let artistScores: Record<string, number> = {};
     let listenedTrackKeys = new Set<string>();
 
@@ -53,9 +83,12 @@ router.get('/', async (req: Request, res: Response) => {
       }
     }
 
-    // Aplicar boost de personalización, canciones previamente escuchadas e items en tendencia
     const userRegion = (req.headers['x-user-region'] as string) || 'spain';
     tracks = await boostSearchResults(tracks, artistScores, userRegion, listenedTrackKeys);
+
+    // Write-through to L1 + L2 (non-blocking)
+    cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify(tracks));
+    setSearchCache(searchSource, normalizedQ, tracks).catch(() => {});
 
     return res.json({ tracks, source: searchSource });
   } catch (err) {
@@ -65,4 +98,3 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 export default router;
-

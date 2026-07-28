@@ -41,9 +41,15 @@ import { useThemeStore } from './store/themeStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false },
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000,   // 5 min: no spinner on back-navigation
+      gcTime: 30 * 60 * 1000,     // 30 min: keep data in memory after unmount
+    },
   },
 });
+
 
 // Hook que inicializa el reproductor de audio a nivel de app — se monta UNA SOLA VEZ
 function AudioEngine() {

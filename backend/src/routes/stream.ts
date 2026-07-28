@@ -39,12 +39,18 @@ import {
   BUCKET_CAPACITY_MB,
 } from '../services/cdnService';
 import { downloadAndTranscode, getAudioPath, AUDIO_DIR, getCookiesArg } from '../services/ytdlpService';
+import { markTrackAudioReady, isTrackAudioReady, batchCheckAudioReady } from '../services/audioReadyService';
+import { cleanupExpiredSearchCache } from '../services/searchCacheService';
 
 const router = Router();
 
-// ── Limpieza diaria al arrancar ───────────────────────────────────────────────
-// Elimina archivos grandes (>MAX_CDN_SIZE_MB) con más de 48h de antigüedad
-cleanupLargeLocalFiles(AUDIO_DIR);
+// ── Limpieza asíncrona al arrancar ────────────────────────────────────────────
+// setImmediate defers until after server is fully listening — no blocking startup
+setImmediate(() => {
+  cleanupLargeLocalFiles(AUDIO_DIR);
+  cleanupExpiredSearchCache().catch(() => {});
+  console.log('[Stream] Startup cleanup scheduled (async)');
+});
 
 // ── Configuración embed mode ──────────────────────────────────────────────────
 
@@ -260,17 +266,19 @@ async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false): Pro
       return;
     }
 
+    // Mark as locally available — allows frontend to skip yt-dlp cold start next play
+    markTrackAudioReady(youtubeId).catch(() => {});
+
     // deleteLocalAfterUpload = false si keepLocal=true (videos YT directos: guardar siempre)
     const cdnUrl = await uploadToCDN(youtubeId, localPath, !keepLocal);
     if (cdnUrl) {
       cache.setex(`cdn-url:${youtubeId}`, 86400 * 365, cdnUrl);
-      console.log(`[CDN Background] ✅ ${youtubeId} disponible en CDN: ${cdnUrl}`);
+      console.log(`[CDN Background] ${youtubeId} disponible en CDN: ${cdnUrl}`);
     } else {
-      // Sin CDN o archivo grande: si keepLocal, el archivo local ya sirve directamente
       if (keepLocal) {
-        console.log(`[CDN Background] 💾 ${youtubeId} guardado localmente (sin CDN o archivo grande)`);
+        console.log(`[CDN Background] ${youtubeId} guardado localmente (sin CDN o archivo grande)`);
       } else {
-        console.log(`[CDN Background] ℹ️  ${youtubeId} grande o sin CDN — quedará en local hasta mañana`);
+        console.log(`[CDN Background] ${youtubeId} grande o sin CDN — quedará en local hasta mañana`);
       }
     }
   } catch (err) {
@@ -302,6 +310,59 @@ router.post('/:itunesId/purge-cache', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Stream] Error al purgar cache:', err);
     return res.status(500).json({ error: 'Error al purgar cache' });
+  }
+});
+
+// ── GET /api/stream/status?ids=id1,id2,id3 — Batch audio-ready check ────────
+// Returns a map of { [id]: boolean } indicating local cache status.
+// Used by frontend before play to skip yt-dlp cold start for cached tracks.
+router.get('/status', (req: Request, res: Response) => {
+  const idsParam = req.query.ids as string | undefined;
+  if (!idsParam) {
+    return res.status(400).json({ error: 'ids query param required' });
+  }
+  const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean).slice(0, 50);
+  return res.json({ status: batchCheckAudioReady(ids) });
+});
+
+// ── POST /api/stream/prefetch — Predictive audio prefetch ────────────────────
+// Accepts { ids: string[] } — spawns background download for tracks not yet cached.
+// Called by frontend after queue changes or recommendation load.
+router.post('/prefetch', async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids?: string[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids array required' });
+  }
+
+  // Respond immediately — downloads happen in background
+  res.status(202).json({ accepted: ids.length });
+
+  for (const itunesId of ids.slice(0, 5)) {
+    try {
+      const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
+      if (!youtubeId) continue;
+
+      // Skip if already locally available
+      if (isTrackAudioReady(youtubeId)) {
+        console.log(`[Prefetch] Already cached: ${youtubeId}`);
+        continue;
+      }
+
+      // Skip if already downloading
+      if (cache.get(`downloading:${youtubeId}`)) {
+        console.log(`[Prefetch] Already downloading: ${youtubeId}`);
+        continue;
+      }
+
+      // Spawn background download
+      console.log(`[Prefetch] Scheduling background download: ${youtubeId}`);
+      cache.setex(`downloading:${youtubeId}`, 600, '1');
+      downloadAndUploadToCDN(youtubeId, true).finally(() => {
+        cache.del(`downloading:${youtubeId}`);
+      });
+    } catch (err) {
+      console.warn(`[Prefetch] Error scheduling ${itunesId}:`, err);
+    }
   }
 });
 

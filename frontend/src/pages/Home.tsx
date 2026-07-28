@@ -65,8 +65,9 @@ export default function Home() {
     queryKey: ['personalized-recommendations'],
     queryFn: () => getPersonalizedRecommendations(12),
     refetchOnWindowFocus: false,
-    staleTime: 60_000, // 1 min cache
+    staleTime: 5 * 60 * 1000,
   });
+
 
   const recommendations = recData?.tracks ?? [];
   const recSource = recData?.source;

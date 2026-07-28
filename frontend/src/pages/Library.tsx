@@ -405,17 +405,20 @@ export default function Library() {
   const { data: playlists = [], isLoading: localLoading } = useQuery({
     queryKey: ['playlists'],
     queryFn: getPlaylists,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: collabPlaylists = [], isLoading: collabLoading } = useQuery({
     queryKey: ['collabPlaylists', deviceId],
     queryFn: () => getCollabPlaylists(deviceId),
     enabled: !!deviceId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: customTracks = [], isLoading: customLoading } = useQuery({
     queryKey: ['customTracks'],
     queryFn: getCustomTracks,
+    staleTime: 5 * 60 * 1000,
   });
 
   const isLoading = localLoading || collabLoading;
