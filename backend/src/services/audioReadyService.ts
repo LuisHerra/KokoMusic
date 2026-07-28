@@ -16,31 +16,32 @@ const AUDIO_READY_CACHE_PREFIX = 'audio-ready:';
 const AUDIO_READY_CACHE_TTL = 60 * 60; // 1 hour in-memory TTL
 
 /**
- * Mark a YouTube track as locally cached.
+ * Mark a track (by iTunes ID or YouTube ID) as locally/CDN cached.
  * Writes to both L1 (memory) and L2 (Supabase tracks_meta).
  */
-export async function markTrackAudioReady(youtubeId: string): Promise<void> {
-  // L1: immediate in-memory flag
-  cache.setex(`${AUDIO_READY_CACHE_PREFIX}${youtubeId}`, AUDIO_READY_CACHE_TTL, '1');
+export async function markTrackAudioReady(trackId: string, mappedId?: string): Promise<void> {
+  // L1: immediate in-memory flags
+  cache.setex(`${AUDIO_READY_CACHE_PREFIX}${trackId}`, AUDIO_READY_CACHE_TTL, '1');
+  if (mappedId) {
+    cache.setex(`${AUDIO_READY_CACHE_PREFIX}${mappedId}`, AUDIO_READY_CACHE_TTL, '1');
+    cache.setex(`yt-res:${trackId}`, 86400 * 30, mappedId);
+    cache.setex(`yt-res:${mappedId}`, 86400 * 30, trackId);
+  }
 
   // L2: persist to Supabase so it survives restarts
   if (!supabase) return;
   try {
-    const { error } = await supabase
+    const updatePayload: any = {
+      audio_ready: true,
+      audio_cached_at: new Date().toISOString(),
+    };
+    if (mappedId) updatePayload.youtube_id = mappedId;
+
+    await supabase
       .schema('kokomusic')
       .from('tracks_meta')
-      .update({
-        audio_ready: true,
-        youtube_id: youtubeId,
-        audio_cached_at: new Date().toISOString(),
-      })
-      .eq('youtube_id', youtubeId);
-
-    if (error) {
-      // youtube_id column may not be set yet — try upsert by matching existing youtube_id
-      // This is a best-effort operation; local fs check is the source of truth
-      console.warn(`[AudioReady] Could not update tracks_meta for ${youtubeId}:`, error.message);
-    }
+      .update(updatePayload)
+      .or(`id.eq.${trackId},youtube_id.eq.${trackId}${mappedId ? `,youtube_id.eq.${mappedId}` : ''}`);
   } catch (err) {
     console.warn('[AudioReady] Supabase write failed (non-critical):', err);
   }
@@ -51,49 +52,105 @@ export async function markTrackAudioReady(youtubeId: string): Promise<void> {
  * Called when we resolve an iTunes track to a YouTube video.
  */
 export async function linkYouTubeIdToTrack(itunesId: number, youtubeId: string): Promise<void> {
+  cache.setex(`yt-res:${itunesId}`, 86400 * 30, youtubeId);
   if (!supabase) return;
   try {
     await supabase
       .schema('kokomusic')
       .from('tracks_meta')
       .update({ youtube_id: youtubeId })
-      .eq('itunes_id', itunesId);
+      .eq('id', String(itunesId));
   } catch {
     // Non-critical
   }
 }
 
 /**
- * Check if a track is locally cached.
- * Order: L1 memory → filesystem check (authoritative).
- * Does NOT query Supabase (too slow for hot path).
+ * Check if a track (by iTunes ID or YouTube ID) is locally cached or in CDN.
+ * Order: L1 memory → CDN cache → mapped YouTube ID → filesystem check.
  */
-export function isTrackAudioReady(youtubeId: string): boolean {
-  // L1 cache hit
-  if (cache.get(`${AUDIO_READY_CACHE_PREFIX}${youtubeId}`)) return true;
+export function isTrackAudioReady(trackId: string): boolean {
+  if (!trackId) return false;
 
-  // Filesystem check — most reliable source of truth
-  try {
-    const localPath = getAudioPath(youtubeId);
-    const exists = fs.existsSync(localPath) && fs.statSync(localPath).size > 1024;
-    if (exists) {
-      // Warm the cache for next call
-      cache.setex(`${AUDIO_READY_CACHE_PREFIX}${youtubeId}`, AUDIO_READY_CACHE_TTL, '1');
-    }
-    return exists;
-  } catch {
-    return false;
+  // 1. L1 cache hit for trackId
+  if (cache.get(`${AUDIO_READY_CACHE_PREFIX}${trackId}`)) return true;
+
+  // 2. CDN cache hit for trackId
+  if (cache.get(`cdn-url:${trackId}`)) return true;
+
+  // 3. Mapped YouTube ID check
+  const mappedYtId = cache.get(`yt-res:${trackId}`) as string | undefined;
+  if (mappedYtId) {
+    if (cache.get(`${AUDIO_READY_CACHE_PREFIX}${mappedYtId}`)) return true;
+    if (cache.get(`cdn-url:${mappedYtId}`)) return true;
   }
+
+  // 4. Filesystem check for direct trackId
+  try {
+    const localPath = getAudioPath(trackId);
+    if (fs.existsSync(localPath) && fs.statSync(localPath).size > 1024) {
+      cache.setex(`${AUDIO_READY_CACHE_PREFIX}${trackId}`, AUDIO_READY_CACHE_TTL, '1');
+      if (mappedYtId) cache.setex(`${AUDIO_READY_CACHE_PREFIX}${mappedYtId}`, AUDIO_READY_CACHE_TTL, '1');
+      return true;
+    }
+  } catch {}
+
+  // 5. Filesystem check for mappedYtId
+  if (mappedYtId) {
+    try {
+      const mappedPath = getAudioPath(mappedYtId);
+      if (fs.existsSync(mappedPath) && fs.statSync(mappedPath).size > 1024) {
+        cache.setex(`${AUDIO_READY_CACHE_PREFIX}${trackId}`, AUDIO_READY_CACHE_TTL, '1');
+        cache.setex(`${AUDIO_READY_CACHE_PREFIX}${mappedYtId}`, AUDIO_READY_CACHE_TTL, '1');
+        return true;
+      }
+    } catch {}
+  }
+
+  return false;
 }
 
 /**
- * Batch check — returns a map of youtubeId → ready status.
- * Used by GET /api/stream/status endpoint.
+ * Batch check — returns a map of trackId → ready status.
+ * Used by GET /api/stream/status endpoint. Bulk-checks Supabase for cold tracks.
  */
-export function batchCheckAudioReady(youtubeIds: string[]): Record<string, boolean> {
+export async function batchCheckAudioReady(trackIds: string[]): Promise<Record<string, boolean>> {
   const result: Record<string, boolean> = {};
-  for (const id of youtubeIds) {
-    result[id] = isTrackAudioReady(id);
+  const missing: string[] = [];
+
+  for (const id of trackIds) {
+    const ready = isTrackAudioReady(id);
+    result[id] = ready;
+    if (!ready) missing.push(id);
   }
+
+  // Bulk check Supabase tracks_meta for missing IDs
+  if (missing.length > 0 && supabase) {
+    try {
+      const { data } = await supabase
+        .schema('kokomusic')
+        .from('tracks_meta')
+        .select('id, youtube_id, audio_ready')
+        .or(missing.map(id => `id.eq.${id},youtube_id.eq.${id}`).join(','));
+
+      if (data) {
+        data.forEach(row => {
+          if (row.audio_ready) {
+            if (row.id) {
+              result[row.id] = true;
+              cache.setex(`${AUDIO_READY_CACHE_PREFIX}${row.id}`, AUDIO_READY_CACHE_TTL, '1');
+            }
+            if (row.youtube_id) {
+              result[row.youtube_id] = true;
+              cache.setex(`${AUDIO_READY_CACHE_PREFIX}${row.youtube_id}`, AUDIO_READY_CACHE_TTL, '1');
+            }
+          }
+        });
+      }
+    } catch {
+      // Non-critical
+    }
+  }
+
   return result;
 }

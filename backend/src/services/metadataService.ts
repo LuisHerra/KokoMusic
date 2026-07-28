@@ -12,6 +12,7 @@
 
 import { cache } from './cacheService';
 import {
+  supabase,
   upsertTracks,
   getTrackFromDB,
   type TrackRow,
@@ -240,7 +241,8 @@ function deduplicateTracks(tracks: TrackMetadata[]): TrackMetadata[] {
 export async function searchTracks(
   query: string,
   limit = 20,
-  source: SearchSource = 'itunes'
+  source: SearchSource = 'itunes',
+  bypassCache = false
 ): Promise<TrackMetadata[]> {
   const queryTrim = query.trim();
   const isYoutubeChannelQuery = queryTrim.startsWith('@') || 
@@ -273,8 +275,10 @@ export async function searchTracks(
   const cacheKey = `search:${source}:${query.toLowerCase().trim()}`;
 
   // L1: memoria (1h)
-  const cached = cache.get(cacheKey);
-  if (cached) return JSON.parse(cached);
+  if (!bypassCache) {
+    const cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  }
 
   // Si el usuario elige YouTube directamente, ir a yt-search
   if (source === 'youtube') {
@@ -288,7 +292,20 @@ export async function searchTracks(
 
   try {
     const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(query)}&entity=musicTrack&limit=${limit}&media=music`;
-    const res = await fetch(url);
+    const defaultHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    };
+    let res = await fetch(url, { headers: defaultHeaders });
+    
+    // If rate-limited (429), retry once after a short 350ms backoff
+    if (res.status === 429) {
+      console.warn(`[Metadata] iTunes API 429 rate limit reached for "${query}". Retrying after 350ms...`);
+      await new Promise(resolve => setTimeout(resolve, 350));
+      res = await fetch(url, { headers: defaultHeaders });
+    }
+
     if (!res.ok) throw new Error(`iTunes API error: ${res.status}`);
 
     const data = (await res.json()) as any;
@@ -297,9 +314,14 @@ export async function searchTracks(
     const rawTracks = songs.map((item, idx) => itunesResultToTrack(item, idx));
     const tracks = deduplicateTracks(rawTracks);
 
-    // Fallback a YouTube si iTunes no devuelve resultados
+    // Fallback a Deezer, Supabase DB o YouTube si iTunes no devuelve resultados
     if (tracks.length === 0) {
-      console.log(`[Metadata] iTunes sin resultados para "${query}", fallback a YouTube`);
+      console.log(`[Metadata] iTunes sin resultados para "${query}", buscando en Deezer...`);
+      const dzTracks = await searchDeezer(query, limit);
+      if (dzTracks.length > 0) return dzTracks;
+
+      const dbTracks = await searchTracksFromDB(query, limit);
+      if (dbTracks.length > 0) return dbTracks;
       return searchYouTube(query, limit, cacheKey);
     }
 
@@ -313,9 +335,86 @@ export async function searchTracks(
 
     return tracks;
   } catch (error) {
-    console.error('[Metadata] Error en searchTracks (iTunes):', error);
-    // Fallback a YouTube en caso de error
+    console.warn(`[Metadata] Warning en searchTracks (iTunes): ${error}. Probando Deezer...`);
+    // 1st Fallback: Deezer API
+    const dzTracks = await searchDeezer(query, limit);
+    if (dzTracks.length > 0) {
+      cache.setex(cacheKey, 1800, JSON.stringify(dzTracks));
+      return dzTracks;
+    }
+    // 2nd Fallback: Supabase tracks_meta DB table
+    const dbTracks = await searchTracksFromDB(query, limit);
+    if (dbTracks.length > 0) {
+      cache.setex(cacheKey, 1800, JSON.stringify(dbTracks));
+      return dbTracks;
+    }
+    // 3rd Fallback: YouTube
     return searchYouTube(query, limit, cacheKey);
+  }
+}
+
+/** Fallback search in Deezer API when iTunes API blocks or yields no results */
+export async function searchDeezer(query: string, limit = 10): Promise<TrackMetadata[]> {
+  try {
+    const url = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      }
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as any;
+    if (!data || !Array.isArray(data.data)) return [];
+    return data.data.map((item: any, idx: number) => ({
+      id: String(item.id),
+      itunesId: Math.abs(Number(item.id)) || hashStringToInteger(String(item.id)),
+      artistId: item.artist?.id ? Number(item.artist.id) : hashStringToInteger(item.artist?.name ?? 'unknown'),
+      title: item.title ?? 'Sin título',
+      artist: item.artist?.name ?? 'Artista desconocido',
+      album: item.album?.title ?? '',
+      cover: item.album?.cover_xl || item.album?.cover_big || item.album?.cover_medium || '',
+      duration: (item.duration ?? 0) * 1000,
+      genre: 'Music',
+      releaseDate: null,
+      popularity: Math.max(1, 20 - idx),
+      preview_url: item.preview ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Fallback search in Supabase tracks_meta table when iTunes rate limits or yields no results */
+export async function searchTracksFromDB(query: string, limit = 20): Promise<TrackMetadata[]> {
+  if (!supabase) return [];
+  try {
+    const cleanQ = query.trim().replace(/['"]/g, '');
+    if (!cleanQ) return [];
+    const { data, error } = await supabase
+      .schema('kokomusic')
+      .from('tracks_meta')
+      .select('id, title, artist, album, cover, duration_ms, genre')
+      .or(`title.ilike.%${cleanQ}%,artist.ilike.%${cleanQ}%,genre.ilike.%${cleanQ}%`)
+      .limit(limit);
+
+    if (error || !data || data.length === 0) return [];
+    return data.map(row => ({
+      id: row.id,
+      title: row.title,
+      artist: row.artist,
+      album: row.album || '',
+      cover: row.cover || '',
+      duration: row.duration_ms || 180000,
+      genre: row.genre || 'Music',
+      itunesId: parseInt(row.id, 10) || 0,
+      artistId: 0,
+      releaseDate: '',
+      popularity: 50,
+      preview_url: null,
+    }));
+  } catch {
+    return [];
   }
 }
 

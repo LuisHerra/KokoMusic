@@ -24,7 +24,7 @@ getApiUrl().then((url) => {
 }).catch(() => {});
 
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const userId  = localStorage.getItem('koko_device_id') || '';
   const userRegion = typeof window !== 'undefined' ? (navigator.language || 'es-ES') : 'es-ES';
   const apiBase = await getApiUrl();   // resuelve local/tunnel/cloud automáticamente
@@ -717,6 +717,12 @@ export const updateProfile = (userId: string, data: Partial<KokoProfile>) =>
 export const getMyProfile = (userId: string) =>
   apiFetch<{ profile: KokoProfile; stats: any }>(`/friends/profile/${userId}`);
 
+export const createAccount = (data: { display_name: string; username?: string; email?: string; password?: string; bio?: string; avatar_url?: string }) =>
+  apiFetch<{ success: boolean; userId: string; profile: KokoProfile }>('/friends/account/create', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
 export const getAvailableAccounts = () =>
   apiFetch<{ accounts: KokoProfile[] }>('/friends/accounts');
 
@@ -776,9 +782,14 @@ export function resolveImageUrl(url?: string): string | undefined {
 
 // ── Personalization & Algorithmic Onboarding ───────────────────────────────────
 
-export const getPersonalizedRecommendations = (limit = 30) =>
+export const getPersonalizedRecommendations = (limit = 30, mood?: string) =>
   apiFetch<{ tracks: Track[]; source: string; cached: boolean; elapsedMs: number }>(
-    `/recommendations?limit=${limit}`
+    `/recommendations?limit=${limit}${mood ? `&mood=${encodeURIComponent(mood)}` : ''}`
+  );
+
+export const getAvailableCDNTracks = (page = 1, limit = 30) =>
+  apiFetch<{ tracks: Track[]; count: number; totalCount: number; page: number; totalPages: number }>(
+    `/tracks/available-cdn?page=${page}&limit=${limit}`
   );
 
 export const submitOnboarding = (genres: string[], artists: string[]) =>

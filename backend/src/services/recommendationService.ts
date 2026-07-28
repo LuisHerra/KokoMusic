@@ -362,8 +362,9 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
   const normGenre = (genre || '').toLowerCase().trim();
   const normTags = tags.map(t => t.toLowerCase().trim()).join(' ');
 
+  const isFrench = Array.from(KNOWN_FRENCH_ARTISTS).some(fa => normArtist.includes(fa));
   if (
-    KNOWN_FRENCH_ARTISTS.has(normArtist) ||
+    isFrench ||
     normGenre.includes('french') || normGenre.includes('francais') || normGenre.includes('chanson') ||
     normTags.includes('french') || normTags.includes('francais') || normTags.includes('chanson') || normTags.includes('rap fr') ||
     normTitle.includes('parisienne') || normTitle.includes('impofie')
@@ -371,8 +372,9 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
     return 'french';
   }
 
+  const isLatin = Array.from(KNOWN_LATIN_ARTISTS).some(la => normArtist.includes(la)) || normArtist.includes('alvaro soler');
   if (
-    KNOWN_LATIN_ARTISTS.has(normArtist) ||
+    isLatin ||
     normGenre.includes('reggaeton') || normGenre.includes('urbano') || normGenre.includes('latin') || normGenre.includes('salsa') || normGenre.includes('bachata') ||
     normTags.includes('reggaeton') || normTags.includes('latin') || normTags.includes('spanish')
   ) {
@@ -405,28 +407,55 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
           }
         }
 
-        // If track-level similarity yielded 0 tracks (niche artist), fall back to same artist & similar artists
+        // If track-level similarity yielded 0 tracks (niche artist), fall back to same artist & local catalog match
         if (exploitPool.size === 0 && seedArtistName) {
           try {
-            const sameArtistHits = await searchTracks(`${seedArtistName} hits`, 5, 'itunes');
-            for (const track of sameArtistHits) {
-              if (track && track.id !== seedTrackId && !exploitPool.has(track.id)) {
-                exploitPool.set(track.id, { track, source: 'same_artist', baseScore: 88 });
+            const sameArtist = await searchTracks(`${seedArtistName} hits`, 5, 'itunes');
+            for (const t of sameArtist) {
+              if (t && t.id !== seedTrackId) {
+                exploitPool.set(t.id, { track: t, source: 'same_artist', baseScore: 48 });
               }
             }
-          } catch {}
+          } catch { /* ignore */ }
 
+          // LOCAL DB CATALOG MATCH PASS (for obscure / custom upload tracks)
           try {
-            const simArtists = await fetchLastFmSimilarArtists(seedArtistName, 5);
-            for (const simArtist of simArtists) {
-              const simHits = await searchTracks(`${simArtist} hits`, 3, 'itunes');
-              for (const track of simHits) {
-                if (track && track.id !== seedTrackId && !exploitPool.has(track.id)) {
-                  exploitPool.set(track.id, { track, source: 'similar_artist', baseScore: 82 });
+            const { supabase } = require('./supabaseService');
+            if (supabase) {
+              let query = supabase.schema('kokomusic').from('tracks_meta').select('id, title, artist, album, cover, duration_ms, genre').limit(30);
+              if (seedGenre) {
+                query = query.ilike('genre', `%${seedGenre}%`);
+              } else {
+                query = query.ilike('artist', `%${seedArtistName}%`);
+              }
+
+              const { data: dbRows } = await query;
+              if (dbRows && dbRows.length > 0) {
+                for (const row of dbRows) {
+                  if (row.id !== seedTrackId && !exploitPool.has(row.id)) {
+                    exploitPool.set(row.id, {
+                      track: {
+                        id: row.id,
+                        title: row.title,
+                        artist: row.artist,
+                        album: row.album || '',
+                        cover: row.cover || '',
+                        duration: row.duration_ms || 180000,
+                        genre: row.genre || seedGenre || 'Music',
+                        itunesId: parseInt(row.id, 10) || 0,
+                        artistId: 0,
+                        releaseDate: '',
+                        popularity: 60,
+                        preview_url: null,
+                      },
+                      source: 'local_catalog_match',
+                      baseScore: 45,
+                    });
+                  }
                 }
               }
             }
-          } catch {}
+          } catch { /* ignore */ }
         }
 
         // Use enriched tags if available (pre-fetched, cached) — faster + richer than live LFM call
@@ -441,34 +470,79 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
         // Use the unified culture detector (evaluates tags, genre, title, and artist)
         seedCulture = detectTrackCulture(seedTrack.artist, seedTrack.title, seedTrack.genre || '', seedTags);
 
-        // Evaluate Session Culture Trajectory across recent queue seeds.
-        // Requires 4 consecutive matching-culture tracks before locking the session —
-        // 2 was too aggressive and would kill variety after just one genre run.
-        if (effectiveSeeds.length > 3) {
+        // ── SESSION & PROFILE CULTURE ANCHOR (Dominance Consensus) ─────────────
+        // Analyze culture consensus across all session seeds + recent history.
+        // Prevents single-track slips or out-of-context plays from triggering a genre spiral!
+        const sessionCultures: TrackCulture[] = [];
+
+        // 1. Active session queue seeds (up to last 10)
+        for (const id of effectiveSeeds.slice(-10)) {
           try {
-            const seedCultures = await Promise.all(
-              effectiveSeeds.map(async (id) => {
-                const t = await getTrackById(id);
-                if (!t) return 'other';
-                const tags = getTagsForTrack(id);
-                return detectTrackCulture(t.artist, t.title, t.genre || '', tags);
-              })
-            );
-            const valid = seedCultures.filter(c => c !== 'other');
-            if (valid.length >= 4) {
-              const lastFour = valid.slice(-4);
-              // All 4 must be the same culture
-              if (lastFour.every(c => c === lastFour[0])) {
-                seedCulture = lastFour[0];
-                console.log(`[Recs] SESSION TRAJECTORY LOCKED: >>> ${seedCulture.toUpperCase()} <<< after ${valid.length} consecutive played tracks`);
-              }
+            const t = await getTrackById(id);
+            if (t) {
+              const tags = getTagsForTrack(id);
+              const cult = detectTrackCulture(t.artist, t.title, t.genre || '', tags);
+              if (cult !== 'other') sessionCultures.push(cult);
             }
           } catch {}
+        }
+
+        // 2. Recent listening history (last 5 played)
+        for (const h of history.slice(0, 5)) {
+          const tags = getTagsForTrack(h.trackId);
+          const cult = detectTrackCulture(h.artist, h.title, (h as any).genre || '', tags);
+          if (cult !== 'other') sessionCultures.push(cult);
+        }
+
+        // 3. Evaluate Dominance Consensus
+        if (sessionCultures.length > 0) {
+          const counts = new Map<TrackCulture, number>();
+          for (const c of sessionCultures) {
+            counts.set(c, (counts.get(c) || 0) + 1);
+          }
+          let maxCount = 0;
+          let dominantCulture: TrackCulture = 'other';
+          for (const [cult, count] of counts.entries()) {
+            if (count > maxCount) {
+              maxCount = count;
+              dominantCulture = cult;
+            }
+          }
+
+          // If dominant culture has >= 35% representation in the active session window, LOCK IT!
+          if (dominantCulture !== 'other' && maxCount / sessionCultures.length >= 0.35) {
+            seedCulture = dominantCulture;
+            console.log(`[Recs] SESSION CULTURE ANCHOR LOCKED: >>> ${seedCulture.toUpperCase()} <<< (${maxCount}/${sessionCultures.length} session consensus)`);
+          }
         }
       }
     } catch {
       // ignore seed errors
     }
+  }
+
+  // Fallback: If no session seed culture was derived, check overall history culture dominance
+  if (seedCulture === 'other' && history.length >= 3) {
+    try {
+      const histCultures = history.slice(0, 15).map(h => {
+        const tags = getTagsForTrack(h.trackId);
+        return detectTrackCulture(h.artist, h.title, (h as any).genre || '', tags);
+      }).filter(c => c !== 'other');
+      
+      if (histCultures.length >= 3) {
+        const counts = new Map<TrackCulture, number>();
+        for (const c of histCultures) counts.set(c, (counts.get(c) || 0) + 1);
+        let topCount = 0;
+        let topCult: TrackCulture = 'other';
+        for (const [c, count] of counts.entries()) {
+          if (count > topCount) { topCount = count; topCult = c; }
+        }
+        if (topCult !== 'other' && topCount / histCultures.length >= 0.40) {
+          seedCulture = topCult;
+          console.log(`[Recs] PROFILE CULTURE ANCHOR LOCKED: >>> ${seedCulture.toUpperCase()} <<< (${topCount}/${histCultures.length} history consensus)`);
+        }
+      }
+    } catch {}
   }
 
   console.log(`[Recs] ==================== RECOMMENDATION EVALUATION ====================`);
@@ -901,6 +975,46 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
     console.error('[Recs] ListenBrainz CF layer error:', err);
   }
 
+  // ── 4c. SUPABASE DB BACKFILL (GUARANTEE NON-EMPTY CANDIDATE POOL) ────────────
+  if (discoverPool.size < 10) {
+    try {
+      const { supabase } = require('./supabaseService');
+      if (supabase) {
+        let query = supabase.schema('kokomusic').from('tracks_meta').select('id, title, artist, album, cover, duration_ms, genre').limit(50);
+        if (seedCulture === 'french') {
+          query = query.or('genre.ilike.%rap%,artist.ilike.%ninho%,artist.ilike.%gims%,artist.ilike.%jul%,artist.ilike.%pnl%,artist.ilike.%tayc%');
+        } else if (seedCulture === 'latin' || seedCulture === 'mexican') {
+          query = query.or('genre.ilike.%reggaeton%,genre.ilike.%latin%,artist.ilike.%bad bunny%,artist.ilike.%quevedo%');
+        }
+        const { data: dbRows } = await query;
+        if (dbRows && dbRows.length > 0) {
+          for (const row of dbRows) {
+            if (!exploitPool.has(row.id) && !discoverPool.has(row.id)) {
+              discoverPool.set(row.id, {
+                track: {
+                  id: row.id,
+                  title: row.title,
+                  artist: row.artist,
+                  album: row.album || '',
+                  cover: row.cover || '',
+                  duration: row.duration_ms || 180000,
+                  genre: row.genre || 'Music',
+                  itunesId: parseInt(row.id, 10) || 0,
+                  artistId: 0,
+                  releaseDate: '',
+                  popularity: 50,
+                  preview_url: null,
+                },
+                source: 'db_fallback',
+                baseScore: 35,
+              });
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
   // Remove tracks that are too long (>7 min) from both pools
   for (const [id, c] of exploitPool.entries()) {
     if (c.track.duration && c.track.duration > 420000) exploitPool.delete(id);
@@ -1022,15 +1136,11 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
         cultureCoherenceScore = +250;
       } else if (candCulture !== seedCulture) {
         if (strictness === 'strict') {
-          // STRICT LANGUAGE BOUNDARY: If seed is Latin and candidate is English/French, block it!
-          if (candCulture === 'english' || candCulture === 'french' || (seedCulture === 'latin' && candCulture !== 'latin')) {
-            cultureCoherenceScore = -1000;
-          } else {
-            cultureCoherenceScore = -350;
-          }
+          // Priority matching: matching culture gets +250. Non-matching gets a moderate penalty (-120),
+          // preserving ranking priority while ensuring the engine NEVER returns 0 tracks during API rate-limits.
+          cultureCoherenceScore = -120;
         } else {
-          // Flexible mode: milder penalty
-          cultureCoherenceScore = -100;
+          cultureCoherenceScore = -50;
         }
       }
     }
@@ -1070,7 +1180,9 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
     // Real-time Artist Recency Penalty (Cooldown)
     const lastArtistPlayed = artistLastPlayed.get(artistNorm);
     let artistRecencyPenalty = 0;
-    if (lastArtistPlayed) {
+    // DO NOT penalize the active seed artist! User explicitly requested content related to this seed artist.
+    const isSeedArtist = seedArtistName && (artistNorm.includes(seedArtistName.toLowerCase().trim()) || seedArtistName.toLowerCase().trim().includes(artistNorm));
+    if (lastArtistPlayed && !isSeedArtist) {
       const elapsedMs = Date.now() - new Date(lastArtistPlayed).getTime();
       const elapsedHours = elapsedMs / (1000 * 60 * 60);
       if (elapsedHours < 0.5) artistRecencyPenalty = -500;
@@ -1092,8 +1204,12 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
 
   // ── 8. SORT, DEDUPLICATE, RETURN (with hard discovery guarantee) ─────────────
 
-  // FIX: Filter out negative/hard-excluded candidates FIRST before deduplication & highlights log!
-  const validScoredCandidates = scoredCandidates.filter(sc => sc.score > 0);
+  // Filter out hard-excluded tracks (-99999) first
+  let validScoredCandidates = scoredCandidates.filter(sc => sc.score > 0);
+  if (validScoredCandidates.length < limit) {
+    // If strict positive scoring yielded fewer candidates than limit, allow valid candidates above -5000
+    validScoredCandidates = scoredCandidates.filter(sc => sc.score > -5000);
+  }
 
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();

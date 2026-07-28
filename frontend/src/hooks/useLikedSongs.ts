@@ -1,21 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylist, removeTrackFromPlaylist } from '../lib/api';
-import { getApiUrl } from '../lib/backendResolver';
-
-/** Adds a track to a playlist, silently ignoring 409 (already exists). */
-async function addTrackSafe(playlistId: string, trackId: string): Promise<void> {
-  const apiBase = await getApiUrl();
-  const res = await fetch(`${apiBase}/playlists/${playlistId}/tracks`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ trackId }),
-  });
-  // 409 = track already in playlist → treat as success
-  if (!res.ok && res.status !== 409) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? 'Error al añadir canción');
-  }
-}
+import { getPlaylist, removeTrackFromPlaylist, apiFetch } from '../lib/api';
 
 export function useLikedSongs() {
   const queryClient = useQueryClient();
@@ -23,27 +7,41 @@ export function useLikedSongs() {
   const { data: likedPlaylist } = useQuery({
     queryKey: ['playlist', 'liked-songs'],
     queryFn: () => getPlaylist('liked-songs'),
+    staleTime: 1000 * 60 * 5,
   });
 
-  const isLiked = (trackId: string) => {
-    return likedPlaylist?.tracks.some((t) => t.trackId === trackId) ?? false;
+  const isLiked = (trackId: string | number) => {
+    if (!trackId || !likedPlaylist?.tracks) return false;
+    const targetId = String(trackId).toLowerCase().trim();
+    return likedPlaylist.tracks.some((t) => String(t.trackId).toLowerCase().trim() === targetId);
   };
 
   const toggleMutation = useMutation({
-    mutationFn: async (trackId: string) => {
-      const currentlyLiked = isLiked(trackId);
+    mutationFn: async (trackId: string | number) => {
+      const idStr = String(trackId);
+      const currentlyLiked = isLiked(idStr);
       if (currentlyLiked) {
-        await removeTrackFromPlaylist('liked-songs', trackId);
+        await removeTrackFromPlaylist('liked-songs', idStr);
       } else {
-        await addTrackSafe('liked-songs', trackId);
+        try {
+          await apiFetch(`/playlists/liked-songs/tracks`, {
+            method: 'POST',
+            body: JSON.stringify({ trackId: idStr }),
+          });
+        } catch (err: any) {
+          if (err?.status !== 409 && !err?.message?.includes('409')) {
+            throw err;
+          }
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playlist', 'liked-songs'] });
+      queryClient.invalidateQueries({ queryKey: ['playlists'] });
     },
   });
 
-  const toggleLike = (trackId: string) => {
+  const toggleLike = (trackId: string | number) => {
     toggleMutation.mutate(trackId);
   };
 

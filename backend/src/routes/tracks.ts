@@ -56,6 +56,187 @@ router.post('/enrich-metadata', async (req: Request, res: Response) => {
 });
 
 
+// GET /api/tracks/available-cdn — Returns ALL tracks cached in CDN / local audio_cache with photos & metadata (Paginated)
+router.get('/available-cdn', async (req: Request, res: Response) => {
+  try {
+    const { AUDIO_DIR } = await import('../services/ytdlpService');
+    const { supabase } = await import('../services/supabaseService');
+    const { listObjectsInCDN } = await import('../services/cdnService');
+
+    const page = Math.max(parseInt((req.query.page as string) || '1', 10), 1);
+    const limit = Math.min(parseInt((req.query.limit as string) || '30', 10), 100);
+
+    const foundIds = new Set<string>();
+
+    // 1. Scan Cloudflare R2 bucket objects
+    const r2Keys = await listObjectsInCDN().catch(() => []);
+    r2Keys.forEach(k => { if (k) foundIds.add(k); });
+
+    // 2. Scan local filesystem (audio_cache/*.opus)
+    if (fs.existsSync(AUDIO_DIR)) {
+      const files = fs.readdirSync(AUDIO_DIR);
+      files.forEach(file => {
+        if (file.endsWith('.opus')) {
+          const id = file.replace('.opus', '').trim();
+          if (id) foundIds.add(id);
+        }
+      });
+    }
+
+    // 3. Query Supabase tracks_meta for audio_ready = true or youtube_id set
+    let dbRows: any[] = [];
+    if (supabase) {
+      const { data, error } = await supabase
+        .schema('kokomusic')
+        .from('tracks_meta')
+        .select('id, title, artist, album, cover, duration_ms, genre, youtube_id, audio_ready')
+        .limit(500);
+
+      if (!error && data) {
+        dbRows = data;
+        data.forEach(row => {
+          if (row.audio_ready || row.youtube_id) {
+            if (row.id) foundIds.add(String(row.id));
+            if (row.youtube_id) foundIds.add(String(row.youtube_id));
+          }
+        });
+      }
+    }
+
+    const allIdsArray = Array.from(foundIds);
+    const totalCount = allIdsArray.length;
+    const totalPages = Math.ceil(totalCount / limit) || 1;
+
+    if (totalCount === 0) {
+      return res.json({ tracks: [], count: 0, totalCount: 0, page, totalPages: 1 });
+    }
+
+    // Paginate ID slice
+    const startIndex = (page - 1) * limit;
+    const pageIds = allIdsArray.slice(startIndex, startIndex + limit);
+
+    const resolvedTracks: any[] = [];
+    const dbMap = new Map<string, any>();
+    dbRows.forEach(r => {
+      if (r.id) dbMap.set(String(r.id).toLowerCase(), r);
+      if (r.youtube_id) dbMap.set(String(r.youtube_id).toLowerCase(), r);
+    });
+
+    for (const rawId of pageIds) {
+      const lowerId = rawId.toLowerCase();
+      const match = dbMap.get(lowerId);
+
+      if (match) {
+        resolvedTracks.push({
+          id: match.id || rawId,
+          trackId: match.id || rawId,
+          title: match.title,
+          artist: match.artist,
+          album: match.album || 'En CDN',
+          cover: match.cover || `https://i.ytimg.com/vi/${match.youtube_id || rawId}/hqdefault.jpg`,
+          duration: match.duration_ms || 180000,
+          durationMs: match.duration_ms || 180000,
+          genre: match.genre || 'Music',
+          popularity: 95,
+          preview_url: null,
+          isInstantCDN: true,
+          youtubeId: match.youtube_id || (rawId.length === 11 ? rawId : null),
+        });
+      } else {
+        // Reverse lookup by ID
+        const trackMeta = await getTrackById(rawId).catch(() => null);
+        if (trackMeta) {
+          resolvedTracks.push({
+            id: trackMeta.id,
+            trackId: trackMeta.id,
+            title: trackMeta.title,
+            artist: trackMeta.artist,
+            album: trackMeta.album || 'En CDN',
+            cover: trackMeta.cover || `https://i.ytimg.com/vi/${rawId}/hqdefault.jpg`,
+            duration: trackMeta.duration || 180000,
+            durationMs: trackMeta.duration || 180000,
+            genre: trackMeta.genre || 'Music',
+            popularity: 90,
+            preview_url: null,
+            isInstantCDN: true,
+            youtubeId: rawId.length === 11 ? rawId : null,
+          });
+        } else if (rawId.length === 11) {
+          // Direct YouTube ID fallback
+          resolvedTracks.push({
+            id: rawId,
+            trackId: rawId,
+            title: `Pista Koko (${rawId})`,
+            artist: 'YouTube Audio',
+            album: 'En CDN',
+            cover: `https://i.ytimg.com/vi/${rawId}/hqdefault.jpg`,
+            duration: 180000,
+            durationMs: 180000,
+            genre: 'Music',
+            popularity: 80,
+            preview_url: null,
+            isInstantCDN: true,
+            youtubeId: rawId,
+          });
+        }
+      }
+    }
+
+    return res.json({
+      tracks: resolvedTracks,
+      count: resolvedTracks.length,
+      totalCount,
+      page,
+      totalPages,
+    });
+  } catch (err) {
+    console.error('[Tracks] Error in /available-cdn:', err);
+    return res.status(500).json({ error: 'Error al obtener canciones disponibles en CDN' });
+  }
+});
+
+// DELETE /api/tracks/cdn/:id — Purge track from Cloudflare R2 CDN, local storage & DB
+router.delete('/cdn/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'id requerido' });
+
+    const { deleteFromCDN } = await import('../services/cdnService');
+    const { AUDIO_DIR } = await import('../services/ytdlpService');
+    const { supabase } = await import('../services/supabaseService');
+
+    // 1. Purge Cloudflare R2 CDN
+    await deleteFromCDN(id).catch(() => {});
+
+    // 2. Delete local .opus file
+    if (fs.existsSync(AUDIO_DIR)) {
+      const localPath = path.join(AUDIO_DIR, `${id}.opus`);
+      if (fs.existsSync(localPath)) {
+        try { fs.unlinkSync(localPath); } catch {}
+      }
+    }
+
+    // 3. Update Supabase tracks_meta
+    if (supabase) {
+      await supabase
+        .schema('kokomusic')
+        .from('tracks_meta')
+        .update({ audio_ready: false, cdn_url: null })
+        .or(`id.eq.${id},youtube_id.eq.${id}`);
+    }
+
+    // 4. Invalidate in-memory caches
+    cache.del(`cdn-url:${id}`);
+    cache.del(`audio-ready:${id}`);
+
+    console.log(`[Tracks] 🗑️ Admin deleted CDN track ${id}`);
+    return res.json({ success: true, message: `Track ${id} eliminado del CDN` });
+  } catch (err) {
+    console.error('[Tracks] Error deleting CDN track:', err);
+    return res.status(500).json({ error: 'Error eliminando track del CDN' });
+  }
+});
+
 // GET /api/tracks/recommendations
 router.get('/recommendations', async (req: Request, res: Response) => {
   try {

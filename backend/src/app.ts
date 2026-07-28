@@ -28,6 +28,7 @@ import recommendationsRouter from './routes/recommendations';
 import { startBackgroundJobs } from './services/backgroundJobRunner';
 
 import spotifyRouter from './routes/spotify';
+import shazamRouter from './routes/shazam';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -138,6 +139,8 @@ app.use('/api/collab', collabRouter);
 app.use('/api/friends', friendsRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/spotify', spotifyRouter);
+app.use('/api/shazam', shazamRouter);
+app.use('/api/eureka', shazamRouter);
 
 // ── Remote logging from frontend for mobile debugging ──────────────────────────
 app.post('/api/log', (req, res) => {

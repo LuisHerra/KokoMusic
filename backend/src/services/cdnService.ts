@@ -27,6 +27,7 @@ import {
   HeadObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import fs from 'fs';
@@ -200,6 +201,27 @@ function largeUrl(trackId: string): string {
 }
 
 // ── Operaciones R2 ────────────────────────────────────────────────────────────
+
+/** Lista todas las claves de tracks en el bucket R2 */
+export async function listObjectsInCDN(): Promise<string[]> {
+  if (!isCDNEnabled()) return [];
+  try {
+    const command = new ListObjectsV2Command({
+      Bucket: BUCKET(),
+      Prefix: PREFIX_AUDIO,
+      MaxKeys: 1000,
+    });
+    const response = await getR2Client().send(command);
+    if (!response.Contents) return [];
+    return response.Contents.map((item) => {
+      const key = item.Key ?? '';
+      return key.replace(PREFIX_AUDIO, '').replace('.opus', '').trim();
+    }).filter(Boolean);
+  } catch (err) {
+    console.error('[CDN] Error listing R2 objects:', err);
+    return [];
+  }
+}
 
 /**
  * Comprueba si un track ya existe en R2 (en cualquiera de los dos prefijos).

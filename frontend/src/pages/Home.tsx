@@ -28,19 +28,22 @@ function FilterIcon({ type }: { type: string }) {
   }
 }
 
-const SMART_FILTERS = [
-  { label: 'Workout', icon: 'workout', query: 'workout hits', color: '#E53E3E' },
-  { label: 'Chill', icon: 'chill', query: 'chill vibes lofi', color: '#5B86E5' },
-  { label: 'Study', icon: 'study', query: 'lofi study beats', color: '#D69E2E' },
-  { label: 'Fiesta', icon: 'party', query: 'party anthems reggaeton', color: '#ED64A6' },
-  { label: 'Rock', icon: 'rock', query: 'rock classics hits', color: '#E53E3E' },
-  { label: 'Sad', icon: 'sad', query: 'sad songs emotional', color: '#9F7AEA' },
-  { label: 'Happy', icon: 'happy', query: 'feel good happy hits', color: '#48BB78' },
-  { label: 'Latin', icon: 'latin', query: 'reggaeton latin hits 2024', color: '#DD6B20' },
-  { label: 'Electronic', icon: 'electronic', query: 'electronic dance music EDM', color: '#38B2AC' },
-  { label: 'Hip-Hop', icon: 'hiphop', query: 'hip hop rap hits', color: '#9F7AEA' },
-  { label: 'Classical', icon: 'classical', query: 'classical music piano', color: '#667EEA' },
-  { label: 'Focus', icon: 'focus', query: 'deep focus concentration music', color: '#4FD1C5' },
+
+
+function isWeekendNow(): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  const hour = now.getHours();
+  return day === 6 || day === 0 || (day === 5 && hour >= 17);
+}
+
+const HOME_MOOD_OPTIONS = [
+  { id: 'party', label: 'Fiesta & Reggaetón', icon: 'party', color: '#ED64A6' },
+  { id: 'chill', label: 'Chill & Relax', icon: 'chill', color: '#5B86E5' },
+  { id: 'urban', label: 'Urbano & Trap', icon: 'hiphop', color: '#9F7AEA' },
+  { id: 'happy', label: 'Modo Alegre', icon: 'happy', color: '#48BB78' },
+  { id: 'focus', label: 'Enfoque & Lofi', icon: 'focus', color: '#4FD1C5' },
+  { id: 'sad', label: 'Melancolía', icon: 'sad', color: '#E53E3E' },
 ];
 
 function getGreeting() {
@@ -55,15 +58,14 @@ export default function Home() {
   const navigate = useNavigate();
   const { currentTrack, isPlaying, setTrack, addToQueue, setError } = usePlayerStore();
   const [activeCategory, setActiveCategory] = useState<'all' | 'music' | 'podcasts'>('all');
-  
-
+  const [selectedMood, setSelectedMood] = useState<string | null>(null);
 
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [hasAutoOpenedOnboarding, setHasAutoOpenedOnboarding] = useState(false);
 
   const { data: recData, isLoading: isRecLoading, refetch } = useQuery({
-    queryKey: ['personalized-recommendations'],
-    queryFn: () => getPersonalizedRecommendations(12),
+    queryKey: ['personalized-recommendations', selectedMood],
+    queryFn: () => getPersonalizedRecommendations(12, selectedMood || undefined),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -276,54 +278,107 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Hero greeting / intro */}
+          {/* Weekend & Daily Smart Mood Banner */}
           {activeCategory === 'all' && (
             <div style={{
-              background: 'linear-gradient(135deg, var(--accent-glow) 0%, var(--bg-card) 100%)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '20px 18px',
+              background: selectedMood 
+                ? 'linear-gradient(135deg, rgba(29, 185, 84, 0.22) 0%, rgba(24, 24, 32, 0.95) 100%)' 
+                : 'linear-gradient(135deg, rgba(29, 185, 84, 0.12) 0%, rgba(18, 18, 24, 0.95) 100%)',
+              borderRadius: '16px',
+              padding: '22px 20px',
               marginBottom: 28,
-              border: '1px solid var(--accent)',
+              border: selectedMood ? '1px solid var(--accent)' : '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+              position: 'relative',
+              overflow: 'hidden',
+              transition: 'all 0.3s ease'
             }}>
-              <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 6 }}>
-                Tu música, sin límites.
-              </h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4, margin: 0 }}>
-                Busca cualquier canción y empieza a escuchar. La primera vez se descarga; las siguientes se sirven al instante desde la nube.
-              </p>
-              <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                {SMART_FILTERS.slice(0, 6).map((filter) => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 12px',
+                    borderRadius: 20,
+                    background: 'rgba(29, 185, 84, 0.15)',
+                    color: '#1db954',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.8,
+                    marginBottom: 10
+                  }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#1db954', boxShadow: '0 0 8px #1db954' }} />
+                    {isWeekendNow() ? 'Vibra de Fin de Semana' : 'Mood Koko Engine'}
+                  </div>
+                  
+                  <h3 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 6px 0', letterSpacing: '-0.3px', color: '#ffffff' }}>
+                    {isWeekendNow() ? '🎉 ¡Es fin de semana! ¿Qué quieres escuchar?' : '🎧 ¿Qué quieres escuchar hoy?'}
+                  </h3>
+                  
+                  <p style={{ color: 'var(--text-secondary, #b3b3b3)', fontSize: 13, lineHeight: 1.4, margin: 0, maxWidth: 540 }}>
+                    {selectedMood 
+                      ? `Recomendaciones adaptadas para "${HOME_MOOD_OPTIONS.find(m => m.id === selectedMood)?.label || selectedMood}".`
+                      : isWeekendNow() 
+                        ? 'Elige tu estado de ánimo preferido para el fin de semana y KokoMusic adaptará tus recomendaciones al instante.' 
+                        : 'Selecciona una vibra y afinamos tu flujo de recomendación en tiempo real.'}
+                  </p>
+                </div>
+
+                {selectedMood && (
                   <button
-                    key={filter.label}
-                    onClick={() => navigate(`/search?mood=${encodeURIComponent(filter.icon)}`)}
+                    onClick={() => setSelectedMood(null)}
                     style={{
-                      padding: '6px 12px',
-                      borderRadius: 'var(--radius-full)',
-                      background: `${filter.color}12`,
-                      color: 'var(--text-primary)',
-                      border: `1px solid ${filter.color}25`,
-                      cursor: 'pointer',
+                      padding: '6px 14px',
+                      borderRadius: 20,
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      color: '#ffffff',
                       fontSize: 12,
                       fontWeight: 600,
-                      fontFamily: 'inherit',
-                      transition: 'all var(--duration-fast)',
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 4,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = `${filter.color}25`;
-                      e.currentTarget.style.borderColor = `${filter.color}50`;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = `${filter.color}12`;
-                      e.currentTarget.style.borderColor = `${filter.color}25`;
+                      gap: 4
                     }}
                   >
-                    <FilterIcon type={filter.icon} />
-                    {filter.label}
+                    <span>✕ Restablecer</span>
                   </button>
-                ))}
+                )}
+              </div>
+
+              {/* Mood Selection Chips */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                {HOME_MOOD_OPTIONS.map((mood) => {
+                  const isSelected = selectedMood === mood.id;
+                  return (
+                    <button
+                      key={mood.id}
+                      onClick={() => setSelectedMood(isSelected ? null : mood.id)}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '24px',
+                        background: isSelected ? mood.color : `${mood.color}15`,
+                        color: isSelected ? '#000000' : '#ffffff',
+                        border: `1px solid ${isSelected ? mood.color : `${mood.color}35`}`,
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        fontFamily: 'inherit',
+                        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: isSelected ? `0 4px 14px ${mood.color}60` : 'none',
+                        transform: isSelected ? 'scale(1.04)' : 'scale(1)',
+                      }}
+                    >
+                      <FilterIcon type={mood.icon} />
+                      <span>{mood.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

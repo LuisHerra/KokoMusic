@@ -1,6 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useNotificationStore } from '../store/notificationStore';
+import { usePlayerStore } from '../store/playerStore';
 
 function IconHome() {
   return (
@@ -79,6 +80,7 @@ export default function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const { setIsQueueOpen, setIsVideoOpen, setIsLyricsOpen } = usePlayerStore();
   const sheetRef = useRef<HTMLDivElement | null>(null);
 
   // Close sheet on click outside
@@ -92,10 +94,21 @@ export default function BottomNav() {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isOpen]);
 
-  // Close sheet on path change
+  // Close all panels (queue, video, lyrics, drawer) on section/path change
   useEffect(() => {
     setIsOpen(false);
+    setIsQueueOpen(false);
+    setIsVideoOpen(false);
+    setIsLyricsOpen(false);
   }, [location.pathname]);
+
+  const handleNav = (path: string) => {
+    setIsOpen(false);
+    setIsQueueOpen(false);
+    setIsVideoOpen(false);
+    setIsLyricsOpen(false);
+    navigate(path);
+  };
 
   const moreActive = ['/stats', '/dj', '/following', '/events', '/profile'].includes(location.pathname);
 
@@ -141,17 +154,17 @@ export default function BottomNav() {
           </div>
           
           <div className="bottom-sheet-grid">
-            <button onClick={() => navigate('/stats')} className={`bottom-sheet-item ${location.pathname === '/stats' ? 'active' : ''}`}>
+            <button onClick={() => handleNav('/stats')} className={`bottom-sheet-item ${location.pathname === '/stats' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap"><IconStats /></div>
               <span>Estadísticas</span>
             </button>
 
-            <button onClick={() => navigate('/dj')} className={`bottom-sheet-item ${location.pathname === '/dj' ? 'active' : ''}`}>
+            <button onClick={() => handleNav('/dj')} className={`bottom-sheet-item ${location.pathname === '/dj' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap"><IconDj /></div>
               <span>Modo DJ</span>
             </button>
 
-            <button onClick={() => navigate('/karaoke')} className={`bottom-sheet-item ${location.pathname === '/karaoke' ? 'active' : ''}`}>
+            <button onClick={() => handleNav('/karaoke')} className={`bottom-sheet-item ${location.pathname === '/karaoke' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -163,7 +176,7 @@ export default function BottomNav() {
               <span>Karaoke Studio</span>
             </button>
 
-            <button onClick={() => navigate('/following')} className={`bottom-sheet-item ${location.pathname === '/following' ? 'active' : ''}`}>
+            <button onClick={() => handleNav('/following')} className={`bottom-sheet-item ${location.pathname === '/following' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap" style={{ position: 'relative' }}>
                 <IconFollowing />
                 {unreadCount > 0 && (
@@ -173,12 +186,12 @@ export default function BottomNav() {
               <span>Siguiendo</span>
             </button>
 
-            <button onClick={() => navigate('/events')} className={`bottom-sheet-item ${location.pathname === '/events' ? 'active' : ''}`}>
+            <button onClick={() => handleNav('/events')} className={`bottom-sheet-item ${location.pathname === '/events' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap"><IconEvents /></div>
               <span>Eventos</span>
             </button>
 
-            <button onClick={() => navigate('/profile')} className={`bottom-sheet-item ${location.pathname === '/profile' ? 'active' : ''}`}>
+            <button onClick={() => handleNav('/profile')} className={`bottom-sheet-item ${location.pathname === '/profile' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>

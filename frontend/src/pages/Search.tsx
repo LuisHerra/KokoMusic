@@ -260,12 +260,15 @@ const DISCOVERY_CATEGORIES = [
   { label: 'Fiesta', color: '#ed64a6', bg: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&auto=format&fit=crop&q=60', query: 'party anthems reggaeton' },
 ];
 
+import ShazamModal from '../components/Player/ShazamModal';
+
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
   const mood = searchParams.get('mood');
   const [input, setInput] = useState(searchParams.get('q') ?? '');
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
-  const [source, setSource] = useState<'itunes' | 'youtube' | 'lyrics'>('itunes');
+  const [source, setSource] = useState<'itunes' | 'youtube' | 'shazam'>('itunes');
+  const [isShazamOpen, setIsShazamOpen] = useState(false);
 
   const { currentTrack, isPlaying, setTrack, activeJamCode, addToQueue, setError } = usePlayerStore();
 
@@ -452,19 +455,23 @@ export default function Search() {
 
   return (
     <div className="main-body" style={{ paddingTop: 16 }}>
+      <ShazamModal isOpen={isShazamOpen || source === 'shazam'} onClose={() => { setIsShazamOpen(false); setSource('itunes'); }} />
       <div className="search-header-container">
         <h1 className="section-title" style={{ marginTop: 0, marginBottom: 0, fontSize: 24, fontWeight: 800 }}>
           {mood && !query ? `Mood: ${mood.charAt(0).toUpperCase() + mood.slice(1)}` : 'Buscar'}
         </h1>
         {/* Source Toggle */}
         <div className="search-source-toggle">
-          {(['itunes', 'youtube', 'lyrics'] as const).map((s) => (
+          {(['itunes', 'youtube', 'shazam'] as const).map((s) => (
             <button
               key={s}
-              onClick={() => setSource(s)}
+              onClick={() => {
+                setSource(s);
+                if (s === 'shazam') setIsShazamOpen(true);
+              }}
               className={source === s ? 'active' : ''}
             >
-              {s === 'itunes' ? 'KokoMusic' : s === 'youtube' ? 'YouTube' : 'Letra'}
+              {s === 'itunes' ? 'KokoMusic' : s === 'youtube' ? 'YouTube' : 'Eureka'}
             </button>
           ))}
         </div>
@@ -480,7 +487,7 @@ export default function Search() {
           <input
             className="search-input"
             type="text"
-            placeholder={source === 'lyrics' ? 'Introduce fragmento de letra...' : 'Artistas, canciones, podcasts...'}
+            placeholder={source === 'shazam' ? 'Reconocer con Eureka...' : 'Artistas, canciones, podcasts...'}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);

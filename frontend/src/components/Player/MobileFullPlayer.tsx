@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '../../store/playerStore';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
+import HeartButton from '../Common/HeartButton';
+import ParticleBurst from '../Common/ParticleBurst';
 import { seekAudio } from '../../hooks/useAudioPlayer';
 import { useQuery } from '@tanstack/react-query';
 import { getLyrics, resolveImageUrl, type Lyrics } from '../../lib/api';
@@ -426,17 +428,11 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
 
           {/* Like Button */}
-          <button
-            className="mfp-like-btn"
+          <HeartButton
+            isLiked={isLiked(currentTrack?.id || '')}
             onClick={() => currentTrack && toggleLike(currentTrack.id)}
-            style={{ color: isLiked(currentTrack?.id || '') ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24"
-              fill={isLiked(currentTrack?.id || '') ? 'currentColor' : 'none'}
-              stroke="currentColor" strokeWidth="2">
-              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-            </svg>
-          </button>
+            size={26}
+          />
         </div>
       </div>
 
@@ -478,17 +474,19 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           </svg>
         </button>
 
-        <button className="mfp-play-btn" onClick={togglePlay}>
-          {isPlaying ? (
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            </svg>
-          ) : (
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-          )}
-        </button>
+        <ParticleBurst type="note" count={10}>
+          <button className="mfp-play-btn" onClick={togglePlay}>
+            {isPlaying ? (
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              </svg>
+            ) : (
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </button>
+        </ParticleBurst>
 
         <button className="mfp-ctrl-btn mfp-ctrl-next" onClick={nextTrack}>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">

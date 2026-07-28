@@ -256,7 +256,7 @@ function proxyYouTubeStream(req: Request, res: Response, rawUrl: string): void {
  * se conserva permanentemente (deleteLocal=false) para evitar re-descargas.
  * No bloquea la respuesta al cliente.
  */
-async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false): Promise<void> {
+async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false, itunesId?: string): Promise<void> {
   try {
     await downloadAndTranscode(youtubeId);
     const localPath = getAudioPath(youtubeId);
@@ -267,13 +267,14 @@ async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false): Pro
     }
 
     // Mark as locally available — allows frontend to skip yt-dlp cold start next play
-    markTrackAudioReady(youtubeId).catch(() => {});
+    markTrackAudioReady(youtubeId, itunesId).catch(() => {});
 
     // deleteLocalAfterUpload = false si keepLocal=true (videos YT directos: guardar siempre)
     const cdnUrl = await uploadToCDN(youtubeId, localPath, !keepLocal);
     if (cdnUrl) {
       cache.setex(`cdn-url:${youtubeId}`, 86400 * 365, cdnUrl);
-      console.log(`[CDN Background] ${youtubeId} disponible en CDN: ${cdnUrl}`);
+      if (itunesId) cache.setex(`cdn-url:${itunesId}`, 86400 * 365, cdnUrl);
+      console.log(`[CDN Background] ${youtubeId} (itunesId: ${itunesId || 'none'}) disponible en CDN: ${cdnUrl}`);
     } else {
       if (keepLocal) {
         console.log(`[CDN Background] ${youtubeId} guardado localmente (sin CDN o archivo grande)`);
@@ -313,16 +314,29 @@ router.post('/:itunesId/purge-cache', async (req: Request, res: Response) => {
   }
 });
 
+// ── POST /api/stream/warm-cdn — Trigger top tracks CDN pre-warming ─────────────
+router.post('/warm-cdn', async (req: Request, res: Response) => {
+  try {
+    const { warmCDNTopTracks } = await import('../services/cdnWarmerService');
+    // Run in background
+    warmCDNTopTracks().catch(() => {});
+    return res.json({ success: true, message: 'Pre-calentamiento de CDN iniciado en segundo plano para top canciones y artistas' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error iniciando pre-calentamiento de CDN' });
+  }
+});
+
 // ── GET /api/stream/status?ids=id1,id2,id3 — Batch audio-ready check ────────
 // Returns a map of { [id]: boolean } indicating local cache status.
 // Used by frontend before play to skip yt-dlp cold start for cached tracks.
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', async (req: Request, res: Response) => {
   const idsParam = req.query.ids as string | undefined;
   if (!idsParam) {
     return res.status(400).json({ error: 'ids query param required' });
   }
   const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean).slice(0, 50);
-  return res.json({ status: batchCheckAudioReady(ids) });
+  const statusMap = await batchCheckAudioReady(ids);
+  return res.json({ status: statusMap });
 });
 
 // ── POST /api/stream/prefetch — Predictive audio prefetch ────────────────────
@@ -343,9 +357,21 @@ router.post('/prefetch', async (req: Request, res: Response) => {
       if (!youtubeId) continue;
 
       // Skip if already locally available
-      if (isTrackAudioReady(youtubeId)) {
+      if (isTrackAudioReady(youtubeId) || isTrackAudioReady(itunesId)) {
         console.log(`[Prefetch] Already cached: ${youtubeId}`);
         continue;
+      }
+
+      // Check Cloudflare R2 CDN before downloading!
+      if (isCDNEnabled()) {
+        const cdnUrl = (await findTrackInCDN(youtubeId)) || (await findTrackInCDN(itunesId));
+        if (cdnUrl) {
+          cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
+          cache.setex(`cdn-url:${itunesId}`, 86400 * 30, cdnUrl);
+          markTrackAudioReady(youtubeId, itunesId).catch(() => {});
+          console.log(`[Prefetch] Already in CDN (R2): ${youtubeId} → ${cdnUrl}`);
+          continue; // Already in CDN — skip yt-dlp download!
+        }
       }
 
       // Skip if already downloading
@@ -357,7 +383,7 @@ router.post('/prefetch', async (req: Request, res: Response) => {
       // Spawn background download
       console.log(`[Prefetch] Scheduling background download: ${youtubeId}`);
       cache.setex(`downloading:${youtubeId}`, 600, '1');
-      downloadAndUploadToCDN(youtubeId, true).finally(() => {
+      downloadAndUploadToCDN(youtubeId, false, itunesId).finally(() => {
         cache.del(`downloading:${youtubeId}`);
       });
     } catch (err) {
@@ -463,17 +489,20 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
     }
 
     // 2. Comprobar si ya está en CDN (caché de URL local primero — evita HeadObject)
-    const cachedCDNUrl = cache.get(`cdn-url:${youtubeId}`);
+    const cachedCDNUrl = cache.get(`cdn-url:${youtubeId}`) || cache.get(`cdn-url:${itunesId}`);
     if (cachedCDNUrl && !bypassCache) {
-      console.log(`[Stream] 🚀 CDN hit (caché local): ${youtubeId}`);
+      console.log(`[Stream] 🚀 CDN hit (caché local): ${itunesId} (yt: ${youtubeId})`);
+      markTrackAudioReady(youtubeId, itunesId).catch(() => {});
       return res.redirect(302, cachedCDNUrl as string);
     }
 
     if (isCDNEnabled() && !bypassCache) {
-      const cdnUrl = await findTrackInCDN(youtubeId);
+      const cdnUrl = (await findTrackInCDN(youtubeId)) || (await findTrackInCDN(itunesId));
       if (cdnUrl) {
         cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
-        console.log(`[Stream] 🚀 CDN hit (R2): ${youtubeId} → ${cdnUrl}`);
+        cache.setex(`cdn-url:${itunesId}`, 86400 * 30, cdnUrl);
+        markTrackAudioReady(youtubeId, itunesId).catch(() => {});
+        console.log(`[Stream] 🚀 CDN hit (R2): ${youtubeId} (itunesId: ${itunesId}) → ${cdnUrl}`);
         return res.redirect(302, cdnUrl);
       }
     }
@@ -510,13 +539,13 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
         if (isDirectYouTube || !isCDNEnabled()) {
           // Videos de YouTube directos o si el CDN no está configurado: guardar localmente de forma permanente
           console.log(`[Stream] 📥 Background: descargando ${youtubeId} (local permanente)...`);
-          downloadAndUploadToCDN(youtubeId, true).finally(() => {
+          downloadAndUploadToCDN(youtubeId, true, itunesId).finally(() => {
             cache.del(downloadingKey);
           });
         } else if (isCDNEnabled()) {
           // Tracks iTunes con CDN habilitado: subir a CDN y eliminar local
           console.log(`[Stream] 📥 Background: descargando ${youtubeId} para CDN...`);
-          downloadAndUploadToCDN(youtubeId, false).finally(() => {
+          downloadAndUploadToCDN(youtubeId, false, itunesId).finally(() => {
             cache.del(downloadingKey);
           });
         }

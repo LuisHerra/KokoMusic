@@ -43,37 +43,113 @@ function requireSupabase(res: any): boolean {
 }
 
 // ── GET /api/friends/accounts ──────────────────────────────────────────────────
-// List all available accounts to link (including email from auth.users for dev/test verification)
+// Deprecated for security & account isolation (prevents accessing/switching to other accounts)
 router.get('/accounts', async (req, res) => {
-  if (!requireSupabase(res)) return;
-  const { data: profiles, error } = await supabase!
-    .schema('kokomusic')
-    .from('koko_profiles')
-    .select('id, username, display_name, avatar_url, bio')
-    .order('display_name', { ascending: true });
+  res.json({ accounts: [] });
+});
 
-  if (error) return err(res, error.message);
-
-  let emailMap: Record<string, string> = {};
-  try {
-    const { data: { users }, error: authError } = (await supabase!.auth.admin.listUsers()) as any;
-    if (!authError && users) {
-      users.forEach(u => {
-        if (u.id && u.email) {
-          emailMap[u.id] = u.email;
-        }
-      });
-    }
-  } catch (authErr) {
-    console.error('[Supabase Auth listUsers Error]:', authErr);
+// ── POST /api/friends/account/create ──────────────────────────────────────────
+// Creates a new isolated user account in Supabase (or local guest profile if offline)
+router.post('/account/create', async (req, res) => {
+  const { display_name, username, email, password, bio, avatar_url } = req.body;
+  const nameToUse = (display_name || username || '').trim();
+  if (!nameToUse) {
+    return err(res, 'El nombre visible o nombre de usuario es obligatorio', 400);
   }
 
-  const accounts = (profiles ?? []).map(p => ({
-    ...p,
-    email: emailMap[p.id] || null
-  }));
+  const cleanUsername = (username || nameToUse).toLowerCase().replace(/[^a-z0-9_]/g, '');
 
-  res.json({ accounts });
+  if (supabase) {
+    try {
+      // Check if username is already taken
+      if (cleanUsername.length >= 3) {
+        const { data: existing } = await supabase
+          .schema('kokomusic')
+          .from('koko_profiles')
+          .select('id')
+          .eq('username', cleanUsername)
+          .maybeSingle();
+
+        if (existing) {
+          return err(res, 'El nombre de usuario ya está en uso. Por favor elige otro.', 400);
+        }
+      }
+
+      const userEmail = email && email.includes('@')
+        ? email.trim()
+        : `${cleanUsername}_${Date.now()}@kokomusic.app`;
+
+      const userPassword = password && password.length >= 6 ? password : uuidv4();
+
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: userEmail,
+        password: userPassword,
+        email_confirm: true,
+        user_metadata: {
+          display_name: nameToUse,
+          username: cleanUsername,
+          avatar_url: avatar_url || null,
+        },
+      });
+
+      if (authError) {
+        return err(res, authError.message, 400);
+      }
+
+      const newUserId = authData.user.id;
+
+      // Create matching koko_profiles record
+      const { data: profileData, error: profileErr } = await supabase
+        .schema('kokomusic')
+        .from('koko_profiles')
+        .insert({
+          id: newUserId,
+          display_name: nameToUse,
+          username: cleanUsername,
+          avatar_url: avatar_url || null,
+          bio: bio || '',
+          is_public: true,
+        })
+        .select()
+        .single();
+
+      if (profileErr) {
+        console.error('[CreateAccount] Profile insert warning:', profileErr.message);
+      }
+
+      return res.json({
+        success: true,
+        userId: newUserId,
+        profile: profileData || {
+          id: newUserId,
+          display_name: nameToUse,
+          username: cleanUsername,
+          avatar_url: avatar_url || null,
+          bio: bio || '',
+        },
+      });
+    } catch (e: any) {
+      console.error('[CreateAccount] Exception:', e);
+      return err(res, e.message || 'Error al crear la cuenta', 500);
+    }
+  } else {
+    // Offline mode: generate new isolated guest UUID
+    const newUserId = uuidv4();
+    const guestProfile = {
+      id: newUserId,
+      display_name: nameToUse,
+      username: cleanUsername,
+      avatar_url: avatar_url || null,
+      bio: bio || '',
+      is_public: true,
+      created_at: new Date().toISOString(),
+    };
+    return res.json({
+      success: true,
+      userId: newUserId,
+      profile: guestProfile,
+    });
+  }
 });
 
 // ── GET /api/friends/users/search?q=xxx&userId=xxx ─────────────────────────────

@@ -376,6 +376,8 @@ export function useAudioPlayer() {
     setMediaSessionState(isPlaying ? 'playing' : 'paused');
   }, [isPlaying]);
 
+  const cdnPreloadTriggered = useRef<string | null>(null);
+
   useEffect(() => {
     const onTimeUpdate = (e: Event) => {
       if (e.target !== getActiveAudio()) return;
@@ -397,6 +399,22 @@ export function useAudioPlayer() {
         if (queue.length > 0) {
           if (queueIndex < queue.length - 1) nextT = queue[queueIndex + 1];
           else if (state.repeatMode === 'all') nextT = queue[0];
+        }
+
+        // 30s Predictive CDN Upload Pass
+        const remainingSec = audio.duration - audio.currentTime;
+        if (remainingSec > 0 && remainingSec <= 30 && nextT) {
+          if (cdnPreloadTriggered.current !== nextT.id) {
+            cdnPreloadTriggered.current = nextT.id;
+            logToServer('INFO', `[useAudioPlayer] 🚀 30s before end — triggering predictive CDN pre-upload for next track: ${nextT.title} (${nextT.id})`);
+            getApiUrl().then(apiBase => {
+              fetch(`${apiBase}/stream/prefetch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [nextT.id] })
+              }).catch(() => {});
+            });
+          }
         }
 
         if (currentT && nextT) {
@@ -502,18 +520,27 @@ export function useAudioPlayer() {
           }
         }
 
-        // Si el fallback de Embed Mode no es posible o ya falló, pasamos a la siguiente canción en la cola
-        logToServer('WARN', `[useAudioPlayer] onError: No se pudo reproducir "${currentT.title}". Pasando a la siguiente canción para asegurar reproducción.`);
-        setError(`Error al reproducir "${currentT.title}". Saltando a la siguiente canción.`);
+        // NEVER auto-skip to a different track on stream error!
+        // Instead, perform an automatic retry reload on the CURRENT track to preserve the user's mood.
+        logToServer('WARN', `[useAudioPlayer] onError: Error cargando stream para "${currentT.title}". Reintentando reproducción del mismo track...`);
+        setError(`Reintentando conexión para "${currentT.title}"...`);
         
-        // Esperar un momento breve para que el usuario pueda ver el aviso y pasar a la siguiente
-        setTimeout(() => {
-          const state = usePlayerStore.getState();
-          // Verificar que el track actual sigue siendo el mismo antes de saltar
-          if (state.currentTrack?.id === currentT.id) {
-            state.nextTrack();
-          }
-        }, 1500);
+        const activeAudio = getActiveAudio();
+        const retryCount = (activeAudio as any)._retryCount || 0;
+        if (retryCount < 3) {
+          (activeAudio as any)._retryCount = retryCount + 1;
+          setTimeout(() => {
+            logToServer('INFO', `[useAudioPlayer] Reintentando carga de stream (${retryCount + 1}/3) para track ${currentT.id}`);
+            const streamUrl = `${getStreamUrl(currentT.id)}&retry=${retryCount + 1}`;
+            activeAudio.src = streamUrl;
+            activeAudio.load();
+            activeAudio.play().catch(() => {});
+          }, 1200);
+        } else {
+          (activeAudio as any)._retryCount = 0;
+          setIsPlaying(false);
+          setError(`No se pudo conectar al audio de "${currentT.title}". Pulsa reproducir para reintentar.`);
+        }
       }
     };
 
@@ -596,15 +623,14 @@ export function useAudioPlayer() {
     logToServer('INFO', `[useAudioPlayer] Loading new track. id: ${currentTrack.id}, title: ${currentTrack.title}, autoDownload: ${autoDownload}, URL: ${url}`);
     setLoading(true);
 
-    // Pre-cargar en segundo plano el siguiente tema de la cola si existe
+    // Pre-cargar en segundo plano el siguiente tema de la cola vía API prefetch (sin sockets crudos en móvil)
     const state = usePlayerStore.getState();
     if (state.queue && state.queue.length > state.queueIndex + 1) {
       const nextInQueue = state.queue[state.queueIndex + 1];
       if (nextInQueue && nextInQueue.id) {
-        const preloadUrl = `${getStreamUrl(nextInQueue.id)}?autoDownload=${autoDownload}`;
-        const preloader = new Audio();
-        preloader.src = preloadUrl;
-        preloader.preload = 'auto';
+        import('../lib/api').then(({ prefetchAudio }) => {
+          prefetchAudio([nextInQueue.id]).catch(() => {});
+        }).catch(() => {});
       }
     }
 

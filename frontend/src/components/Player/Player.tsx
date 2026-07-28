@@ -1,6 +1,8 @@
 import { useCallback, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../../store/playerStore';
+import HeartButton from '../Common/HeartButton';
+import ParticleBurst from '../Common/ParticleBurst';
 
 function IconCloudDownload() {
   return (
@@ -142,13 +144,7 @@ function IconMusic() {
   );
 }
 
-function IconMic() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17.3 11c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
-    </svg>
-  );
-}
+
 
 function IconQueue() {
   return (
@@ -435,14 +431,13 @@ export default function Player() {
                   {currentTrack.artist}
                 </Link>
               </div>
-              <button 
-                className="ctrl-btn hide-on-mobile" 
-                onClick={() => toggleLike(currentTrack.id)}
-                title="Añadir a Tus me gusta"
-                style={{ padding: 4, flexShrink: 0 }}
-              >
-                <IconHeart filled={isLiked(currentTrack.id)} />
-              </button>
+              <div className="hide-on-mobile" style={{ flexShrink: 0 }}>
+                <HeartButton
+                  isLiked={isLiked(currentTrack.id)}
+                  onClick={() => toggleLike(currentTrack.id)}
+                  size={20}
+                />
+              </div>
               <button 
                 className="ctrl-btn flex-add-to-playlist hide-on-mobile" 
                 onClick={() => setShowPlaylistModal(true)}
@@ -528,15 +523,17 @@ export default function Player() {
             <IconPrev />
           </button>
 
-          <button className="ctrl-btn-play" onClick={togglePlay} disabled={!currentTrack}>
-            {isLoading ? (
-              <div className="spinner" style={{ width: 18, height: 18 }} />
-            ) : isPlaying ? (
-              <IconPause />
-            ) : (
-              <IconPlay />
-            )}
-          </button>
+          <ParticleBurst type="note" count={8}>
+            <button className="ctrl-btn-play" onClick={togglePlay} disabled={!currentTrack}>
+              {isLoading ? (
+                <div className="spinner" style={{ width: 18, height: 18 }} />
+              ) : isPlaying ? (
+                <IconPause />
+              ) : (
+                <IconPlay />
+              )}
+            </button>
+          </ParticleBurst>
 
           <button className="ctrl-btn" onClick={handleSkip} title="Siguiente">
             <IconNext />
@@ -610,7 +607,9 @@ export default function Player() {
           style={isLyricsOpen ? { color: 'var(--accent)' } : undefined}
           disabled={!currentTrack}
         >
-          <IconMic />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17.3 11c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+          </svg>
         </button>
 
         <button

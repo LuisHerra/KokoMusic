@@ -273,14 +273,14 @@ export function detectTrackCulture(
   }
 
   // ── 1. FRENCH SIGNALS ──────────────────────────────────────────────────────
-  const isFrenchArtist = /\b(rnboi|gims|naza|tayc|plk|ninho|tiakola|alonzo|dadju|soolking|mauvais djo|niska|booba|damso|pnl|nekfeu|stromae|aya nakamura|sch|jul|koba lad|zola|danyl|gazo|kerchak|werenoi|sdm|hamza|bosh|heuss|dr\. yaro|dr yaro|keblack|franglish|gradur|rk|soso maness|favé)\b/i.test(normArtist);
+  const isFrenchArtist = /\b(gims|naza|tayc|plk|ninho|tiakola|alonzo|dadju|soolking|mauvais djo|niska|booba|damso|pnl|nekfeu|stromae|aya nakamura|sch|jul|koba lad|zola|danyl|gazo|kerchak|werenoi|sdm|hamza|bosh|heuss|dr\. yaro|dr yaro|keblack|franglish|gradur|rk|soso maness|favé|rnboi)\b/i.test(normArtist);
   const isFrenchTagOrGenre = /\b(french|francais|français|rap fr\b|rap francais|rap français|chanson|afro trap fr|verlan|banlieue|variete francaise|french pop|french rap)\b/i.test(`${normTags.join(' ')} ${normGenre}`);
   if (isFrenchArtist || isFrenchTagOrGenre) {
     return 'french';
   }
 
   // ── 2. LATIN / SPANISH SIGNALS ─────────────────────────────────────────────
-  const isLatinArtist = /\b(quevedo|feid|bad bunny|myke towers|rauw alejandro|ozuna|j balvin|anuel|karol g|trueno|mora|bizarrap|jhayco|duki|eladio|ryan castro|young miko|saiko|dei v|omar courtz|gonzy|maná|mana|el bobe|rvfv|jcreyes|omay|morad|charlie puth|rosalía|rosalia|aitana|rels b|c\. tangana|c tangana|alejandro sanz|melendi|estopa|omar montes|kidd keo|nathy peluso|enrique iglesias|luis fonsi|daddy yankee|don omar|wisin|yandel|maluma|shakira|julieta venegas|becky g|danna|danna paola|peso pluma|fuerza regida|grupo frontera|natanael cano|junior h|pablo alboran|pablo alborán|camilo|alvaro de luna|nil moliner|lola indigo|lola índigo|ana mena|abraham mateo|vicco|bad gyal|sen senra|recycled j|dano|delaossa|erick hervé|hard gz|kase\.o|kase o|sfdk|nach|toteking|zatu|sharif|ambkor|blake|foyone|israel b|kaydy cain|yung beef|cecilio g|pedro ladroga)\b/i.test(normArtist);
+  const isLatinArtist = /\b(alvaro soler|álvaro soler|quevedo|feid|bad bunny|myke towers|rauw alejandro|ozuna|j balvin|anuel|karol g|trueno|mora|bizarrap|jhayco|duki|eladio|ryan castro|young miko|saiko|dei v|omar courtz|gonzy|maná|mana|el bobe|rvfv|jcreyes|omay|morad|charlie puth|rosalía|rosalia|aitana|rels b|c\. tangana|c tangana|alejandro sanz|melendi|estopa|omar montes|kidd keo|nathy peluso|enrique iglesias|luis fonsi|daddy yankee|don omar|wisin|yandel|maluma|shakira|julieta venegas|becky g|danna|danna paola|peso pluma|fuerza regida|grupo frontera|natanael cano|junior h|pablo alboran|pablo alborán|camilo|alvaro de luna|nil moliner|lola indigo|lola índigo|ana mena|abraham mateo|vicco|bad gyal|sen senra|recycled j|dano|delaossa|erick hervé|hard gz|kase\.o|kase o|sfdk|nach|toteking|zatu|sharif|ambkor|blake|foyone|israel b|kaydy cain|yung beef|cecilio g|pedro ladroga)\b/i.test(normArtist);
 
   const isLatinTagOrGenre = /\b(reggaeton|regueton|urbano|latin|spanish|espanol|español|musica latina|música latina|latin pop|latin trap|cumbia|salsa|dembow|bachata|perreo|flamenco|rumba|tango|pop en espanol|pop en español|rock en espanol|rock en español|indie espanol|indie español|hip hop espanol|rap espanol|trap espanol|trap latino|corridos|corridos tumbados|ranchera|mariachi|flamenco pop)\b/i.test(`${normTags.join(' ')} ${normGenre}`);
 
