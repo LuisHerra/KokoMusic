@@ -33,3 +33,19 @@ scripts/upload-secrets.mjs
 # Local runtime JSON databases & caches (Survives git pull & git checkout)
 backend/data/*.json
 backend/data/**/*.json
+
+# Android / Gradle / Chaquopy build outputs
+android/build/
+android/app/build/
+android/.gradle/
+.gradle/
+android/local.properties
+android/.idea/
+android/.cxx/
+*.iml
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+

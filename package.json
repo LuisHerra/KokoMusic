@@ -11,7 +11,8 @@
     "deploy:portfolio": "node build-for-portfolio.js",
     "local:install": "powershell -ExecutionPolicy Bypass -File scripts/install-deps.ps1",
     "local:start": "powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1",
-    "build:local": "cross-env VITE_BUILD_MODE=local npm --prefix frontend run build",
+    "build:local": "npx cross-env VITE_BUILD_MODE=local npm --prefix frontend run build",
+    "build:android": "npx cross-env VITE_BUILD_MODE=local npm --prefix frontend run build && powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force 'android/app/src/main/python/static/*'; Copy-Item -Recurse -Force 'frontend/dist/*' 'android/app/src/main/python/static/'\"",
     "dev:desktop": "concurrently \"npm run dev\" \"npx --prefix desktop electron desktop/main.js\""
   },
   "devDependencies": {

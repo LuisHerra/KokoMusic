@@ -6,33 +6,44 @@
  * prefetch request so they are locally cached before they start playing.
  *
  * This eliminates the yt-dlp cold start (1-3s delay) for queued songs.
+ * A 500ms debounce prevents flooding the backend when the user skips rapidly.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { prefetchAudio } from '../lib/api';
 
 export function usePrefetchAudio() {
   const { currentTrack, queue } = usePlayerStore();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!currentTrack) return;
 
-    // Find where we are in the queue
-    const currentIndex = queue.findIndex(t => t.id === currentTrack.id);
-    if (currentIndex === -1) return;
+    // Debounce — if the user skips rapidly, only the final track triggers prefetch
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    // Take the next 2 tracks
-    const upcoming = queue.slice(currentIndex + 1, currentIndex + 3);
-    if (upcoming.length === 0) return;
+    debounceRef.current = setTimeout(() => {
+      // Find where we are in the queue
+      const currentIndex = queue.findIndex(t => t.id === currentTrack.id);
+      if (currentIndex === -1) return;
 
-    const ids = upcoming
-      .map(t => t.id)
-      .filter(Boolean) as string[];
+      // Take the next 2 tracks
+      const upcoming = queue.slice(currentIndex + 1, currentIndex + 3);
+      if (upcoming.length === 0) return;
 
-    if (ids.length === 0) return;
+      const ids = upcoming
+        .map(t => t.id)
+        .filter(Boolean) as string[];
 
-    // Fire-and-forget — backend schedules background download if not already cached
-    prefetchAudio(ids).catch(() => {});
+      if (ids.length === 0) return;
+
+      // Fire-and-forget — backend schedules background download if not already cached
+      prefetchAudio(ids).catch(() => {});
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [currentTrack?.id]); // Only re-run when the current track changes
 }

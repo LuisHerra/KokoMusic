@@ -523,7 +523,7 @@ export default function Home() {
           {/* Éxitos Mundiales y Tendencias */}
           <h2 className="section-title">Éxitos Mundiales & Tendencias</h2>
           <p className="section-subtitle">Las canciones más escuchadas y populares del momento</p>
-          <TrackGrid initialQuery="Bad Bunny Shakira Kendrick Lamar The Weeknd Rosalia Drake" showInput={false} />
+          <TrackGrid initialQuery="top hits" showInput={false} />
         </>
       )}
 

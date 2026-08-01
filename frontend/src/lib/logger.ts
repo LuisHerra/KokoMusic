@@ -1,10 +1,38 @@
 import { getApiUrl } from './backendResolver';
 
+export interface LogEntry {
+  timestamp: string;
+  level: 'INFO' | 'WARN' | 'ERROR';
+  message: string;
+  details?: any;
+}
+
+const clientLogBuffer: LogEntry[] = [];
+
+export function getClientLogs(): LogEntry[] {
+  return [...clientLogBuffer];
+}
+
+export function clearClientLogs(): void {
+  clientLogBuffer.length = 0;
+}
+
 /**
  * Sends a log message from the client to the backend to print in the Termux/Node console.
  * Helpful for debugging mobile devices remotely.
  */
 export async function logToServer(level: 'INFO' | 'WARN' | 'ERROR', message: string, details?: any) {
+  const entry: LogEntry = {
+    timestamp: new Date().toLocaleTimeString(),
+    level,
+    message,
+    details
+  };
+  clientLogBuffer.push(entry);
+  if (clientLogBuffer.length > 100) {
+    clientLogBuffer.shift();
+  }
+
   // Always print to the browser console
   const prefix = `[KokoClient][${level}]`;
   if (level === 'ERROR') {

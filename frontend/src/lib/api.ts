@@ -10,6 +10,27 @@ export function isDesktopApp(): boolean {
   return typeof window !== 'undefined' && Boolean((window as any).electronAPI);
 }
 
+export function getEmbedOriginParam(): string {
+  try {
+    if (typeof window === 'undefined') return '';
+    const orig = window.location.origin;
+    if (orig && orig !== 'null' && !orig.startsWith('file:') && !orig.includes('127.0.0.1') && !orig.includes('localhost')) {
+      return `&origin=${encodeURIComponent(orig)}`;
+    }
+  } catch {}
+  return '';
+}
+
+export function formatYoutubeEmbedUrl(youtubeId: string, options: { autoplay?: boolean; mute?: boolean; controls?: boolean } = {}): string {
+  const { autoplay = true, mute = false, controls = true } = options;
+  const autoParam = autoplay ? '1' : '0';
+  const muteParam = mute ? '1' : '0';
+  const ctrlParam = controls ? '1' : '0';
+  const cleanId = youtubeId ? youtubeId.replace(/^yt_/, '') : '';
+  return `https://www.youtube-nocookie.com/embed/${cleanId}?autoplay=${autoParam}&mute=${muteParam}&controls=${ctrlParam}&playsinline=1&rel=0&modestbranding=1`;
+}
+
+
 if (typeof window !== 'undefined' && !localStorage.getItem('koko_device_id')) {
   localStorage.setItem('koko_device_id', crypto.randomUUID());
 }
@@ -723,6 +744,12 @@ export const createAccount = (data: { display_name: string; username?: string; e
     body: JSON.stringify(data),
   });
 
+export const loginAccount = (data: { identifier: string; password?: string; accountId?: string }) =>
+  apiFetch<{ success: boolean; userId: string; profile: KokoProfile }>('/friends/account/login', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
 export const getAvailableAccounts = () =>
   apiFetch<{ accounts: KokoProfile[] }>('/friends/accounts');
 
@@ -768,16 +795,31 @@ export const markNotificationsRead = (userId: string) =>
 
 export function resolveImageUrl(url?: string): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith('vi/') || url.startsWith('/vi/')) {
-    const cleanPath = url.startsWith('/') ? url.slice(1) : url;
-    return `https://img.youtube.com/${cleanPath}`;
+  let clean = url.trim();
+  if (!clean) return undefined;
+
+  if (clean.startsWith('vi/') || clean.startsWith('/vi/')) {
+    const cleanPath = clean.startsWith('/') ? clean.slice(1) : clean;
+    clean = `https://i.ytimg.com/${cleanPath}`;
+  } else if (clean.includes('img.youtube.com')) {
+    clean = clean.replace('img.youtube.com', 'i.ytimg.com');
+  } else if (clean.startsWith('http://')) {
+    clean = clean.replace('http://', 'https://');
+  } else if (clean.startsWith('//')) {
+    clean = `https:${clean}`;
   }
-  if (url.startsWith('/') && !url.startsWith('//')) {
+
+  if (clean.includes('mzstatic.com')) {
+    clean = clean.replace(/\/\d+x\d+bb\./, '/600x600bb.');
+  }
+
+  if (clean.startsWith('/') && !clean.startsWith('//')) {
     const cached = getCachedBaseUrl();
     const domain = cached ?? (import.meta.env.VITE_API_URL ?? 'http://localhost:3001/api').replace('/api', '');
-    return `${domain}${url}`;
+    return `${domain}${clean}`;
   }
-  return url;
+
+  return clean;
 }
 
 // ── Personalization & Algorithmic Onboarding ───────────────────────────────────

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMyProfile, updateProfile, createAccount, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, type KokoProfile } from '../lib/api';
+import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, type KokoProfile } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -198,6 +198,13 @@ export default function ProfilePage() {
   const [createError, setCreateError] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
 
+  // Login / Link Existing Account State
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
   // Delete account state
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteAceptarText, setDeleteAceptarText] = useState('');
@@ -275,6 +282,37 @@ export default function ProfilePage() {
       setCreateError(err.message || 'Error al registrar la cuenta.');
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleLoginAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginIdentifier.trim()) {
+      setLoginError('Por favor ingresa tu usuario, email o ID de cuenta.');
+      return;
+    }
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const res = await loginAccount({
+        identifier: loginIdentifier.trim(),
+        password: loginPassword || undefined,
+      });
+
+      if (res.success && res.userId) {
+        localStorage.setItem('koko_device_id', res.userId);
+        setSavedId(res.userId);
+        setShowLoginModal(false);
+        setLoginIdentifier('');
+        setLoginPassword('');
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ['my-profile', res.userId] });
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'No se pudo conectar a la cuenta.');
+    } finally {
+      setLoginLoading(false);
     }
   };
 
@@ -599,6 +637,26 @@ export default function ProfilePage() {
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                   Crear Nueva Cuenta
+                </button>
+
+                <button
+                  onClick={() => setShowLoginModal(true)}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 12,
+                    padding: '8px 16px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                  Conectar Cuenta Existente
                 </button>
               </div>
             </>
@@ -1247,6 +1305,128 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    color: 'var(--text-secondary)',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '11px 18px',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Iniciar Sesión / Conectar Cuenta Existente */}
+      {showLoginModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: 20,
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #181818 0%, #121212 100%)',
+            borderRadius: 20,
+            padding: 28,
+            maxWidth: 420,
+            width: '100%',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
+          }}>
+            <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>Conectar Cuenta Existente</h2>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Ingresa tu nombre de usuario, email o ID de cuenta para vincular tu perfil en este dispositivo.
+            </p>
+
+            <form onSubmit={handleLoginAccount} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  Usuario, Email o ID de Cuenta *
+                </label>
+                <input
+                  value={loginIdentifier}
+                  onChange={e => setLoginIdentifier(e.target.value)}
+                  placeholder="Ej: alexkoko o tu email/ID"
+                  style={{
+                    width: '100%',
+                    background: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 10,
+                    color: '#fff',
+                    fontSize: 13,
+                    padding: '10px 12px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  Contraseña (Opcional)
+                </label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={e => setLoginPassword(e.target.value)}
+                  placeholder="Tu contraseña"
+                  style={{
+                    width: '100%',
+                    background: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 10,
+                    color: '#fff',
+                    fontSize: 13,
+                    padding: '10px 12px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {loginError && (
+                <div style={{ color: '#ff6b6b', fontSize: 12, background: 'rgba(255,107,107,0.1)', padding: '9px 12px', borderRadius: 8 }}>
+                  {loginError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                <button
+                  type="submit"
+                  disabled={loginLoading || !loginIdentifier.trim()}
+                  style={{
+                    flex: 1,
+                    background: 'var(--accent)',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '11px 18px',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {loginLoading ? 'Conectando...' : 'Iniciar Sesión'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLoginModal(false)}
                   style={{
                     background: 'rgba(255,255,255,0.08)',
                     color: 'var(--text-secondary)',

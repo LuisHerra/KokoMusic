@@ -469,6 +469,7 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
 
         // Use the unified culture detector (evaluates tags, genre, title, and artist)
         seedCulture = detectTrackCulture(seedTrack.artist, seedTrack.title, seedTrack.genre || '', seedTags);
+        const directSeedCulture = seedCulture;
 
         // ── SESSION & PROFILE CULTURE ANCHOR (Dominance Consensus) ─────────────
         // Analyze culture consensus across all session seeds + recent history.
@@ -509,10 +510,15 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
             }
           }
 
-          // If dominant culture has >= 35% representation in the active session window, LOCK IT!
-          if (dominantCulture !== 'other' && maxCount / sessionCultures.length >= 0.35) {
-            seedCulture = dominantCulture;
-            console.log(`[Recs] SESSION CULTURE ANCHOR LOCKED: >>> ${seedCulture.toUpperCase()} <<< (${maxCount}/${sessionCultures.length} session consensus)`);
+          // PRECEDENCE GUARD: Require >= 55% dominance and at least 3 matching tracks.
+          // Never override an explicit non-'other' seed track's culture with an opposing session anchor!
+          if (dominantCulture !== 'other' && maxCount >= 3 && (maxCount / sessionCultures.length) >= 0.55) {
+            if (directSeedCulture === 'other' || directSeedCulture === dominantCulture) {
+              seedCulture = dominantCulture;
+              console.log(`[Recs] SESSION CULTURE ANCHOR LOCKED: >>> ${seedCulture.toUpperCase()} <<< (${maxCount}/${sessionCultures.length} session consensus)`);
+            } else {
+              console.log(`[Recs] SEED CULTURE PRECEDENCE: Seed "${seedTrack.artist}" culture (${directSeedCulture.toUpperCase()}) preserved over session anchor (${dominantCulture.toUpperCase()})`);
+            }
           }
         }
       }
@@ -537,7 +543,7 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
         for (const [c, count] of counts.entries()) {
           if (count > topCount) { topCount = count; topCult = c; }
         }
-        if (topCult !== 'other' && topCount / histCultures.length >= 0.40) {
+        if (topCult !== 'other' && topCount >= 3 && (topCount / histCultures.length) >= 0.55) {
           seedCulture = topCult;
           console.log(`[Recs] PROFILE CULTURE ANCHOR LOCKED: >>> ${seedCulture.toUpperCase()} <<< (${topCount}/${histCultures.length} history consensus)`);
         }
@@ -1136,11 +1142,11 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
         cultureCoherenceScore = +250;
       } else if (candCulture !== seedCulture) {
         if (strictness === 'strict') {
-          // Priority matching: matching culture gets +250. Non-matching gets a moderate penalty (-120),
-          // preserving ranking priority while ensuring the engine NEVER returns 0 tracks during API rate-limits.
-          cultureCoherenceScore = -120;
+          // Softened penalty (-40 instead of -120): matching culture (+250) is strongly favored,
+          // but non-matching candidates remain available if matching candidates are sparse.
+          cultureCoherenceScore = -40;
         } else {
-          cultureCoherenceScore = -50;
+          cultureCoherenceScore = -20;
         }
       }
     }
@@ -1351,30 +1357,50 @@ function detectLanguageAndCulture(artist: string, title: string, genre?: string,
         }
       });
 
-      // Deduplicate by id, then filter out hardExcludeSet AND recentlyPlayedIds
-      // If seedCulture is active, enforce matching culture on fallback tracks as well
-      const seenFallback = new Set<string>();
-      const freshCandidates = candidatePool
-        .filter(t => {
-          if (!t || !t.id) return false;
-          const normId = t.id.toLowerCase().trim();
-          if (hardExcludeSet.has(normId)) return false;
-          if (recentlyPlayedIds.has(t.id)) return false;
-          if (seenFallback.has(normId)) return false;
+      // Multi-pass Fallback Sampling: Guarantee non-empty recommendations
+      // Pass 1: Strict culture matching + exclude recently played
+      // Pass 2: Relax culture filter if Pass 1 yields insufficient candidates
+      // Pass 3: Allow recently played as absolute last resort if pool is still empty
+      const sampleFallbackCandidates = (enforceCulture: boolean, excludeRecent: boolean): TrackMetadata[] => {
+        const seenFallback = new Set<string>();
+        return candidatePool
+          .filter(t => {
+            if (!t || !t.id) return false;
+            const normId = t.id.toLowerCase().trim();
+            if (hardExcludeSet.has(normId)) return false;
+            if (excludeRecent && recentlyPlayedIds.has(t.id)) return false;
+            if (seenFallback.has(normId)) return false;
 
-          // If seed culture is Latin or French, fallback MUST NOT introduce different language tracks
-          if (seedCulture === 'latin' || seedCulture === 'french') {
-            const fallbackCulture = detectTrackCulture(t.artist, t.title, t.genre || '');
-            if (fallbackCulture !== seedCulture && fallbackCulture !== 'other') return false;
-          }
+            if (enforceCulture && seedCulture !== 'other') {
+              const fallbackCulture = detectTrackCulture(t.artist, t.title, t.genre || '');
+              if (fallbackCulture !== seedCulture && fallbackCulture !== 'other') return false;
+            }
 
-          seenFallback.add(normId);
-          return true;
-        })
-        .sort(() => Math.random() - 0.5); // random order
+            seenFallback.add(normId);
+            return true;
+          })
+          .sort(() => Math.random() - 0.5);
+      };
+
+      let freshCandidates = sampleFallbackCandidates(true, true);
+      if (freshCandidates.length < limit && seedCulture !== 'other') {
+        console.log(`[Recs] Dynamic fallback sampling: Culture filter (${seedCulture}) yielded only ${freshCandidates.length}/${limit} candidates. Fallback broadening search...`);
+        const relaxedCultureCandidates = sampleFallbackCandidates(false, true);
+        if (relaxedCultureCandidates.length > freshCandidates.length) {
+          freshCandidates = relaxedCultureCandidates;
+        }
+      }
+
+      if (freshCandidates.length < limit) {
+        console.log(`[Recs] Dynamic fallback sampling: Fresh pool short (${freshCandidates.length}/${limit}). Backfilling with recent history items.`);
+        const relaxedRecentCandidates = sampleFallbackCandidates(false, false);
+        if (relaxedRecentCandidates.length > freshCandidates.length) {
+          freshCandidates = relaxedRecentCandidates;
+        }
+      }
 
       finalRecs = freshCandidates.slice(0, limit);
-      console.log(`[Recs] Dynamic fallback sampling: ${finalRecs.length} fresh tracks selected from ${candidatePool.length} candidates (Culture filter: ${seedCulture})`);
+      console.log(`[Recs] Dynamic fallback sampling: ${finalRecs.length} tracks selected from ${candidatePool.length} candidates`);
     } catch (err) {
       console.error('[Recs] Error in dynamic fallback sampling:', err);
     }

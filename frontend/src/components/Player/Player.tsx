@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../../store/playerStore';
 import HeartButton from '../Common/HeartButton';
 import ParticleBurst from '../Common/ParticleBurst';
+import DebugStreamModal from './DebugStreamModal';
 
 function IconCloudDownload() {
   return (
@@ -201,49 +202,62 @@ export default function Player() {
 
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
   const [cdnStage, setCdnStage] = useState({ progress: 20, label: '🔍 Buscando en caché local...' });
+  // true cuando el track ya está en CDN/local — suprime el banner de carga
+  const [isCDNCached, setIsCDNCached] = useState(false);
+  const [showDebugModal, setShowDebugModal] = useState(false);
 
   useEffect(() => {
-    if (!isLoading) return;
+    // Solo mostrar el banner si el track NO está cacheado (cold-start yt-dlp)
+    if (!isLoading || isCDNCached) return;
     setCdnStage({ progress: 20, label: '🔍 Buscando audio en caché local...' });
 
     const t1 = setTimeout(() => {
-      setCdnStage({ progress: 55, label: '📥 Extrayendo audio HQ desde YouTube / CDN...' });
+      setCdnStage({ progress: 55, label: '📥 Extrayendo audio HQ desde YouTube...' });
     }, 450);
 
     const t2 = setTimeout(() => {
-      setCdnStage({ progress: 85, label: '⚡ Subiendo y procesando audio en CDN...' });
+      setCdnStage({ progress: 85, label: '⚡ Procesando y subiendo al CDN...' });
     }, 1200);
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [isLoading, currentTrack?.id]);
+  }, [isLoading, currentTrack?.id, isCDNCached]);
 
 
-  // Verificar y hacer polling al estado de descarga cuando cambie currentTrack.id o status
+  // Verificar estado de caché/descarga al cambiar de track (single fetch, doble propósito)
   useEffect(() => {
     if (!currentTrack) return;
-    
+
+    setIsCDNCached(false);
     let isMounted = true;
     let pollInterval: any = null;
 
     const checkStatus = async () => {
       try {
         const API_BASE = await getApiUrl();
-        // Primero verificar IndexedDB local
+
+        // Primero verificar IndexedDB local (sin red)
         const isOffline = await isTrackOffline(currentTrack.id);
         if (isOffline) {
-          if (isMounted) setDownloadStatus('downloaded');
+          if (isMounted) {
+            setDownloadStatus('downloaded');
+            setIsCDNCached(true);
+          }
           if (pollInterval) clearInterval(pollInterval);
           return;
         }
 
         const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
-        if (!res.ok) return;
+        if (!res.ok || !isMounted) return;
         const data = await res.json();
         if (!isMounted) return;
 
+        // Actualizar flag CDN (suprime el banner de carga)
+        if (data.downloaded) setIsCDNCached(true);
+
+        // Actualizar botón de descarga
         if (data.downloaded) {
           setDownloadStatus('downloaded');
           if (pollInterval) clearInterval(pollInterval);
@@ -331,8 +345,9 @@ export default function Player() {
 
   return (
     <div className="player" style={playerStyle} onClick={handlePlayerBarClick}>
-      {isLoading && (
+      {isLoading && !isCDNCached && (
         <div
+          onClick={(e) => { e.stopPropagation(); setShowDebugModal(true); }}
           style={{
             position: 'absolute',
             top: '-42px',
@@ -354,11 +369,13 @@ export default function Player() {
             zIndex: 100,
             whiteSpace: 'nowrap',
             minWidth: 260,
+            cursor: 'pointer',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div className="spinner" style={{ width: 10, height: 10, borderWidth: 2 }} />
             <span>{cdnStage.label}</span>
+            <span style={{ fontSize: 10, color: 'var(--accent)', opacity: 0.9, marginLeft: 4 }}>🛠️ Ver Logs</span>
           </div>
           <div style={{ width: '100%', height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
             <div
@@ -777,10 +794,20 @@ export default function Player() {
                 </svg>
                 <span>Estudio Karaoke & Auto-Tune</span>
               </button>
+
+              <button
+                onClick={() => { setShowDebugModal(true); setShowMobileMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <span style={{ fontSize: 18 }}>🛠️</span>
+                <span>Diagnóstico de Red & Logs</span>
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      <DebugStreamModal isOpen={showDebugModal} onClose={() => setShowDebugModal(false)} />
     </div>
   );
 }

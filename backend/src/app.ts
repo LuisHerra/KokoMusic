@@ -127,6 +127,10 @@ app.get('/api/health', (_req, res) => {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/search', searchRouter);
+app.get(['/api/image-proxy', '/image-proxy'], (req, res, next) => {
+  req.url = '/image-proxy' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+  searchRouter(req, res, next);
+});
 app.use('/api/stream', streamRouter);
 app.use('/api/tracks', tracksRouter);
 app.use('/api/playlists', playlistsRouter);

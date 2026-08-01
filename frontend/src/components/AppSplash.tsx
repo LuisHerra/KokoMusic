@@ -1,8 +1,7 @@
 /**
  * AppSplash.tsx
- * Pantalla de espera mientras el backend de Termux arranca.
+ * Pantalla de espera mientras el backend arranca.
  * Hace polling a /api/health cada 2s. Desaparece en cuanto responde.
- * Solo se muestra si después de 1.5s el backend no responde (evita flash en cargas rápidas).
  */
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '../lib/backendResolver';
@@ -12,15 +11,17 @@ interface Props {
 }
 
 export default function AppSplash({ onReady }: Props) {
-  const [show, setShow] = useState(false);       // evita flash si backend ya está up
   const [attempt, setAttempt] = useState(0);
   const [dots, setDots] = useState('');
 
-  // Mostrar splash solo si tras 1.5s el backend no ha respondido
+  // Fallback de seguridad: Si tras 4s el backend no responde o se retrasa, fuerza la entrada al Frontend
   useEffect(() => {
-    const timer = setTimeout(() => setShow(true), 1500);
-    return () => clearTimeout(timer);
-  }, []);
+    const safetyTimer = setTimeout(() => {
+      console.warn('[AppSplash] Timeout de seguridad (4s) alcanzado — Mostrando AppShell');
+      onReady();
+    }, 4000);
+    return () => clearTimeout(safetyTimer);
+  }, [onReady]);
 
   // Animación de puntos
   useEffect(() => {
@@ -47,15 +48,13 @@ export default function AppSplash({ onReady }: Props) {
         // backend aún no está listo
       }
       if (!cancelled) {
-        setTimeout(() => setAttempt(a => a + 1), 2000);
+        setTimeout(() => setAttempt(a => a + 1), 1500);
       }
     };
 
     poll();
     return () => { cancelled = true; };
   }, [attempt, onReady]);
-
-  if (!show) return null;
 
   return (
     <div style={{
@@ -109,8 +108,8 @@ export default function AppSplash({ onReady }: Props) {
         animation: 'spin 1s linear infinite',
       }} />
 
-      {/* Mensaje de Termux si lleva mucho tiempo */}
-      {attempt >= 5 && (
+      {/* Mensaje de aviso si lleva tiempo */}
+      {attempt >= 3 && (
         <div style={{
           position: 'absolute', bottom: 48, left: 24, right: 24,
           background: 'rgba(255,255,255,0.05)',
@@ -119,10 +118,7 @@ export default function AppSplash({ onReady }: Props) {
           fontSize: 13, color: 'rgba(255,255,255,0.6)',
           textAlign: 'center', lineHeight: 1.5,
         }}>
-          💡 Si el backend no arranca, abre <strong style={{ color: '#1db954' }}>Termux</strong> y ejecuta:
-          {' '}<code style={{ color: '#fff', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>
-            bash ~/start-kokomusic.sh
-          </code>
+          Iniciando servicio de reproducción embebido...
         </div>
       )}
     </div>

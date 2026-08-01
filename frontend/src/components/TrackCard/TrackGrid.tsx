@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { searchTracks } from '../../lib/api';
+import { searchTracks, resolveImageUrl } from '../../lib/api';
 import type { Track } from '../../lib/api';
 import { usePlayerStore } from '../../store/playerStore';
 
@@ -12,10 +12,37 @@ export interface TrackCardProps {
 }
 
 export function TrackCard({ track, isPlaying, onClick, onAddToQueue }: TrackCardProps) {
+  const [imgError, setImgError] = useState(false);
+  const fallbackChar = (track.title || track.artist || 'K').charAt(0).toUpperCase();
+
   return (
     <div className="track-card" onClick={onClick}>
       <div className="track-card-cover-wrap">
-        <img className="track-card-cover" src={track.cover} alt={track.title} loading="lazy" />
+        {!imgError && track.cover ? (
+          <img 
+            className="track-card-cover" 
+            src={resolveImageUrl(track.cover)} 
+            alt={track.title} 
+            loading="lazy" 
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div 
+            className="track-card-cover" 
+            style={{
+              background: 'linear-gradient(135deg, rgba(30,215,96,0.25), rgba(24,24,32,0.95))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--accent, #1db954)',
+              fontWeight: 800,
+              fontSize: '2.2rem',
+              userSelect: 'none'
+            }}
+          >
+            {fallbackChar}
+          </div>
+        )}
         <button 
           className="track-card-play-btn" 
           aria-label={`Reproducir ${track.title}`}

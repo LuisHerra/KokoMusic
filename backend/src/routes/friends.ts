@@ -152,6 +152,110 @@ router.post('/account/create', async (req, res) => {
   }
 });
 
+// ── POST /api/friends/account/login ──────────────────────────────────────────
+// Login or link an existing KokoMusic account by email/username/password or Account ID
+router.post('/account/login', async (req, res) => {
+  const { identifier, password, accountId } = req.body;
+
+  const targetIdOrUser = (accountId || identifier || '').trim();
+  if (!targetIdOrUser) {
+    return err(res, 'Ingresa tu nombre de usuario, email o ID de cuenta', 400);
+  }
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetIdOrUser);
+
+  if (supabase) {
+    try {
+      // 1. Try Supabase auth if password is provided and identifier has '@'
+      if (password && targetIdOrUser.includes('@')) {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: targetIdOrUser,
+          password: password,
+        });
+
+        if (!authError && authData.user) {
+          const { data: profile } = await supabase
+            .schema('kokomusic')
+            .from('koko_profiles')
+            .select('*')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+
+          return res.json({
+            success: true,
+            userId: authData.user.id,
+            profile: profile || {
+              id: authData.user.id,
+              display_name: authData.user.user_metadata?.display_name || 'Usuario Koko',
+              username: authData.user.user_metadata?.username || targetIdOrUser.split('@')[0],
+              avatar_url: authData.user.user_metadata?.avatar_url || null,
+            },
+          });
+        }
+      }
+
+      // 2. Search profile by ID or username in kokomusic.koko_profiles
+      const cleanTarget = targetIdOrUser.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+      let query = supabase
+        .schema('kokomusic')
+        .from('koko_profiles')
+        .select('*');
+
+      if (isUuid) {
+        query = query.eq('id', targetIdOrUser);
+      } else {
+        query = query.eq('username', cleanTarget);
+      }
+
+      const { data: profile } = await query.maybeSingle();
+
+      if (profile) {
+        return res.json({
+          success: true,
+          userId: profile.id,
+          profile,
+        });
+      }
+
+      // 3. Fallback: Search by display_name if exact username didn't match
+      const { data: fuzzyProfiles } = await supabase
+        .schema('kokomusic')
+        .from('koko_profiles')
+        .select('*')
+        .ilike('display_name', cleanTarget)
+        .limit(1);
+
+      if (fuzzyProfiles && fuzzyProfiles.length > 0) {
+        return res.json({
+          success: true,
+          userId: fuzzyProfiles[0].id,
+          profile: fuzzyProfiles[0],
+        });
+      }
+
+      return err(res, 'No se encontró ninguna cuenta con esa información', 404);
+    } catch (e: any) {
+      console.error('[LoginAccount] Exception:', e);
+      return err(res, e.message || 'Error al iniciar sesión', 500);
+    }
+  } else {
+    // Offline mode: allow restoring profile using ID or Username string
+    const offlineProfile = {
+      id: isUuid ? targetIdOrUser : uuidv4(),
+      display_name: targetIdOrUser,
+      username: targetIdOrUser.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+      avatar_url: null,
+      bio: 'Cuenta vinculada localmente',
+    };
+    return res.json({
+      success: true,
+      userId: offlineProfile.id,
+      profile: offlineProfile,
+    });
+  }
+});
+
 // ── GET /api/friends/users/search?q=xxx&userId=xxx ─────────────────────────────
 // Search users by display_name or username
 router.get('/users/search', async (req, res) => {

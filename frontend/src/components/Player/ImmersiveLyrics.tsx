@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePlayerStore } from '../../store/playerStore';
 import { seekAudio } from '../../hooks/useAudioPlayer';
-import { getLyrics, getTrackVideo, type Lyrics, type VideoData } from '../../lib/api';
+import { getLyrics, getTrackVideo, type Lyrics, type VideoData, formatYoutubeEmbedUrl } from '../../lib/api';
 import { useVideoSync } from '../../hooks/useVideoSync';
 
 import { parseSyncedLyrics, detectLyricSections } from '../../lib/lyricsParser';
@@ -248,7 +248,7 @@ export default function ImmersiveLyrics() {
         <div className="immersive-lyrics-video-bg">
           <iframe
             ref={setBgIframeEl}
-            src={`https://www.youtube.com/embed/${videoData.youtubeId}?enablejsapi=1&autoplay=1&mute=1&controls=0&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+            src={formatYoutubeEmbedUrl(videoData.youtubeId, { autoplay: true, mute: true, controls: false })}
             title="Video de fondo de letras"
             frameBorder="0"
             allow="autoplay; encrypted-media"

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePlayerStore } from '../../store/playerStore';
-import { getTrackVideo, getLyrics, type VideoData, type Lyrics } from '../../lib/api';
+import { getTrackVideo, getLyrics, type VideoData, type Lyrics, formatYoutubeEmbedUrl } from '../../lib/api';
 import { useVideoSync } from '../../hooks/useVideoSync';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
 import { seekAudio } from '../../hooks/useAudioPlayer';
@@ -395,7 +395,7 @@ export default function VideoPanel() {
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0, overflow: 'hidden' }}>
             <iframe
               ref={setIframeEl}
-              src={`https://www.youtube.com/embed/${activeYoutubeId}?enablejsapi=1&autoplay=1&mute=1&controls=0&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+              src={formatYoutubeEmbedUrl(activeYoutubeId, { autoplay: true, mute: true, controls: false })}
               title="Video Background"
               frameBorder="0"
               allow="autoplay; encrypted-media"
@@ -483,7 +483,7 @@ export default function VideoPanel() {
                     <div className="sp-artwork-wrap embed-active">
                       <iframe
                         ref={setIframeEl}
-                        src={`https://www.youtube.com/embed/${embedYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                        src={formatYoutubeEmbedUrl(embedYoutubeId, { autoplay: true, mute: false, controls: true })}
                         title="Reproductor YouTube Embed Mobile"
                         frameBorder="0"
                         allow="autoplay; encrypted-media; fullscreen"
@@ -979,7 +979,7 @@ export default function VideoPanel() {
                 <div className="sp-video-player-wrap">
                   <iframe
                     ref={setIframeEl}
-                    src={`https://www.youtube.com/embed/${activeYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                    src={formatYoutubeEmbedUrl(activeYoutubeId, { autoplay: true, mute: false, controls: true })}
                     title="YouTube Video Player Tab"
                     frameBorder="0"
                     allow="autoplay; encrypted-media; fullscreen"
@@ -1108,7 +1108,7 @@ export default function VideoPanel() {
             <div className="video-iframe-wrapper" style={{ position: 'relative', width: '100%', height: '100%' }}>
               <iframe
                 ref={setIframeEl}
-                src={`https://www.youtube.com/embed/${embedYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                src={formatYoutubeEmbedUrl(embedYoutubeId, { autoplay: true, mute: false, controls: true })}
                 title="Reproductor YouTube Embed"
                 frameBorder="0"
                 allow="autoplay; encrypted-media; fullscreen"
@@ -1125,7 +1125,7 @@ export default function VideoPanel() {
             >
               <iframe
                 ref={setIframeEl}
-                src={`https://www.youtube.com/embed/${activeYoutubeId}?enablejsapi=1&autoplay=1&mute=1&controls=0&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                src={formatYoutubeEmbedUrl(activeYoutubeId, { autoplay: true, mute: true, controls: false })}
                 title="Reproductor de vídeo sincronizado"
                 frameBorder="0"
                 allow="autoplay; encrypted-media"

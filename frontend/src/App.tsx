@@ -537,9 +537,8 @@ export default function App() {
   const [backendReady, setBackendReady] = useState(false);
   const handleReady = useCallback(() => setBackendReady(true), []);
 
-  // import.meta.env.BASE_URL = '/kokoMusic/' in production build (set by vite.config base)
-  // and '/' in dev mode — so routing works correctly in both environments
-  const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+  const rawBase = import.meta.env.BASE_URL || '/';
+  const basename = (rawBase === './' || rawBase === '.' || rawBase === '/') ? '/' : rawBase.replace(/\/$/, '');
   return (
     <QueryClientProvider client={queryClient}>
       {/* Splash mientras el backend local (Termux) arranca */}

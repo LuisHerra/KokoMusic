@@ -6,7 +6,7 @@ import HeartButton from '../Common/HeartButton';
 import ParticleBurst from '../Common/ParticleBurst';
 import { seekAudio } from '../../hooks/useAudioPlayer';
 import { useQuery } from '@tanstack/react-query';
-import { getLyrics, resolveImageUrl, type Lyrics } from '../../lib/api';
+import { getLyrics, resolveImageUrl, type Lyrics, formatYoutubeEmbedUrl } from '../../lib/api';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
 import { getApiUrl } from '../../lib/backendResolver';
@@ -348,7 +348,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
               <div className="mfp-cover-container embed-active" style={{ width: '100%', aspectRatio: '16/9', overflow: 'hidden', borderRadius: 'var(--radius-lg)' }}>
                 <iframe
                   ref={setIframeEl}
-                  src={`https://www.youtube.com/embed/${embedYoutubeId}?enablejsapi=1&autoplay=1&mute=0&controls=1&showinfo=0&rel=0&iv_load_policy=3&cc_load_policy=0&origin=${window.location.origin}`}
+                  src={formatYoutubeEmbedUrl(embedYoutubeId, { autoplay: true, mute: false, controls: true })}
                   title="Reproductor YouTube Embed Mobile"
                   frameBorder="0"
                   allow="autoplay; encrypted-media; fullscreen"

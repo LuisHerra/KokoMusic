@@ -326,7 +326,82 @@ router.post('/warm-cdn', async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /api/stream/status?ids=id1,id2,id3 — Batch audio-ready check ────────
+// ── GET /api/stream/debug/test-ytdlp/:trackId — Diagnostic endpoint ─────────
+router.get('/debug/test-ytdlp/:trackId', async (req: Request, res: Response) => {
+  const { trackId } = req.params;
+  let cleanTrackId = trackId;
+  if (cleanTrackId.includes('http')) {
+    cleanTrackId = cleanTrackId.split('http')[0].replace(/\/$/, '');
+  }
+  cleanTrackId = cleanTrackId.trim();
+
+  const report: any = {
+    platform: 'Node.js (PC/Cloud)',
+    trackId: cleanTrackId,
+    steps: []
+  };
+
+  try {
+    let youtubeId = cleanTrackId;
+    const isDirectYT = /^[a-zA-Z0-9_-]{11}$/.test(cleanTrackId) && isNaN(Number(cleanTrackId));
+    report.isDirectYouTube = isDirectYT;
+
+    if (!isDirectYT && !isNaN(Number(cleanTrackId))) {
+      report.steps.push({ step: '1_itunes_resolution', status: 'started' });
+      const track = await getTrackById(Number(cleanTrackId));
+      if (track) {
+        const resolved = await resolveYoutubeId(Number(cleanTrackId), track.artist, track.title);
+        report.steps.push({
+          step: '1_itunes_resolution',
+          status: 'completed',
+          title: track.title,
+          artist: track.artist,
+          resolvedYoutubeId: resolved
+        });
+        if (resolved) youtubeId = resolved;
+      } else {
+        report.steps.push({ step: '1_itunes_resolution', status: 'failed', error: 'Track no encontrado en iTunes' });
+      }
+    }
+
+    report.steps.push({ step: '2_extract_stream_url', status: 'started', youtubeId });
+    try {
+      const streamUrl = await getYTStreamUrl(youtubeId);
+      report.steps.push({
+        step: '2_extract_stream_url',
+        status: 'completed',
+        streamUrl: streamUrl.substring(0, 100) + '...'
+      });
+
+      report.steps.push({ step: '3_test_cdn_connection', status: 'started' });
+      const testResp = await fetch(streamUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Range': 'bytes=0-1023'
+        }
+      });
+      report.steps.push({
+        step: '3_test_cdn_connection',
+        status: 'completed',
+        httpStatus: testResp.status,
+        contentType: testResp.headers.get('content-type')
+      });
+    } catch (e: any) {
+      report.steps.push({
+        step: '2_extract_stream_url',
+        status: 'failed',
+        error: String(e.message || e)
+      });
+    }
+
+    return res.json(report);
+  } catch (err: any) {
+    report.error = String(err);
+    return res.status(500).json(report);
+  }
+});
+
+// ── GET /api/stream/status?ids=id1,id2,id3 — Batch audio-ready check ────────────
 // Returns a map of { [id]: boolean } indicating local cache status.
 // Used by frontend before play to skip yt-dlp cold start for cached tracks.
 router.get('/status', async (req: Request, res: Response) => {
@@ -603,6 +678,57 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
 
   try {
+    // ── Fast-path: check L1 cache (YouTube resolution + CDN/local) before any I/O ──
+    // This avoids calling getTrackById() (which may hit iTunes) on every status poll.
+    const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(itunesId) && isNaN(Number(itunesId));
+    const isCustom = itunesId.startsWith('custom_');
+
+    // Try to resolve YouTube ID from L1 cache only (no remote calls)
+    let fastYoutubeId: string | null = null;
+    if (isLegacyYoutubeId) {
+      fastYoutubeId = (cache.get(`yt-res:${itunesId}`) as string) || itunesId;
+    } else if (!isCustom) {
+      fastYoutubeId = (cache.get(`yt-res:${itunesId}`) as string) || null;
+    }
+
+    // Check CDN/local cache with whatever IDs we have
+    const checkCachedState = (ytId: string | null) => {
+      const hasCDNCache = !!(cache.get(`cdn-url:${itunesId}`) || (ytId && cache.get(`cdn-url:${ytId}`)));
+      const isDownloading = !!(ytId && cache.get(`downloading:${ytId}`));
+      const isLocalAvailable = !!(ytId && fs.existsSync(getAudioPath(ytId)) && fs.statSync(getAudioPath(ytId)).size > 1024);
+      return { hasCDNCache, isDownloading, isLocalAvailable };
+    };
+
+    const { hasCDNCache, isDownloading, isLocalAvailable } = checkCachedState(fastYoutubeId);
+    const fastDownloaded = hasCDNCache || isLocalAvailable;
+
+    // If we can confirm cached state from L1 only, return immediately (no I/O, no iTunes)
+    if (fastDownloaded || fastYoutubeId) {
+      // We have a YouTube ID from L1 — check CDN R2 if not yet confirmed
+      let finalDownloaded = fastDownloaded;
+      if (!finalDownloaded && fastYoutubeId && isCDNEnabled()) {
+        const cdnUrl = await findTrackInCDN(fastYoutubeId);
+        if (cdnUrl) {
+          cache.setex(`cdn-url:${fastYoutubeId}`, 86400 * 30, cdnUrl);
+          finalDownloaded = true;
+        }
+      }
+
+      return res.json({
+        trackId: itunesId,
+        youtubeId: fastYoutubeId,
+        inCDN: hasCDNCache,
+        isLocalAvailable,
+        downloading: isDownloading,
+        downloaded: finalDownloaded,
+        cdnEnabled: isCDNEnabled(),
+        embedThresholdMin: EMBED_THRESHOLD_MIN,
+        status: finalDownloaded ? (isLocalAvailable ? 'local' : 'cdn') : isDownloading ? 'downloading' : 'ready',
+      });
+    }
+
+    // ── Slow-path: resolve YouTube ID via DB (no iTunes call) ──────────────────
+    // Only reached when track is cold (not in L1 cache). Still avoids iTunes.
     const { youtubeId, isDirectYouTube } = await resolveYoutubeIdForTrack(itunesId);
 
     if (!youtubeId) {
@@ -614,13 +740,12 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
       });
     }
 
-    const hasCDNCache = !!cache.get(`cdn-url:${youtubeId}`);
-    const isDownloading = !!cache.get(`downloading:${youtubeId}`);
-    const isLocalAvailable = fs.existsSync(getAudioPath(youtubeId));
+    const hasCDNCacheFull = !!cache.get(`cdn-url:${youtubeId}`);
+    const isDownloadingFull = !!cache.get(`downloading:${youtubeId}`);
+    const isLocalAvailableFull = fs.existsSync(getAudioPath(youtubeId));
 
-    let finalDownloaded = hasCDNCache || isLocalAvailable;
+    let finalDownloaded = hasCDNCacheFull || isLocalAvailableFull;
 
-    // Si no está en cache de memoria pero CDN está activo, chequear CDN
     if (!finalDownloaded && isCDNEnabled()) {
       const cdnUrl = await findTrackInCDN(youtubeId);
       if (cdnUrl) {
@@ -632,13 +757,13 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
     res.json({
       trackId: itunesId,
       youtubeId,
-      inCDN: hasCDNCache,
-      isLocalAvailable,
-      downloading: isDownloading,
+      inCDN: hasCDNCacheFull,
+      isLocalAvailable: isLocalAvailableFull,
+      downloading: isDownloadingFull,
       downloaded: finalDownloaded,
       cdnEnabled: isCDNEnabled(),
       embedThresholdMin: EMBED_THRESHOLD_MIN,
-      status: finalDownloaded ? (isLocalAvailable ? 'local' : 'cdn') : isDownloading ? 'downloading' : 'ready',
+      status: finalDownloaded ? (isLocalAvailableFull ? 'local' : 'cdn') : isDownloadingFull ? 'downloading' : 'ready',
     });
   } catch (err) {
     res.json({
@@ -649,6 +774,7 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
     });
   }
 });
+
 
 // ── POST /api/stream/:itunesId/download ───────────────────────────────────────
 

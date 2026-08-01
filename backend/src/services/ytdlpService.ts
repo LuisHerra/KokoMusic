@@ -204,7 +204,15 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
     `"${outputPath}"`,
   ].join(' ');
 
-  await execAsync(ffmpegCmd);
+  try {
+    await execAsync(ffmpegCmd);
+  } finally {
+    // Siempre limpiar el archivo temporal (sea éxito o error de FFmpeg)
+    // Sin esto, los errores de FFmpeg dejan archivos huérfanos en disco.
+    if (fs.existsSync(tempFile)) {
+      try { fs.unlinkSync(tempFile); } catch { /* ignore cleanup error */ }
+    }
+  }
 
   // 3. Logging del tamaño real para monitorizar compresión real vs estimada
   if (fs.existsSync(outputPath)) {
@@ -212,9 +220,5 @@ export async function downloadAndTranscode(trackId: string): Promise<void> {
     const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
     console.log(`[yt-dlp] ✅ Audio listo: ${outputPath} (${sizeMB} MB @ ${AUDIO_BITRATE} ${AUDIO_VBR ? 'VBR' : 'CBR'})`);
   }
-
-  // 4. Limpieza del archivo temporal
-  if (fs.existsSync(tempFile)) {
-    fs.unlinkSync(tempFile);
-  }
 }
+

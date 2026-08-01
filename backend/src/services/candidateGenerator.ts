@@ -58,6 +58,14 @@ export interface EnrichedCandidate {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+export const HEAVY_OR_LONG_TRACK_RE = /\b(full\s*album|disco\s*completo|live\s*concert|concert\s*live|1\s*hour|10\s*hours?|3\s*hours?|2\s*hours?|\d+\s*hrs?|dj\s*set|mix\s*completo|compilation|top\s*\d+\s*songs|podcast)\b/i;
+
+export function isHeavyOrExcessiveTrack(title: string, durationMs?: number): boolean {
+  if (durationMs && durationMs > 480_000) return true; // > 8 min (480.000 ms)
+  if (title && HEAVY_OR_LONG_TRACK_RE.test(title)) return true;
+  return false;
+}
+
 /** Deterministic BPM heuristic — mirrors smart-reorder in playlists.ts. */
 function estimateBpm(title: string, artist: string): number {
   const charSum =
@@ -146,7 +154,7 @@ async function fetchTasteCandidates(
   if (error || !data) return [];
 
   return (data as any[])
-    .filter((row) => !exclude.has(String(row.itunes_id)) && (!row.duration_ms || row.duration_ms <= 420000))
+    .filter((row) => !exclude.has(String(row.itunes_id)) && !isHeavyOrExcessiveTrack(row.title || '', row.duration_ms))
     .map((row) => {
       const trackId = String(row.itunes_id);
       const title = (row.title as string) || '';
@@ -203,7 +211,7 @@ async function fetchFollowCandidates(
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   return (data as any[])
-    .filter((row) => !exclude.has(String(row.itunes_id)) && (!row.duration_ms || row.duration_ms <= 420000))
+    .filter((row) => !exclude.has(String(row.itunes_id)) && !isHeavyOrExcessiveTrack(row.title || '', row.duration_ms))
     .map((row) => {
       const trackId = String(row.itunes_id);
       const title = (row.title as string) || '';
@@ -251,7 +259,7 @@ async function fetchChartCandidates(
 
     for (const item of trendTracks) {
       const trackId = item.id;
-      if (!trackId || exclude.has(trackId) || (item.duration && item.duration > 420000)) continue;
+      if (!trackId || exclude.has(trackId) || isHeavyOrExcessiveTrack(item.title || '', item.duration)) continue;
 
       candidates.push({
         trackId,
@@ -452,7 +460,7 @@ export async function getColdStartCandidates(limit = 30, region = 'spain'): Prom
 
     for (const item of trendTracks) {
       const trackId = item.id;
-      if (!trackId || seenIds.has(trackId) || (item.duration && item.duration > 420000)) continue;
+      if (!trackId || seenIds.has(trackId) || isHeavyOrExcessiveTrack(item.title || '', item.duration)) continue;
       seenIds.add(trackId);
 
       candidates.push({

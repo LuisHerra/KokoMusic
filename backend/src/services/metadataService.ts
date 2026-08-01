@@ -623,7 +623,16 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
   try {
     const url = `${ITUNES_BASE}/lookup?id=${id}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`iTunes lookup error: ${res.status}`);
+
+    // 400 = ID no existe en el catálogo de iTunes — no es un error recuperable, retornar null silenciosamente
+    if (res.status === 400 || res.status === 404) {
+      return null;
+    }
+
+    if (!res.ok) {
+      console.warn(`[Metadata] iTunes lookup devolvió ${res.status} para ID ${id}`);
+      return null;
+    }
 
     const data = (await res.json()) as any;
     const item = data.results?.[0];
@@ -637,7 +646,7 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
 
     return track;
   } catch (error) {
-    console.error('[Metadata] Error en getTrackById:', error);
+    console.warn('[Metadata] Error en getTrackById (network/parse):', error);
     return null;
   }
 }
@@ -646,6 +655,14 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
  * Obtiene las canciones más populares de un artista por iTunesArtistId.
  * Caché: L1 (memoria, 1h) → iTunes lookup
  */
+// Sufijos de versión que debemos ignorar al deduplicar títulos de tracks
+// Ejemplos: "(Karaoke Version)", "(Live)", "(Sped Up)", "(Remastered 2021)"
+const VERSION_SUFFIX_RE = /\s*[\[(](?:karaoke|karaoké|instrumental|backing\s*track|piano\s*(?:version|cover)?|acoustic\s*(?:version|cover)?|cover\s*version|live(?:\s+at\s+.+)?|en\s+vivo|sped[\s-]up|speed\s*up|slowed|reverb|nightcore|lofi|lo-fi|remix(?:\s+by\s+\w+)?|remaster(?:ed)?(?:\s+\d{4})?|radio\s*edit|single\s*version|original\s*mix|demo|bonus\s*track|deluxe|\d{4}\s*remaster)[^\])]*/gi;
+
+
+// Versiones que no queremos en los top tracks (se filtran al final)
+const BAD_ARTIST_TRACK_RE = /\b(karaoke|karaoké|instrumental|backing\s*track|nightcore|sped[\s-]up|slowed)\b/i;
+
 export async function getArtistTopTracks(artistId: number, limit = 25): Promise<TrackMetadata[]> {
   const cacheKey = `artist-tracks:${artistId}`;
 
@@ -653,26 +670,41 @@ export async function getArtistTopTracks(artistId: number, limit = 25): Promise<
   if (cached) return JSON.parse(cached);
 
   try {
-    const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=song&limit=${limit + 1}`;
+    // Pedimos más resultados de los necesarios para poder filtrar versiones malas
+    const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=song&limit=${Math.min(limit * 3, 200)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`iTunes artist lookup error: ${res.status}`);
 
     const data = (await res.json()) as any;
     // El primer resultado es el artista, el resto son canciones
     const uniqueTracks: TrackMetadata[] = [];
-    const seenTitles = new Set<string>();
+    // Clave normalizada: sin sufijos de versión entre paréntesis/corchetes
+    const seenNormalizedTitles = new Set<string>();
 
     for (const item of (data.results ?? [])) {
-      if (item.wrapperType === 'track' && item.kind === 'song') {
-        const titleKey = item.trackName.toLowerCase().trim();
-        if (!seenTitles.has(titleKey)) {
-          seenTitles.add(titleKey);
-          uniqueTracks.push(itunesResultToTrack(item, uniqueTracks.length));
-        }
+      if (item.wrapperType !== 'track' || item.kind !== 'song') continue;
+
+      const rawTitle: string = item.trackName ?? '';
+
+      // Ignorar versiones claramente no deseadas incluso si son la primera ocurrencia
+      if (BAD_ARTIST_TRACK_RE.test(rawTitle)) continue;
+
+      // Normalizar título: quitar sufijos de versión entre () o [] para deduplicar
+      // Ej: "Blinding Lights (Karaoke Version)" → "blinding lights"
+      const normalizedTitle = rawTitle
+        .replace(VERSION_SUFFIX_RE, '')
+        .toLowerCase()
+        .trim();
+
+      if (!seenNormalizedTitles.has(normalizedTitle)) {
+        seenNormalizedTitles.add(normalizedTitle);
+        uniqueTracks.push(itunesResultToTrack(item, uniqueTracks.length));
+        if (uniqueTracks.length >= limit) break; // Ya tenemos suficientes
       }
     }
-    
-    const tracks = uniqueTracks.slice(0, limit);
+
+    const tracks = uniqueTracks;
+
 
     cache.setex(cacheKey, 3600, JSON.stringify(tracks));
 

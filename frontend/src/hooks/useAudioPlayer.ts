@@ -303,6 +303,8 @@ export function useAudioPlayer() {
   const crossfadeTriggered = useRef(false);
   const fadeIntervalRef = useRef<any>(null);
   const fadeOutIntervalRef = useRef<any>(null);
+  // Retry counter keyed by trackId — avoids DOM property pollution
+  const retryCountRef = useRef<Record<string, number>>({});
   // ── Race-condition guard: each new track load gets a unique generation number.
   // playWhenReady captures its generation at creation time; if a newer load has
   // already started by the time canplay fires, the listener self-destructs.
@@ -506,6 +508,7 @@ export function useAudioPlayer() {
           if (youtubeId) {
             logToServer('INFO', `[useAudioPlayer] onError: Cambiando a YouTube Embed Mode con ID ${youtubeId}`);
             usePlayerStore.getState().setEmbedMode(true, youtubeId);
+            setLoading(false);
             // Detener audios nativos y limpiar su src para evitar bucles de error
             audio1.pause();
             audio2.pause();
@@ -526,19 +529,23 @@ export function useAudioPlayer() {
         setError(`Reintentando conexión para "${currentT.title}"...`);
         
         const activeAudio = getActiveAudio();
-        const retryCount = (activeAudio as any)._retryCount || 0;
+        const retryCount = retryCountRef.current[currentT.id] || 0;
         if (retryCount < 3) {
-          (activeAudio as any)._retryCount = retryCount + 1;
+          retryCountRef.current[currentT.id] = retryCount + 1;
+          // Exponential backoff: 1.5s, 3s, 6s — gives purge-cache time to complete
+          const delayMs = 1500 * Math.pow(2, retryCount);
           setTimeout(() => {
             logToServer('INFO', `[useAudioPlayer] Reintentando carga de stream (${retryCount + 1}/3) para track ${currentT.id}`);
-            const streamUrl = `${getStreamUrl(currentT.id)}&retry=${retryCount + 1}`;
+            // Build a clean URL — getStreamUrl returns a base path with no query params
+            const streamUrl = `${getStreamUrl(currentT.id)}?retry=${retryCount + 1}`;
             activeAudio.src = streamUrl;
             activeAudio.load();
             activeAudio.play().catch(() => {});
-          }, 1200);
+          }, delayMs);
         } else {
-          (activeAudio as any)._retryCount = 0;
+          delete retryCountRef.current[currentT.id];
           setIsPlaying(false);
+          setLoading(false);
           setError(`No se pudo conectar al audio de "${currentT.title}". Pulsa reproducir para reintentar.`);
         }
       }
