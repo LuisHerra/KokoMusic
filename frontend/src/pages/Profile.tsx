@@ -177,6 +177,17 @@ export default function ProfilePage() {
   const [cultureStrictness, setCultureStrictness] = useState(() => localStorage.getItem('koko_algo_culture_strictness') ?? 'strict');
   const [popularityWeight, setPopularityWeight] = useState(() => localStorage.getItem('koko_algo_popularity_weight') ?? 'balanced');
 
+  // Enriched Recommendation & Audio Engine Settings
+  const [decadeMode, setDecadeMode] = useState(() => localStorage.getItem('koko_algo_decade_mode') ?? 'all');
+  const [languagePref, setLanguagePref] = useState(() => localStorage.getItem('koko_algo_language_pref') ?? 'auto');
+  const [studioMaster, setStudioMaster] = useState(() => localStorage.getItem('koko_algo_studio_master') !== 'false');
+  const [producerAffinity, setProducerAffinity] = useState(() => localStorage.getItem('koko_algo_producer_affinity') !== 'false');
+  const [skipPenalty, setSkipPenalty] = useState(() => localStorage.getItem('koko_algo_skip_penalty') !== 'false');
+
+  // Streaming Engine Settings
+  const [audioQuality, setAudioQuality] = useState(() => localStorage.getItem('koko_audio_quality') ?? '320');
+  const [streamingSourcePref, setStreamingSourcePref] = useState(() => localStorage.getItem('koko_streaming_source_pref') ?? 'auto');
+
   const [savedId, setSavedId] = useState(rawId);
   const [copiedId, setCopiedId] = useState(false);
 
@@ -899,6 +910,91 @@ export default function ProfilePage() {
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '12px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ paddingRight: 8, flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Época / Décadas Preferidas</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                  Filtra o enfoca las recomendaciones según la época de lanzamiento musical.
+                </div>
+              </div>
+              <select
+                value={decadeMode}
+                onChange={(e) => {
+                  setDecadeMode(e.target.value);
+                  localStorage.setItem('koko_algo_decade_mode', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                  maxWidth: '100%',
+                }}
+              >
+                <option value="all" style={{ background: '#181818' }}>Todo el Catálogo</option>
+                <option value="modern" style={{ background: '#181818' }}>Moderno (2020+)</option>
+                <option value="recent" style={{ background: '#181818' }}>2010s - 2020s</option>
+                <option value="nostalgia" style={{ background: '#181818' }}>Nostalgia (80s y 90s)</option>
+                <option value="vintage" style={{ background: '#181818' }}>Clásicos (70s y anteriores)</option>
+              </select>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ paddingRight: 8, flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Idioma Preferido</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                  Prioriza canciones en los idiomas seleccionados en tu feed y radio.
+                </div>
+              </div>
+              <select
+                value={languagePref}
+                onChange={(e) => {
+                  setLanguagePref(e.target.value);
+                  localStorage.setItem('koko_algo_language_pref', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                  maxWidth: '100%',
+                }}
+              >
+                <option value="auto" style={{ background: '#181818' }}>Historial (Auto)</option>
+                <option value="es" style={{ background: '#181818' }}>Solo Español</option>
+                <option value="en" style={{ background: '#181818' }}>Solo Inglés</option>
+                <option value="bilingual" style={{ background: '#181818' }}>Bilingüe (ES + EN)</option>
+                <option value="global" style={{ background: '#181818' }}>Global sin Filtros</option>
+              </select>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
               gap: 12,
               flexWrap: 'wrap',
             }}>
@@ -923,7 +1019,7 @@ export default function ProfilePage() {
                   fontSize: '12px',
                   outline: 'none',
                   cursor: 'pointer',
-                  width: '150px',
+                  width: '160px',
                   maxWidth: '100%',
                 }}
               >
@@ -932,6 +1028,36 @@ export default function ProfilePage() {
                 <option value="high" style={{ background: '#181818' }}>Primar Éxitos</option>
               </select>
             </div>
+
+            <ToggleRow
+              label="Modo Studio Master (Anti-Videoclip)"
+              description="Prioriza pistas oficiales de álbum de estudio y descarta audios de videoclips con silencios o diálogos."
+              checked={studioMaster}
+              onChange={(val) => {
+                setStudioMaster(val);
+                localStorage.setItem('koko_algo_studio_master', String(val));
+              }}
+            />
+
+            <ToggleRow
+              label="Afinidad por Productores & Creadores"
+              description="Sugiere temas que compartan productores y compositores (Tainy, Metro Boomin, Bizarrap, Max Martin...)."
+              checked={producerAffinity}
+              onChange={(val) => {
+                setProducerAffinity(val);
+                localStorage.setItem('koko_algo_producer_affinity', String(val));
+              }}
+            />
+
+            <ToggleRow
+              label="Penalización por Salto Rápido (Skip Penalty)"
+              description="Si pasas una canción en menos de 15 segundos, reduce temporalmente la presencia de canciones similares."
+              checked={skipPenalty}
+              onChange={(val) => {
+                setSkipPenalty(val);
+                localStorage.setItem('koko_algo_skip_penalty', String(val));
+              }}
+            />
           </Section>
         )}
 
@@ -946,6 +1072,87 @@ export default function ProfilePage() {
                 onChange={toggleGamerMode}
               />
             )}
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ paddingRight: 8, flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Calidad de Audio de Streaming</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                  Tasa de bits objetivo para reproducción instantánea y descarga.
+                </div>
+              </div>
+              <select
+                value={audioQuality}
+                onChange={(e) => {
+                  setAudioQuality(e.target.value);
+                  localStorage.setItem('koko_audio_quality', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                  maxWidth: '100%',
+                }}
+              >
+                <option value="320" style={{ background: '#181818' }}>Ultra (320 kbps)</option>
+                <option value="160" style={{ background: '#181818' }}>Alta Fidelidad (160 kbps)</option>
+                <option value="96" style={{ background: '#181818' }}>Ahorro Datos (96 kbps)</option>
+              </select>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 0',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ paddingRight: 8, flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Fuente de Audio Primaria</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                  Prioridad del motor de resolución para servir streams de audio.
+                </div>
+              </div>
+              <select
+                value={streamingSourcePref}
+                onChange={(e) => {
+                  setStreamingSourcePref(e.target.value);
+                  localStorage.setItem('koko_streaming_source_pref', e.target.value);
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '160px',
+                  maxWidth: '100%',
+                }}
+              >
+                <option value="auto" style={{ background: '#181818' }}>Auto (Waterfall)</option>
+                <option value="jiosaavn" style={{ background: '#181818' }}>JioSaavn (Akamai 320k)</option>
+                <option value="youtube" style={{ background: '#181818' }}>YouTube Music (Opus)</option>
+              </select>
+            </div>
+
             <ToggleRow
               label="Mostrar pestaña de Eventos"
               description="Muestra u oculta la sección de conciertos en la barra de navegación."

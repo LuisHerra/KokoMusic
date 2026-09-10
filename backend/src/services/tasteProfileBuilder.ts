@@ -37,6 +37,10 @@ export interface TasteProfile {
   genreAffinity: Record<string, number>;
   /** Top artists sorted by weight descending. */
   topArtists: { artistId: number; name: string; weight: number }[];
+  /** Language → normalised weight (sum = 1). */
+  languageAffinity?: Record<string, number>;
+  /** Decade ('2020s', '2010s', '2000s', '90s', '80s', 'older') → normalised weight. */
+  decadeAffinity?: Record<string, number>;
   /** ISO hour-of-day (0-23) → relative listening frequency. */
   hourlyDistribution: number[];
   /** Day-of-week (0=Sun … 6=Sat) → relative listening frequency. */
@@ -54,6 +58,8 @@ export interface EnrichedPlay {
   durationMs: number;
   timestamp: string; // ISO
   secondsListened: number;
+  language?: string | null;
+  releaseDate?: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -77,6 +83,20 @@ function normalise(map: Record<string, number>): Record<string, number> {
   const total = Object.values(map).reduce((s, v) => s + v, 0);
   if (total === 0) return map;
   return Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v / total]));
+}
+
+/** Extracts decade bucket from release date (YYYY-MM-DD or YYYY). */
+export function getDecade(releaseDate?: string | null): string | null {
+  if (!releaseDate) return null;
+  const year = parseInt(releaseDate.substring(0, 4), 10);
+  if (isNaN(year) || year < 1900 || year > 2100) return null;
+  if (year >= 2020) return '2020s';
+  if (year >= 2010) return '2010s';
+  if (year >= 2000) return '2000s';
+  if (year >= 1990) return '90s';
+  if (year >= 1980) return '80s';
+  if (year >= 1970) return '70s';
+  return 'classic';
 }
 
 // ── Core builder ──────────────────────────────────────────────────────────────
@@ -107,13 +127,13 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
           .map(Number)
           .filter((n) => !isNaN(n) && n > 0);
 
-        const metaMap: Record<string, { genre: string; durationMs: number; artistId: number }> = {};
+        const metaMap: Record<string, { genre: string; durationMs: number; artistId: number; language?: string | null; releaseDate?: string | null }> = {};
 
         if (numericIds.length > 0) {
           const { data: metas } = await supabase
             .schema('kokomusic')
             .from('tracks_meta')
-            .select('itunes_id, genre, duration_ms, artist_id')
+            .select('itunes_id, genre, duration_ms, artist_id, language, release_date')
             .in('itunes_id', numericIds);
 
           for (const m of (metas || [])) {
@@ -121,6 +141,8 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
               genre: (m as any).genre || 'Otros',
               durationMs: (m as any).duration_ms || DEFAULT_DURATION_MS,
               artistId: (m as any).artist_id || 0,
+              language: (m as any).language || null,
+              releaseDate: (m as any).release_date || null,
             };
           }
         }
@@ -140,6 +162,8 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
             durationMs: meta.durationMs,
             timestamp: e.played_at as string,
             secondsListened: (e.seconds_listened as number) || 0,
+            language: meta.language,
+            releaseDate: meta.releaseDate,
           });
         }
 
@@ -152,32 +176,8 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
 
   // Fallback: local JSON cache
   const history: HistoryEntry[] = readHistory().filter((h) => h.userId === userId);
-  const trackIds = [...new Set(history.map(h => h.trackId))];
-  const numericIds = trackIds.map(Number).filter(n => !isNaN(n) && n > 0);
-  const metaMap: Record<string, { genre: string; artistId: number }> = {};
-
-  if (supabase && numericIds.length > 0) {
-    try {
-      const { data: metas } = await supabase
-        .schema('kokomusic')
-        .from('tracks_meta')
-        .select('itunes_id, genre, artist_id')
-        .in('itunes_id', numericIds);
-
-      for (const m of (metas || [])) {
-        metaMap[String((m as any).itunes_id)] = {
-          genre: (m as any).genre || 'Otros',
-          artistId: (m as any).artist_id || 0,
-        };
-      }
-    } catch (e) {
-      console.error('[TasteProfile] Error fetching metadata for local history fallback:', e);
-    }
-  }
-
   for (const h of history) {
     const plays = h.plays?.length ? h.plays : [h.lastPlayed];
-    const meta = metaMap[h.trackId] || { genre: 'Otros', artistId: 0 };
     for (const p of plays) {
       const session = h.minutesBySession?.find((s) => {
         return Math.abs(new Date(s.date).getTime() - new Date(p).getTime()) < 3_600_000;
@@ -185,8 +185,8 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
       enriched.push({
         trackId: h.trackId,
         artist: h.artist,
-        artistId: meta.artistId,
-        genre: meta.genre,
+        artistId: 0, // unknown from local cache
+        genre: 'Otros',
         durationMs: DEFAULT_DURATION_MS,
         timestamp: p,
         secondsListened: session?.seconds || 0,
@@ -235,89 +235,6 @@ export function applyArtistCap(
   return capped;
 }
 
-/** Helper to check if a user is "Koko" based on static IDs or display_name in DB */
-export async function checkIsKoko(userId: string): Promise<boolean> {
-  const KOKO_IDS = ['9847b87c-04e7-4595-af2f-3c02448ebf67', '773d55a4-0cd3-4504-a4e4-04c2b0b80052', '2cd6438b-2ce9-4f5f-8b82-c41896009981'];
-  if (KOKO_IDS.includes(userId)) return true;
-  if (userId.toLowerCase().includes('koko')) return true;
-
-  if (!supabase) return false;
-  try {
-    const { data } = await supabase
-      .schema('kokomusic')
-      .from('koko_profiles')
-      .select('display_name')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (data && data.display_name) {
-      const name = String(data.display_name).toLowerCase();
-      return name === 'koko' || name.includes('koko') || name.includes('limit.koko.business');
-    }
-  } catch (err) {
-    console.error('[TasteProfile] checkIsKoko error:', err);
-  }
-  return false;
-}
-
-/** Generates the biased preset taste profile for user "Koko" */
-export function getKokoSyntheticPrior(userId: string): TasteProfile {
-  const genreAffinity: Record<string, number> = {
-    'Reggaeton': 0.35,
-    'Phonk Brasileño': 0.20,
-    'Trap': 0.15,
-    'R&B': 0.10,
-    'Hip-Hop': 0.10,
-    'Pop': 0.10
-  };
-  
-  const artists = [
-    { name: 'Feid', weight: 0.15 },
-    { name: 'Quevedo', weight: 0.12 },
-    { name: 'Bad Bunny', weight: 0.12 },
-    { name: 'Trueno', weight: 0.20 }, // bastante escuchado (highly listened)
-    { name: 'Morad', weight: 0.08 },
-    { name: 'JC Reyes', weight: 0.06 },
-    { name: 'Samurai Jay', weight: 0.06 },
-    { name: 'Charlie Puth', weight: 0.04 },
-    { name: 'KeBlack', weight: 0.04 },
-    { name: 'RnBoi', weight: 0.04 },
-    { name: 'Omar Courtz', weight: 0.05 },
-    { name: 'Danyl', weight: 0.04 },
-    { name: 'GIMS', weight: 0.04 },
-    { name: 'Naza', weight: 0.04 },
-    { name: 'Dr Yaro', weight: 0.04 },
-    { name: 'Rvssian', weight: 0.04 },
-    { name: 'Myke Towers', weight: 0.05 },
-    { name: 'Mauvais Djo', weight: 0.04 },
-    { name: 'Oasis', weight: 0.04 },
-    { name: 'Tayc', weight: 0.04 },
-    { name: 'PLK', weight: 0.04 },
-    { name: 'Ninho', weight: 0.04 },
-    { name: 'Tiakola', weight: 0.04 },
-    { name: 'Santiago', weight: 0.04 },
-    { name: 'Alonzo', weight: 0.04 },
-    { name: 'Fred de Palma', weight: 0.04 }
-  ];
-
-  const totalArtistWeight = artists.reduce((s, a) => s + a.weight, 0);
-  const topArtists = artists.map(a => ({
-    artistId: 0,
-    name: a.name,
-    weight: a.weight / (totalArtistWeight || 1)
-  }));
-
-  return {
-    userId,
-    genreAffinity,
-    topArtists,
-    hourlyDistribution: new Array(24).fill(1 / 24),
-    dowDistribution: new Array(7).fill(1 / 7),
-    totalWeight: 100, // Strong prior for Koko
-    computedAt: new Date().toISOString()
-  };
-}
-
 // ── Main exported function ────────────────────────────────────────────────────
 
 /**
@@ -329,34 +246,7 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
   const nowMs = Date.now();
 
   const plays = await fetchEnrichedPlays(userId);
-  let existing = await loadTasteProfileStale(userId);
-
-  const isKoko = await checkIsKoko(userId);
-  if (isKoko) {
-    const kokoPrior = getKokoSyntheticPrior(userId);
-    if (!existing) {
-      console.log(`[TasteProfile] Pre-seeding Koko synthetic prior for user: ${userId}`);
-      existing = kokoPrior;
-    } else {
-      console.log(`[TasteProfile] Merging Koko synthetic prior into existing profile for user: ${userId}`);
-      // Ensure genreAffinity is blended
-      for (const [g, w] of Object.entries(kokoPrior.genreAffinity)) {
-        existing.genreAffinity[g] = ((existing.genreAffinity[g] || 0) + w) / 2;
-      }
-      // Ensure topArtists are blended
-      for (const a of kokoPrior.topArtists) {
-        const found = existing.topArtists.find(ea => ea.name.toLowerCase() === a.name.toLowerCase());
-        if (found) {
-          found.weight = (found.weight + a.weight) / 2;
-        } else {
-          existing.topArtists.push(a);
-        }
-      }
-      // Re-normalize topArtists weights
-      const sumWeights = existing.topArtists.reduce((acc, a) => acc + a.weight, 0) || 1;
-      existing.topArtists.forEach(a => a.weight = a.weight / sumWeights);
-    }
-  }
+  const existing = await loadTasteProfileStale(userId);
 
   if (plays.length === 0 && !existing) {
     console.log(`[TasteProfile] No play history for ${userId}. Skipping.`);
@@ -366,6 +256,8 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
   // ── Accumulators ────────────────────────────────────────────────────────────
   const genreWeights: Record<string, number> = {};
   const artistRawWeights: Record<string, { weight: number; artistId: number }> = {};
+  const languageWeights: Record<string, number> = {};
+  const decadeWeights: Record<string, number> = {};
   const hourlyFreq = new Array<number>(24).fill(0);
   const dowFreq = new Array<number>(7).fill(0);
   let totalWeight = 0;
@@ -386,6 +278,18 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
     // Genre
     const genre = play.genre || 'Otros';
     genreWeights[genre] = (genreWeights[genre] || 0) + weight;
+
+    // Language (if known)
+    if (play.language) {
+      const lang = play.language.toLowerCase().trim();
+      languageWeights[lang] = (languageWeights[lang] || 0) + weight;
+    }
+
+    // Decade (if release date known)
+    const decade = getDecade(play.releaseDate);
+    if (decade) {
+      decadeWeights[decade] = (decadeWeights[decade] || 0) + weight;
+    }
 
     // Artist
     const artistKey = play.artist || 'Unknown';
@@ -416,6 +320,16 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
     for (const [g, w] of Object.entries(existing.genreAffinity)) {
       genreWeights[g] = (genreWeights[g] || 0) + (w * syntheticWeight);
     }
+    if (existing.languageAffinity) {
+      for (const [l, w] of Object.entries(existing.languageAffinity)) {
+        languageWeights[l] = (languageWeights[l] || 0) + (w * syntheticWeight);
+      }
+    }
+    if (existing.decadeAffinity) {
+      for (const [d, w] of Object.entries(existing.decadeAffinity)) {
+        decadeWeights[d] = (decadeWeights[d] || 0) + (w * syntheticWeight);
+      }
+    }
     for (const a of existing.topArtists) {
       if (!artistRawWeights[a.name]) {
         artistRawWeights[a.name] = { weight: 0, artistId: a.artistId };
@@ -433,6 +347,8 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
 
   // ── Normalise + cap ─────────────────────────────────────────────────────────
   const genreAffinity = normalise(genreWeights);
+  const languageAffinity = Object.keys(languageWeights).length > 0 ? normalise(languageWeights) : undefined;
+  const decadeAffinity = Object.keys(decadeWeights).length > 0 ? normalise(decadeWeights) : undefined;
 
   const rawArtistOnly: Record<string, number> = {};
   for (const [name, { weight }] of Object.entries(artistRawWeights)) {
@@ -458,6 +374,8 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
     userId,
     genreAffinity,
     topArtists,
+    languageAffinity,
+    decadeAffinity,
     hourlyDistribution: hourlyFreq.map((v) => v / totalHourly),
     dowDistribution: dowFreq.map((v) => v / totalDow),
     totalWeight,

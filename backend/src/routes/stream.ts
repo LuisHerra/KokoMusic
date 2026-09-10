@@ -1,30 +1,16 @@
 /**
- * Stream Route — CDN-first
+ * Stream Route — Multi-Source Waterfall Architecture
  *
- * Flujo para tracks de YouTube:
- *   1. Resolver youtubeId (iTunes → Supabase → yt-search)
- *   2. ¿Existe en CDN (R2)? → 302 redirect directo (sin proxy, sin latencia)
- *   3. ¿Es un video largo de YouTube directo? → embed mode (frontend renderiza iframe)
- *   4. Si no está en CDN  → yt-dlp extrae URL de Google y hace proxy en tiempo real
- *      → En background: descarga + transcode + guarda local para futuras escuchas
- *
- * Para tracks custom subidos por el usuario:
- *   - sourceType='upload'        → stream desde disco local
- *   - sourceType='youtube_alias' → trata como YouTube normal
- *
- * Políticas CDN:
- *   - Archivos > CDN_MAX_FILE_MB (default 30 MB) → solo local permanente (videos YT buscados)
- *   - R2 deshabilitado (sin vars de entorno) → funciona igual que antes (solo proxy/local)
- *
- * Modo embed:
- *   - Videos de YouTube directo con duración > EMBED_THRESHOLD_MIN minutos
- *   → GET /api/stream/:id retorna { embedMode: true, youtubeId } en lugar de audio
- *   → El frontend muestra un iframe de YouTube embebido (reproducción con pantalla apagada OK)
+ * Flujo de streaming:
+ *   1. Si es custom track upload → stream local o redirect CDN
+ *   2. Si existe localmente en disco → stream local con soporte Range
+ *   3. Resolver stream con StreamResolver (L1 Cache → CDN R2 → InnerTube → JioSaavn → Invidious → yt-dlp)
+ *   4. Si es CDN R2 → redirect 302
+ *   5. Si es InnerTube / JioSaavn / Invidious / yt-dlp → proxy en streaming con backpressure y Range support
+ *   6. En background (no-bloqueante): si CDN está habilitado y es track corto, descargar + transcodificar para R2
  */
 
 import { Router, Request, Response } from 'express';
-import { exec } from 'child_process';
-import https from 'https';
 import fs from 'fs';
 import { resolveYoutubeId } from '../services/ytResolverService';
 import { getTrackById } from '../services/metadataService';
@@ -38,30 +24,15 @@ import {
   MAX_CDN_SIZE_MB,
   BUCKET_CAPACITY_MB,
 } from '../services/cdnService';
-import { downloadAndTranscode, getAudioPath, AUDIO_DIR, getCookiesArg } from '../services/ytdlpService';
-import { markTrackAudioReady, isTrackAudioReady, batchCheckAudioReady } from '../services/audioReadyService';
-import { cleanupExpiredSearchCache } from '../services/searchCacheService';
+import { downloadAndTranscode, getAudioPath, AUDIO_DIR } from '../services/ytdlpService';
+import { resolveAudioStream, type ResolvedStream } from '../services/streamResolverService';
 
 const router = Router();
 
-// ── Limpieza asíncrona al arrancar ────────────────────────────────────────────
-// setImmediate defers until after server is fully listening — no blocking startup
-setImmediate(() => {
-  cleanupLargeLocalFiles(AUDIO_DIR);
-  cleanupExpiredSearchCache().catch(() => {});
-  console.log('[Stream] Startup cleanup scheduled (async)');
-});
+// Limpieza de archivos locales antiguos al arrancar
+cleanupLargeLocalFiles(AUDIO_DIR);
 
-// ── Configuración embed mode ──────────────────────────────────────────────────
-
-/**
- * Duración mínima (en minutos) para activar el modo embed en videos de YouTube directos.
- * Por encima de este umbral, el track se reproduce vía iframe en lugar de audio descargado.
- * Valor configurable vía variable de entorno EMBED_THRESHOLD_MIN (default 25 min).
- */
 const EMBED_THRESHOLD_MIN = parseInt(process.env.EMBED_THRESHOLD_MIN ?? '25', 10);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function stringToSafeIntegerHash(str: string): number {
   let hash = 5381;
@@ -71,113 +42,39 @@ function stringToSafeIntegerHash(str: string): number {
   return Math.abs(hash % 4503599627370495);
 }
 
-/** Extrae la URL de streaming directa de YouTube via yt-dlp */
-function getYTStreamUrl(youtubeId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // Cadena de formatos con fallback: webm opus > m4a > cualquier audio > mejor disponible
-    // Nota: NO añadir comillas extra al selector — exec() en Node no usa shell expansion
-    const formatSelector = `bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best`;
-    const ytUrl = `"https://www.youtube.com/watch?v=${youtubeId}"`;
-    const cookiesArg = getCookiesArg();
-    const baseArgs = `${cookiesArg ? cookiesArg + ' ' : ''}--force-ipv4 --legacy-server-connect --get-url --no-playlist -f ${formatSelector}`;
-
-    let cmd = `yt-dlp ${baseArgs} ${ytUrl}`;
-
-    if (process.platform === 'win32') {
-      const wingetPath = `"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\yt-dlp.exe"`;
-      cmd = `yt-dlp ${baseArgs} ${ytUrl} || ${wingetPath} ${baseArgs} ${ytUrl}`;
-    }
-
-    exec(cmd, (error, stdout, stderr) => {
-      if (error && !stdout) {
-        console.error('[yt-dlp] Error extrayendo URL:', stderr);
-        return reject(error);
-      }
-      const lines = stdout.trim().split('\n').filter(l => l.trim().length > 0);
-      const url = lines[lines.length - 1].trim();
-      if (!url) {
-        return reject(new Error('yt-dlp no devolvió ninguna URL de stream'));
-      }
-      resolve(url);
-    });
-  });
-}
-
-/** Stream de archivo local con soporte Range (para custom uploads y cache local) */
+/** Stream de archivo local con soporte Range */
 function streamLocalFile(req: Request, res: Response, filePath: string, contentType = 'audio/mpeg'): void {
-  try {
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
 
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      let start = parseInt(parts[0], 10);
-      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      if (isNaN(start)) start = 0;
-      if (isNaN(end)) end = fileSize - 1;
-
-      if (end >= fileSize) {
-        end = fileSize - 1;
-      }
-
-      if (start >= fileSize || start > end) {
-        res.writeHead(416, {
-          'Content-Range': `bytes */${fileSize}`,
-          'Accept-Ranges': 'bytes'
-        });
-        res.end();
-        return;
-      }
-
-      const chunksize = end - start + 1;
-      const file = fs.createReadStream(filePath, { start, end });
-      res.writeHead(206, {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': contentType,
-      });
-      file.on('error', (err) => {
-        console.error(`[Stream] Error en stream de lectura de archivo local:`, err);
-        if (!res.headersSent) {
-          res.writeHead(500);
-          res.end();
-        }
-      });
-      file.pipe(res);
-    } else {
-      res.writeHead(200, {
-        'Content-Length': fileSize,
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes',
-      });
-      const file = fs.createReadStream(filePath);
-      file.on('error', (err) => {
-        console.error(`[Stream] Error en stream completo de archivo local:`, err);
-        if (!res.headersSent) {
-          res.writeHead(500);
-          res.end();
-        }
-      });
-      file.pipe(res);
-    }
-  } catch (err) {
-    console.error('[Stream] Error general en streamLocalFile:', err);
-    if (!res.headersSent) {
-      res.writeHead(500);
-      res.end();
-    }
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const chunksize = end - start + 1;
+    const file = fs.createReadStream(filePath, { start, end });
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': contentType,
+    });
+    file.pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+    });
+    fs.createReadStream(filePath).pipe(res);
   }
 }
 
-/** Proxy hacia URL directa de audio (googlevideo.com u otras) con soporte Range */
-async function proxyAudioStream(req: Request, res: Response, rawUrl: string, youtubeId?: string): Promise<boolean> {
+/** Proxy hacia URL directa de audio con soporte Range y bypass CORS */
+async function proxyAudioStream(req: Request, res: Response, rawUrl: string, defaultContentType = 'audio/webm'): Promise<void> {
   const requestHeaders: Record<string, string> = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Referer': 'https://www.youtube.com/',
-    'Origin': 'https://www.youtube.com',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Connection': 'keep-alive',
   };
   if (req.headers.range) {
@@ -188,19 +85,9 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string, you
     const upstream = await fetch(rawUrl, { headers: requestHeaders });
 
     if (!upstream.ok && upstream.status !== 206) {
-      console.error(`[Stream] Proxy error ${upstream.status} para URL: ${rawUrl.substring(0, 80)}...`);
-      if (youtubeId) {
-        cache.del(`stream-url:${youtubeId}`);
-      }
-      if (!res.headersSent) {
-        if (upstream.status === 403 || upstream.status === 404) {
-          // Send 403 with JSON so client can fallback to embedMode or fresh fetch
-          res.status(403).json({ error: 'Stream URL expired', embedFallback: true });
-        } else {
-          res.status(upstream.status).end();
-        }
-      }
-      return false;
+      console.error(`[Stream] Proxy upstream error ${upstream.status} para URL: ${rawUrl.substring(0, 80)}...`);
+      if (!res.headersSent) res.status(upstream.status).end();
+      return;
     }
 
     const responseHeaders: Record<string, string> = {
@@ -210,7 +97,7 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string, you
 
     const ct = upstream.headers.get('content-type');
     if (ct) responseHeaders['Content-Type'] = ct;
-    else responseHeaders['Content-Type'] = 'audio/webm';
+    else responseHeaders['Content-Type'] = defaultContentType;
 
     const cl = upstream.headers.get('content-length');
     if (cl) responseHeaders['Content-Length'] = cl;
@@ -220,7 +107,6 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string, you
 
     res.writeHead(upstream.status === 206 ? 206 : 200, responseHeaders);
 
-    // Pipe stream body directamente al cliente
     if (upstream.body) {
       const reader = upstream.body.getReader();
       const pump = async () => {
@@ -228,7 +114,6 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string, you
           const { done, value } = await reader.read();
           if (done) { res.end(); break; }
           if (!res.write(value)) {
-            // Backpressure: esperar drain antes de continuar
             await new Promise(resolve => res.once('drain', resolve));
           }
         }
@@ -243,20 +128,10 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string, you
   }
 }
 
-/** @deprecated Mantenida para compatibilidad interna — usar proxyAudioStream */
-function proxyYouTubeStream(req: Request, res: Response, rawUrl: string): void {
-  proxyAudioStream(req, res, rawUrl).catch(() => {
-    if (!res.headersSent) res.status(502).end();
-  });
-}
-
 /**
- * Descarga, transcodifica y sube a R2 en background.
- * Para videos de YouTube buscados directamente (itunesId=0), el archivo local
- * se conserva permanentemente (deleteLocal=false) para evitar re-descargas.
- * No bloquea la respuesta al cliente.
+ * Descarga y transcodifica en background para almacenar en CDN R2 sin bloquear.
  */
-async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false, itunesId?: string): Promise<void> {
+async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false): Promise<void> {
   try {
     await downloadAndTranscode(youtubeId);
     const localPath = getAudioPath(youtubeId);
@@ -266,225 +141,85 @@ async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false, itun
       return;
     }
 
-    // Mark as locally available — allows frontend to skip yt-dlp cold start next play
-    markTrackAudioReady(youtubeId, itunesId).catch(() => {});
-
-    // deleteLocalAfterUpload = false si keepLocal=true (videos YT directos: guardar siempre)
     const cdnUrl = await uploadToCDN(youtubeId, localPath, !keepLocal);
     if (cdnUrl) {
       cache.setex(`cdn-url:${youtubeId}`, 86400 * 365, cdnUrl);
-      if (itunesId) cache.setex(`cdn-url:${itunesId}`, 86400 * 365, cdnUrl);
-      console.log(`[CDN Background] ${youtubeId} (itunesId: ${itunesId || 'none'}) disponible en CDN: ${cdnUrl}`);
-    } else {
-      if (keepLocal) {
-        console.log(`[CDN Background] ${youtubeId} guardado localmente (sin CDN o archivo grande)`);
-      } else {
-        console.log(`[CDN Background] ${youtubeId} grande o sin CDN — quedará en local hasta mañana`);
-      }
+      console.log(`[CDN Background] ✅ ${youtubeId} disponible en CDN: ${cdnUrl}`);
     }
   } catch (err) {
     console.error(`[CDN Background] Error procesando ${youtubeId}:`, err);
   }
 }
 
-// ── POST /api/stream/:itunesId/purge-cache ────────────────────────────────────
+async function resolveYoutubeIdForTrack(itunesId: string): Promise<{
+  youtubeId: string | null;
+  isDirectYouTube: boolean;
+  artist?: string;
+  title?: string;
+  durationSeconds?: number;
+}> {
+  let youtubeId: string | null = null;
+  let isDirectYouTube = false;
+  let artist: string | undefined;
+  let title: string | undefined;
+  let durationSeconds = 0;
 
-router.post('/:itunesId/purge-cache', async (req: Request, res: Response) => {
-  const { itunesId } = req.params;
-  if (!itunesId) return res.status(400).json({ error: 'itunesId requerido' });
-
-  try {
-    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
-    if (youtubeId) {
-      cache.del(`cdn-url:${youtubeId}`);
-      cache.del(`yt-res:${itunesId}`);
-      cache.del(`stream-url:${youtubeId}`);
-      cache.del(`downloading:${youtubeId}`);
-
-      const localPath = getAudioPath(youtubeId);
-      if (fs.existsSync(localPath)) {
-        try { fs.unlinkSync(localPath); } catch {}
-      }
-      console.log(`[Stream] 🧹 Purged corrupted cache for track ${itunesId} (YouTube: ${youtubeId})`);
+  if (itunesId.startsWith('custom_')) {
+    const { getCustomTrackById } = await import('../services/customTracksService');
+    const customTrack = getCustomTrackById(itunesId);
+    if (customTrack && customTrack.sourceType === 'youtube_alias') {
+      youtubeId = customTrack.youtubeId || null;
+      durationSeconds = Math.round((customTrack.duration || 0) / 1000);
+      artist = customTrack.artist;
+      title = customTrack.title;
     }
-    return res.json({ success: true, message: `Cache purgado para ${itunesId}` });
-  } catch (err) {
-    console.error('[Stream] Error al purgar cache:', err);
-    return res.status(500).json({ error: 'Error al purgar cache' });
-  }
-});
-
-// ── POST /api/stream/warm-cdn — Trigger top tracks CDN pre-warming ─────────────
-router.post('/warm-cdn', async (req: Request, res: Response) => {
-  try {
-    const { warmCDNTopTracks } = await import('../services/cdnWarmerService');
-    // Run in background
-    warmCDNTopTracks().catch(() => {});
-    return res.json({ success: true, message: 'Pre-calentamiento de CDN iniciado en segundo plano para top canciones y artistas' });
-  } catch (err) {
-    return res.status(500).json({ error: 'Error iniciando pre-calentamiento de CDN' });
-  }
-});
-
-// ── GET /api/stream/debug/test-ytdlp/:trackId — Diagnostic endpoint ─────────
-router.get('/debug/test-ytdlp/:trackId', async (req: Request, res: Response) => {
-  const { trackId } = req.params;
-  let cleanTrackId = trackId;
-  if (cleanTrackId.includes('http')) {
-    cleanTrackId = cleanTrackId.split('http')[0].replace(/\/$/, '');
-  }
-  cleanTrackId = cleanTrackId.trim();
-
-  const report: any = {
-    platform: 'Node.js (PC/Cloud)',
-    trackId: cleanTrackId,
-    steps: []
-  };
-
-  try {
-    let youtubeId = cleanTrackId;
-    const isDirectYT = /^[a-zA-Z0-9_-]{11}$/.test(cleanTrackId) && isNaN(Number(cleanTrackId));
-    report.isDirectYouTube = isDirectYT;
-
-    if (!isDirectYT && !isNaN(Number(cleanTrackId))) {
-      report.steps.push({ step: '1_itunes_resolution', status: 'started' });
-      const track = await getTrackById(Number(cleanTrackId));
-      if (track) {
-        const resolved = await resolveYoutubeId(Number(cleanTrackId), track.artist, track.title);
-        report.steps.push({
-          step: '1_itunes_resolution',
-          status: 'completed',
-          title: track.title,
-          artist: track.artist,
-          resolvedYoutubeId: resolved
-        });
-        if (resolved) youtubeId = resolved;
+  } else {
+    const cleanYtId = itunesId.startsWith('yt_') ? itunesId.slice(3) : itunesId;
+    const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(cleanYtId) && isNaN(Number(cleanYtId));
+    if (isLegacyYoutubeId) {
+      isDirectYouTube = true;
+      const cachedRes = cache.get(`yt-res:${cleanYtId}`) as string | undefined;
+      if (cachedRes) {
+        youtubeId = cachedRes;
       } else {
-        report.steps.push({ step: '1_itunes_resolution', status: 'failed', error: 'Track no encontrado en iTunes' });
+        const hashedId = stringToSafeIntegerHash(cleanYtId);
+        const { getYouTubeResolution } = await import('../services/supabaseService');
+        const overridden = await getYouTubeResolution(hashedId);
+        youtubeId = overridden || cleanYtId;
+        cache.setex(`yt-res:${cleanYtId}`, 86400 * 30, youtubeId);
+      }
+      const trackMeta = await getTrackById(itunesId);
+      if (trackMeta) {
+        artist = trackMeta.artist;
+        title = trackMeta.title;
+        durationSeconds = Math.round((trackMeta.duration || 0) / 1000);
+      }
+    } else {
+      const itunesIdNum = Number(itunesId);
+      const track = await getTrackById(itunesIdNum);
+      if (track) {
+        artist = track.artist;
+        title = track.title;
+        durationSeconds = Math.round((track.duration || 0) / 1000);
+        youtubeId = await resolveYoutubeId(itunesIdNum, track.artist, track.title, durationSeconds);
       }
     }
-
-    report.steps.push({ step: '2_extract_stream_url', status: 'started', youtubeId });
-    try {
-      const streamUrl = await getYTStreamUrl(youtubeId);
-      report.steps.push({
-        step: '2_extract_stream_url',
-        status: 'completed',
-        streamUrl: streamUrl.substring(0, 100) + '...'
-      });
-
-      report.steps.push({ step: '3_test_cdn_connection', status: 'started' });
-      const testResp = await fetch(streamUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          'Range': 'bytes=0-1023'
-        }
-      });
-      report.steps.push({
-        step: '3_test_cdn_connection',
-        status: 'completed',
-        httpStatus: testResp.status,
-        contentType: testResp.headers.get('content-type')
-      });
-    } catch (e: any) {
-      report.steps.push({
-        step: '2_extract_stream_url',
-        status: 'failed',
-        error: String(e.message || e)
-      });
-    }
-
-    return res.json(report);
-  } catch (err: any) {
-    report.error = String(err);
-    return res.status(500).json(report);
-  }
-});
-
-// ── GET /api/stream/status?ids=id1,id2,id3 — Batch audio-ready check ────────────
-// Returns a map of { [id]: boolean } indicating local cache status.
-// Used by frontend before play to skip yt-dlp cold start for cached tracks.
-router.get('/status', async (req: Request, res: Response) => {
-  const idsParam = req.query.ids as string | undefined;
-  if (!idsParam) {
-    return res.status(400).json({ error: 'ids query param required' });
-  }
-  const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean).slice(0, 50);
-  const statusMap = await batchCheckAudioReady(ids);
-  return res.json({ status: statusMap });
-});
-
-// ── POST /api/stream/prefetch — Predictive audio prefetch ────────────────────
-// Accepts { ids: string[] } — spawns background download for tracks not yet cached.
-// Called by frontend after queue changes or recommendation load.
-router.post('/prefetch', async (req: Request, res: Response) => {
-  const { ids } = req.body as { ids?: string[] };
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'ids array required' });
   }
 
-  // Respond immediately — downloads happen in background
-  res.status(202).json({ accepted: ids.length });
-
-  for (const itunesId of ids.slice(0, 5)) {
-    try {
-      const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
-      if (!youtubeId) continue;
-
-      // Skip if already locally available
-      if (isTrackAudioReady(youtubeId) || isTrackAudioReady(itunesId)) {
-        console.log(`[Prefetch] Already cached: ${youtubeId}`);
-        continue;
-      }
-
-      // Check Cloudflare R2 CDN before downloading!
-      if (isCDNEnabled()) {
-        const cdnUrl = (await findTrackInCDN(youtubeId)) || (await findTrackInCDN(itunesId));
-        if (cdnUrl) {
-          cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
-          cache.setex(`cdn-url:${itunesId}`, 86400 * 30, cdnUrl);
-          markTrackAudioReady(youtubeId, itunesId).catch(() => {});
-          console.log(`[Prefetch] Already in CDN (R2): ${youtubeId} → ${cdnUrl}`);
-          continue; // Already in CDN — skip yt-dlp download!
-        }
-      }
-
-      // Skip if already downloading
-      if (cache.get(`downloading:${youtubeId}`)) {
-        console.log(`[Prefetch] Already downloading: ${youtubeId}`);
-        continue;
-      }
-
-      // Spawn background download
-      console.log(`[Prefetch] Scheduling background download: ${youtubeId}`);
-      cache.setex(`downloading:${youtubeId}`, 600, '1');
-      downloadAndUploadToCDN(youtubeId, false, itunesId).finally(() => {
-        cache.del(`downloading:${youtubeId}`);
-      });
-    } catch (err) {
-      console.warn(`[Prefetch] Error scheduling ${itunesId}:`, err);
-    }
-  }
-});
+  return { youtubeId, isDirectYouTube, artist, title, durationSeconds };
+}
 
 // ── GET /api/stream/:itunesId ─────────────────────────────────────────────────
 
 router.get('/:itunesId', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
-  const bypassCache = req.query.bypassCache === 'true';
 
   if (!itunesId) {
     return res.status(400).json({ error: 'itunesId requerido' });
   }
 
   try {
-    let youtubeId: string;
-    /** true si el track es un video de YouTube buscado directamente (itunesId === 0) */
-    let isDirectYouTube = false;
-    /** Duración del video en segundos (si se conoce) */
-    let durationSeconds = 0;
-
-    // ── Tracks custom (subidos por el usuario) ────────────────────────────────
+    // 1. Manejo de tracks custom subidos
     if (itunesId.startsWith('custom_')) {
       const { getCustomTrackById } = await import('../services/customTracksService');
       const customTrack = getCustomTrackById(itunesId);
@@ -492,17 +227,10 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Track custom no encontrado' });
       }
 
-      if (customTrack.sourceType === 'youtube_alias') {
-        youtubeId = customTrack.youtubeId!;
-        durationSeconds = Math.round((customTrack.duration || 0) / 1000);
-        // Continúa al flujo normal de YouTube abajo
-      } else {
-        // Upload directo → stream desde disco o redirigir a CDN
-        if (customTrack.audioUrl && !bypassCache) {
-          console.log(`[Stream] Redirigiendo a CDN para track custom: ${customTrack.audioUrl}`);
+      if (customTrack.sourceType !== 'youtube_alias') {
+        if (customTrack.audioUrl) {
           return res.redirect(302, customTrack.audioUrl);
         }
-
         const audioPath = customTrack.audioPath;
         if (!audioPath || !fs.existsSync(audioPath)) {
           return res.status(404).json({ error: 'Archivo de audio local no encontrado' });
@@ -511,166 +239,74 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
         streamLocalFile(req, res, audioPath, contentType);
         return;
       }
-    } else {
-      // ── Tracks de YouTube / iTunes ──────────────────────────────────────────
-      const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(itunesId) && isNaN(Number(itunesId));
-
-      if (isLegacyYoutubeId) {
-        // ID de YouTube directo (desde búsqueda YouTube o legacy)
-        isDirectYouTube = true;
-        const cachedRes = cache.get(`yt-res:${itunesId}`);
-        if (cachedRes && !bypassCache) {
-          youtubeId = cachedRes;
-        } else {
-          const hashedId = stringToSafeIntegerHash(itunesId);
-          const { getYouTubeResolution } = await import('../services/supabaseService');
-          const overridden = await getYouTubeResolution(hashedId);
-          youtubeId = overridden || itunesId;
-          cache.setex(`yt-res:${itunesId}`, 86400 * 30, youtubeId);
-        }
-
-        // Obtener duración del video para decidir si usar embed mode
-        const trackMeta = await getTrackById(itunesId);
-        if (trackMeta?.duration) {
-          durationSeconds = Math.round(trackMeta.duration / 1000);
-        }
-
-        console.log(`[Stream] YouTube directo: ${itunesId} → ${youtubeId} (${Math.round(durationSeconds / 60)}min)`);
-      } else {
-        // iTunes ID → YouTube
-        const itunesIdNum = Number(itunesId);
-        const track = await getTrackById(itunesIdNum);
-        if (!track) {
-          return res.status(404).json({ error: 'Track no encontrado en iTunes' });
-        }
-        durationSeconds = Math.round(track.duration / 1000);
-        console.log(`[Stream] Resolviendo YouTube ID para: "${track.artist} - ${track.title}"`);
-        const resolved = await resolveYoutubeId(itunesIdNum, track.artist, track.title);
-        if (!resolved) {
-          return res.status(404).json({ error: 'No se encontró audio en YouTube para este track' });
-        }
-        youtubeId = resolved;
-      }
     }
 
-    // ── Flujo CDN-first ───────────────────────────────────────────────────────
+    // 2. Resolución de IDs y metadatos
+    const { youtubeId, isDirectYouTube, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);
 
-    // 1. ¿Existe localmente con contenido válido? Servir directamente
+    if (!youtubeId) {
+      return res.status(404).json({ error: 'No se pudo resolver la fuente de audio para este track' });
+    }
+
+    // 3. ¿Existe localmente en disco?
     const localPath = getAudioPath(youtubeId);
-    if (!bypassCache && fs.existsSync(localPath) && fs.statSync(localPath).size > 1024) {
+    if (fs.existsSync(localPath)) {
       console.log(`[Stream] 💾 Local hit: ${youtubeId}`);
       streamLocalFile(req, res, localPath, 'audio/ogg; codecs=opus');
       return;
     }
 
-    // 2. Comprobar si ya está en CDN (caché de URL local primero — evita HeadObject)
-    const cachedCDNUrl = cache.get(`cdn-url:${youtubeId}`) || cache.get(`cdn-url:${itunesId}`);
-    if (cachedCDNUrl && !bypassCache) {
-      console.log(`[Stream] 🚀 CDN hit (caché local): ${itunesId} (yt: ${youtubeId})`);
-      markTrackAudioReady(youtubeId, itunesId).catch(() => {});
-      return res.redirect(302, cachedCDNUrl as string);
+    // 4. Resolver mediante el waterfall unificado de StreamResolver
+    const resolvedStream = await resolveAudioStream(youtubeId, {
+      artist,
+      title,
+      itunesId,
+    });
+
+    if (!resolvedStream) {
+      return res.status(404).json({
+        error: 'No se pudo obtener el stream de audio. Todas las fuentes (InnerTube, JioSaavn, Invidious, yt-dlp) fallaron.',
+      });
     }
 
-    if (isCDNEnabled() && !bypassCache) {
-      const cdnUrl = (await findTrackInCDN(youtubeId)) || (await findTrackInCDN(itunesId));
-      if (cdnUrl) {
-        cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
-        cache.setex(`cdn-url:${itunesId}`, 86400 * 30, cdnUrl);
-        markTrackAudioReady(youtubeId, itunesId).catch(() => {});
-        console.log(`[Stream] 🚀 CDN hit (R2): ${youtubeId} (itunesId: ${itunesId}) → ${cdnUrl}`);
-        return res.redirect(302, cdnUrl);
-      }
+    // 5. Si es CDN R2, redirigir directamente
+    if (resolvedStream.source === 'cdn') {
+      return res.redirect(302, resolvedStream.url);
     }
 
-    // 3. No está en ningún caché — obtener URL de stream via yt-dlp
-    const streamUrlCacheKey = `stream-url:${youtubeId}`;
-    let rawUrl = cache.get(streamUrlCacheKey) as string | undefined;
-
-    if (!rawUrl) {
-      console.log(`[Stream] Extrayendo URL via yt-dlp para: ${youtubeId}`);
-      try {
-        rawUrl = await getYTStreamUrl(youtubeId);
-        cache.setex(streamUrlCacheKey, 1800, rawUrl);
-        console.log(`[Stream] ✅ yt-dlp stream URL lista para ${youtubeId}`);
-        await proxyAudioStream(req, res, rawUrl, youtubeId);
-      } catch (ytdlpErr) {
-        console.error(`[Stream] yt-dlp falló para ${youtubeId}:`, ytdlpErr);
-        if (!res.headersSent) {
-          return res.status(404).json({ error: 'No se pudo obtener el stream. Verifica que yt-dlp está instalado y actualizado.' });
-        }
-      }
-    } else {
-      await proxyAudioStream(req, res, rawUrl, youtubeId);
-    }
-
-    // 4. En background: descargar + transcodificar + cachear (solo si autoDownload !== 'false')
-    const autoDownload = req.query.autoDownload !== 'false';
-    const downloadingKey = `downloading:${youtubeId}`;
-    if (autoDownload && !cache.get(downloadingKey)) {
-      const isTooLargeForServer = durationSeconds > 480; // > 8 minutos, aprox > 8MB
-      if (!isTooLargeForServer) {
-        cache.setex(downloadingKey, 600, '1'); // lock 10 min
-
-        if (isDirectYouTube || !isCDNEnabled()) {
-          // Videos de YouTube directos o si el CDN no está configurado: guardar localmente de forma permanente
-          console.log(`[Stream] 📥 Background: descargando ${youtubeId} (local permanente)...`);
-          downloadAndUploadToCDN(youtubeId, true, itunesId).finally(() => {
-            cache.del(downloadingKey);
-          });
-        } else if (isCDNEnabled()) {
-          // Tracks iTunes con CDN habilitado: subir a CDN y eliminar local
-          console.log(`[Stream] 📥 Background: descargando ${youtubeId} para CDN...`);
-          downloadAndUploadToCDN(youtubeId, false, itunesId).finally(() => {
-            cache.del(downloadingKey);
-          });
-        }
-      } else {
-        console.log(`[Stream] ℹ️ Background skip: track ${youtubeId} es demasiado largo (${Math.round(durationSeconds / 60)} min, > 8MB) para guardarse en CDN.`);
-      }
-    }
+    // 6. Proxy del stream hacia el cliente (InnerTube, JioSaavn, Invidious, etc.)
+    await proxyAudioStream(req, res, resolvedStream.url, resolvedStream.mimeType);
 
   } catch (error) {
-    console.error('[Stream] Error al iniciar stream:', error);
+    console.error('[Stream] Error en endpoint de stream:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Error al iniciar el stream' });
     }
   }
 });
 
-async function resolveYoutubeIdForTrack(itunesId: string): Promise<{ youtubeId: string | null; isDirectYouTube: boolean }> {
-  let youtubeId: string | null = null;
-  let isDirectYouTube = false;
+// ── POST /api/stream/prefetch — Pre-resolución no bloqueante en memoria ───────
 
-  if (itunesId.startsWith('custom_')) {
-    const { getCustomTrackById } = await import('../services/customTracksService');
-    const customTrack = getCustomTrackById(itunesId);
-    if (customTrack && customTrack.sourceType === 'youtube_alias') {
-      youtubeId = customTrack.youtubeId || null;
-    }
-  } else {
-    const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(itunesId) && isNaN(Number(itunesId));
-    if (isLegacyYoutubeId) {
-      isDirectYouTube = true;
-      const cachedRes = cache.get(`yt-res:${itunesId}`) as string | undefined;
-      if (cachedRes) {
-        youtubeId = cachedRes;
-      } else {
-        const hashedId = stringToSafeIntegerHash(itunesId);
-        const { getYouTubeResolution } = await import('../services/supabaseService');
-        const overridden = await getYouTubeResolution(hashedId);
-        youtubeId = overridden || itunesId;
-        cache.setex(`yt-res:${itunesId}`, 86400 * 30, youtubeId);
-      }
-    } else {
-      const itunesIdNum = Number(itunesId);
-      const track = await getTrackById(itunesIdNum);
-      if (track) {
-        youtubeId = await resolveYoutubeId(itunesIdNum, track.artist, track.title);
-      }
-    }
+router.post('/prefetch', async (req: Request, res: Response) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) {
+    return res.status(400).json({ error: 'ids debe ser un array' });
   }
-  return { youtubeId, isDirectYouTube };
-}
+
+  // Pre-calentar la resolución de stream en caché de memoria (sin descargas pesadas de disco)
+  setImmediate(async () => {
+    for (const id of ids.slice(0, 3)) {
+      try {
+        const { youtubeId, artist, title } = await resolveYoutubeIdForTrack(String(id));
+        if (youtubeId) {
+          await resolveAudioStream(youtubeId, { artist, title, itunesId: id });
+        }
+      } catch {}
+    }
+  });
+
+  return res.json({ success: true, prefetching: ids.length });
+});
 
 // ── GET /api/stream/:itunesId/status ─────────────────────────────────────────
 
@@ -678,73 +314,22 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
 
   try {
-    // ── Fast-path: check L1 cache (YouTube resolution + CDN/local) before any I/O ──
-    // This avoids calling getTrackById() (which may hit iTunes) on every status poll.
-    const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(itunesId) && isNaN(Number(itunesId));
-    const isCustom = itunesId.startsWith('custom_');
-
-    // Try to resolve YouTube ID from L1 cache only (no remote calls)
-    let fastYoutubeId: string | null = null;
-    if (isLegacyYoutubeId) {
-      fastYoutubeId = (cache.get(`yt-res:${itunesId}`) as string) || itunesId;
-    } else if (!isCustom) {
-      fastYoutubeId = (cache.get(`yt-res:${itunesId}`) as string) || null;
-    }
-
-    // Check CDN/local cache with whatever IDs we have
-    const checkCachedState = (ytId: string | null) => {
-      const hasCDNCache = !!(cache.get(`cdn-url:${itunesId}`) || (ytId && cache.get(`cdn-url:${ytId}`)));
-      const isDownloading = !!(ytId && cache.get(`downloading:${ytId}`));
-      const isLocalAvailable = !!(ytId && fs.existsSync(getAudioPath(ytId)) && fs.statSync(getAudioPath(ytId)).size > 1024);
-      return { hasCDNCache, isDownloading, isLocalAvailable };
-    };
-
-    const { hasCDNCache, isDownloading, isLocalAvailable } = checkCachedState(fastYoutubeId);
-    const fastDownloaded = hasCDNCache || isLocalAvailable;
-
-    // If we can confirm cached state from L1 only, return immediately (no I/O, no iTunes)
-    if (fastDownloaded || fastYoutubeId) {
-      // We have a YouTube ID from L1 — check CDN R2 if not yet confirmed
-      let finalDownloaded = fastDownloaded;
-      if (!finalDownloaded && fastYoutubeId && isCDNEnabled()) {
-        const cdnUrl = await findTrackInCDN(fastYoutubeId);
-        if (cdnUrl) {
-          cache.setex(`cdn-url:${fastYoutubeId}`, 86400 * 30, cdnUrl);
-          finalDownloaded = true;
-        }
-      }
-
-      return res.json({
-        trackId: itunesId,
-        youtubeId: fastYoutubeId,
-        inCDN: hasCDNCache,
-        isLocalAvailable,
-        downloading: isDownloading,
-        downloaded: finalDownloaded,
-        cdnEnabled: isCDNEnabled(),
-        embedThresholdMin: EMBED_THRESHOLD_MIN,
-        status: finalDownloaded ? (isLocalAvailable ? 'local' : 'cdn') : isDownloading ? 'downloading' : 'ready',
-      });
-    }
-
-    // ── Slow-path: resolve YouTube ID via DB (no iTunes call) ──────────────────
-    // Only reached when track is cold (not in L1 cache). Still avoids iTunes.
-    const { youtubeId, isDirectYouTube } = await resolveYoutubeIdForTrack(itunesId);
+    const { youtubeId, artist, title } = await resolveYoutubeIdForTrack(itunesId);
 
     if (!youtubeId) {
       return res.json({
         trackId: itunesId,
         downloaded: false,
         status: 'none',
-        message: 'No se pudo resolver el ID de YouTube'
+        message: 'No se pudo resolver el ID de audio',
       });
     }
 
-    const hasCDNCacheFull = !!cache.get(`cdn-url:${youtubeId}`);
-    const isDownloadingFull = !!cache.get(`downloading:${youtubeId}`);
-    const isLocalAvailableFull = fs.existsSync(getAudioPath(youtubeId));
+    const hasCDNCache = !!cache.get(`cdn-url:${youtubeId}`);
+    const isDownloading = !!cache.get(`downloading:${youtubeId}`);
+    const isLocalAvailable = fs.existsSync(getAudioPath(youtubeId));
 
-    let finalDownloaded = hasCDNCacheFull || isLocalAvailableFull;
+    let finalDownloaded = hasCDNCache || isLocalAvailable;
 
     if (!finalDownloaded && isCDNEnabled()) {
       const cdnUrl = await findTrackInCDN(youtubeId);
@@ -757,24 +342,23 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
     res.json({
       trackId: itunesId,
       youtubeId,
-      inCDN: hasCDNCacheFull,
-      isLocalAvailable: isLocalAvailableFull,
-      downloading: isDownloadingFull,
+      inCDN: hasCDNCache,
+      isLocalAvailable,
+      downloading: isDownloading,
       downloaded: finalDownloaded,
       cdnEnabled: isCDNEnabled(),
       embedThresholdMin: EMBED_THRESHOLD_MIN,
-      status: finalDownloaded ? (isLocalAvailableFull ? 'local' : 'cdn') : isDownloadingFull ? 'downloading' : 'ready',
+      status: finalDownloaded ? (isLocalAvailable ? 'local' : 'cdn') : isDownloading ? 'downloading' : 'ready',
     });
   } catch (err) {
     res.json({
       trackId: itunesId,
       downloaded: false,
       status: 'none',
-      error: String(err)
+      error: String(err),
     });
   }
 });
-
 
 // ── POST /api/stream/:itunesId/download ───────────────────────────────────────
 
@@ -782,201 +366,50 @@ router.post('/:itunesId/download', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
 
   try {
-    const { youtubeId, isDirectYouTube } = await resolveYoutubeIdForTrack(itunesId);
-
-    // Verificar si el archivo es > 8MB (estimado por duración > 8 min / 480 s)
-    let durationSeconds = 0;
-    const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(itunesId) && isNaN(Number(itunesId));
-    if (isLegacyYoutubeId) {
-      const trackMeta = await getTrackById(itunesId);
-      if (trackMeta?.duration) {
-        durationSeconds = Math.round(trackMeta.duration / 1000);
-      }
-    } else if (!itunesId.startsWith('custom_')) {
-      const itunesIdNum = Number(itunesId);
-      const track = await getTrackById(itunesIdNum);
-      if (track) {
-        durationSeconds = Math.round(track.duration / 1000);
-      }
-    }
-
-    if (durationSeconds > 480) {
-      return res.status(400).json({
-        error: 'FILE_TOO_LARGE_FOR_CDN',
-        message: 'El archivo supera los 8MB y debe ser descargado localmente en tu dispositivo.'
-      });
-    }
+    const { youtubeId, isDirectYouTube, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);
 
     if (!youtubeId) {
-      return res.status(404).json({ error: 'No se pudo resolver la canción en YouTube' });
+      return res.status(404).json({ error: 'No se pudo resolver la canción para descargar' });
     }
+
+    // Resolver URL directa para permitir descarga directa instantánea en la APK
+    const resolvedStream = await resolveAudioStream(youtubeId, { artist, title, itunesId });
 
     const localPath = getAudioPath(youtubeId);
-    if (fs.existsSync(localPath)) {
-      return res.json({ success: true, status: 'downloaded', message: 'Ya descargado localmente' });
-    }
+    const isLocal = fs.existsSync(localPath);
 
-    if (isCDNEnabled()) {
-      const cdnUrl = await findTrackInCDN(youtubeId);
-      if (cdnUrl) {
-        cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
-        return res.json({ success: true, status: 'downloaded', message: 'Ya disponible en CDN' });
-      }
-    }
-
+    // Lanzar background transcode si aplica
     const downloadingKey = `downloading:${youtubeId}`;
-    if (!cache.get(downloadingKey)) {
-      cache.setex(downloadingKey, 600, '1'); // lock 10 min
-      console.log(`[Stream] 📥 Descarga manual solicitada para ${youtubeId} (keepLocal: ${isDirectYouTube || !isCDNEnabled()})`);
-      downloadAndUploadToCDN(youtubeId, isDirectYouTube || !isCDNEnabled()).finally(() => {
+    if (!isLocal && !cache.get(downloadingKey)) {
+      cache.setex(downloadingKey, 600, '1');
+      downloadAndUploadToCDN(youtubeId, isDirectYouTube).finally(() => {
         cache.del(downloadingKey);
       });
     }
 
-    res.json({ success: true, status: 'downloading', message: 'Descarga iniciada' });
-  } catch (err) {
-    console.error('[Stream] Error al iniciar descarga manual:', err);
-    res.status(500).json({ error: 'Error al iniciar descarga manual' });
-  }
-});
-
-// ── GET /api/stream/:itunesId/download-file ───────────────────────────────────
-
-router.get('/:itunesId/download-file', async (req: Request, res: Response) => {
-  const { itunesId } = req.params;
-
-  try {
-    let filename = 'cancion.mp3';
-    let artist = '';
-    let title = '';
-
-    if (itunesId.startsWith('custom_')) {
-      const { getCustomTrackById } = await import('../services/customTracksService');
-      const customTrack = getCustomTrackById(itunesId);
-      if (customTrack) {
-        artist = customTrack.artist || 'Artista Desconocido';
-        title = customTrack.title || 'Título Desconocido';
-      }
-    } else {
-      const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(itunesId) && isNaN(Number(itunesId));
-      if (isLegacyYoutubeId) {
-        const trackMeta = await getTrackById(itunesId);
-        if (trackMeta) {
-          artist = trackMeta.artist || '';
-          title = trackMeta.title || '';
-        }
-      } else {
-        const itunesIdNum = Number(itunesId);
-        const track = await getTrackById(itunesIdNum);
-        if (track) {
-          artist = track.artist || '';
-          title = track.title || '';
-        }
-      }
-    }
-
-    if (artist && title) {
-      filename = `${artist} - ${title}`.replace(/[\/\\?%*:|"<>\s]+/g, '_') + '.mp3';
-    } else if (title) {
-      filename = `${title}`.replace(/[\/\\?%*:|"<>\s]+/g, '_') + '.mp3';
-    }
-
-    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
-    if (!youtubeId) {
-      return res.status(404).json({ error: 'No se pudo resolver la canción' });
-    }
-
-    // Set correct Content-Disposition for browser download
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
-
-    const localPath = getAudioPath(youtubeId);
-    if (fs.existsSync(localPath)) {
-      res.setHeader('Content-Type', 'audio/ogg; codecs=opus');
-      fs.createReadStream(localPath).pipe(res);
-      return;
-    }
-
-    const cachedCDNUrl = cache.get(`cdn-url:${youtubeId}`);
-    if (cachedCDNUrl) {
-      const upstream = await fetch(cachedCDNUrl as string);
-      const ct = upstream.headers.get('content-type') || 'audio/mpeg';
-      res.setHeader('Content-Type', ct);
-      if (upstream.body) {
-        const reader = upstream.body.getReader();
-        const pump = async () => {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) { res.end(); break; }
-            res.write(value);
-          }
-        };
-        await pump();
-      } else {
-        res.end();
-      }
-      return;
-    }
-
-    if (isCDNEnabled()) {
-      const cdnUrl = await findTrackInCDN(youtubeId);
-      if (cdnUrl) {
-        cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
-        const upstream = await fetch(cdnUrl);
-        const ct = upstream.headers.get('content-type') || 'audio/mpeg';
-        res.setHeader('Content-Type', ct);
-        if (upstream.body) {
-          const reader = upstream.body.getReader();
-          const pump = async () => {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) { res.end(); break; }
-              res.write(value);
-            }
-          };
-          await pump();
-        } else {
-          res.end();
-        }
-        return;
-      }
-    }
-
-    // Proxy stream directly from YouTube
-    const rawUrl = await getYTStreamUrl(youtubeId);
-    const upstream = await fetch(rawUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Connection': 'keep-alive',
-      }
+    res.json({
+      success: true,
+      status: isLocal ? 'downloaded' : 'downloading',
+      directUrl: resolvedStream?.url || null,
+      source: resolvedStream?.source || 'unknown',
+      mimeType: resolvedStream?.mimeType || 'audio/webm',
+      durationSeconds,
+      message: isLocal ? 'Ya disponible localmente' : 'Descarga directa iniciada',
     });
-    const ct = upstream.headers.get('content-type') || 'audio/webm';
-    res.setHeader('Content-Type', ct);
-    if (upstream.body) {
-      const reader = upstream.body.getReader();
-      const pump = async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) { res.end(); break; }
-          res.write(value);
-        }
-      };
-      await pump();
-    } else {
-      res.end();
-    }
   } catch (err) {
-    console.error('[Stream] Error descargando archivo local:', err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Error al descargar el archivo' });
-    }
+    console.error('[Stream] Error en descarga:', err);
+    res.status(500).json({ error: 'Error al iniciar descarga' });
   }
 });
 
-// ── GET /api/stream/cdn/stats — Estadísticas de uso de R2 ────────────────────
+// ── GET /api/stream/cdn/stats ─────────────────────────────────────────────────
 
 router.get('/cdn/stats', (_req: Request, res: Response) => {
   if (!isCDNEnabled()) {
-    return res.json({ enabled: false, message: 'CDN no configurado. Rellena CF_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY en .env' });
+    return res.json({
+      enabled: false,
+      message: 'CDN no configurado. El sistema funciona con InnerTube y JioSaavn en tiempo real.',
+    });
   }
   const stats = getCDNUsageStats();
   const requestPct = Math.round((stats.requestsThisMonth / 1_000_000) * 100);
@@ -984,17 +417,14 @@ router.get('/cdn/stats', (_req: Request, res: Response) => {
 
   res.json({
     enabled: true,
-    // Requests
     requestsThisMonth: stats.requestsThisMonth,
     requestLimit: 1_000_000,
     requestUsagePct: requestPct,
-    // Storage
     estimatedStorageMB: Math.round(stats.estimatedStorageMB),
     storageLimit: BUCKET_CAPACITY_MB,
     storageUsagePct: storagePct,
     freeMB: Math.round(stats.freeMB),
     freePct: stats.freePct,
-    // Políticas
     largeFilesAllowed: stats.largeFilesAllowed,
     maxFileSizeMB: MAX_CDN_SIZE_MB,
     embedThresholdMin: EMBED_THRESHOLD_MIN,

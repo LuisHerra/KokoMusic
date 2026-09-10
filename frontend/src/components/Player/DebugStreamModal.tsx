@@ -18,9 +18,46 @@ export default function DebugStreamModal({ isOpen, onClose }: Props) {
   const [apiBaseUrl, setApiBaseUrl] = useState<string>('');
   const [testingStream, setTestingStream] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [copied, setCopied] = useState<boolean>(false);
 
   const activeAudio = getActiveAudio();
   const { activeIdx } = getAudioElements();
+
+  const readyStateLabels = ['0 (HAVE_NOTHING)', '1 (HAVE_METADATA)', '2 (HAVE_CURRENT_DATA)', '3 (HAVE_FUTURE_DATA)', '4 (HAVE_ENOUGH_DATA)'];
+  const networkStateLabels = ['0 (EMPTY)', '1 (IDLE)', '2 (LOADING)', '3 (NO_SOURCE)'];
+
+  const handleCopyLogs = () => {
+    const reportText = `Diagnóstico de Stream & Red
+Track: ${currentTrack?.title || 'N/A'} - ${currentTrack?.artist || 'N/A'} (ID: ${currentTrack?.id || 'N/A'})
+IndexedDB Offline: ${isOffline ? 'Sí' : 'No'}
+Audio Activo: audio${activeIdx + 1}
+SRC: ${activeAudio?.src || 'Vacio'}
+ReadyState: ${activeAudio ? readyStateLabels[activeAudio.readyState] : 'N/A'}
+NetworkState: ${activeAudio ? networkStateLabels[activeAudio.networkState] : 'N/A'}
+Error: ${activeAudio?.error ? `Código ${activeAudio.error.code} - ${activeAudio.error.message}` : 'Ninguno'}
+Base URL: ${apiBaseUrl}
+Status: ${JSON.stringify(statusData, null, 2)}
+
+Logs Recientes:
+${logs.slice().reverse().map(l => `[${l.timestamp}] [${l.level}] ${l.message}${l.details ? ' ' + JSON.stringify(l.details) : ''}`).join('\n')}`;
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(reportText);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = reportText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Error copying logs to clipboard:', e);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -110,9 +147,6 @@ URL final: ${res.url}`;
 
   if (!isOpen) return null;
 
-  const readyStateLabels = ['0 (HAVE_NOTHING)', '1 (HAVE_METADATA)', '2 (HAVE_CURRENT_DATA)', '3 (HAVE_FUTURE_DATA)', '4 (HAVE_ENOUGH_DATA)'];
-  const networkStateLabels = ['0 (EMPTY)', '1 (IDLE)', '2 (LOADING)', '3 (NO_SOURCE)'];
-
   return (
     <div
       onClick={onClose}
@@ -161,18 +195,40 @@ URL final: ${res.url}`;
             <span style={{ fontSize: '16px' }}>🛠️</span>
             <strong style={{ fontSize: '14px', color: '#6366f1' }}>Diagnóstico de Stream & Red</strong>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#a0aec0',
-              fontSize: '18px',
-              cursor: 'pointer',
-            }}
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handleCopyLogs}
+              style={{
+                background: copied ? '#059669' : '#4f46e5',
+                border: 'none',
+                borderRadius: '6px',
+                color: '#fff',
+                padding: '5px 10px',
+                fontSize: '11px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'background 0.2s',
+              }}
+            >
+              {copied ? '✅ ¡Copiado!' : '📋 Copiar Logs'}
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#a0aec0',
+                fontSize: '18px',
+                cursor: 'pointer',
+                padding: '0 4px',
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -284,12 +340,21 @@ URL final: ${res.url}`;
           <div style={{ background: '#090a0f', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <div style={{ color: '#a78bfa', fontWeight: 'bold' }}>📜 Consola de Registros Recientes</div>
-              <button
-                onClick={() => { clearClientLogs(); setLogs([]); }}
-                style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '11px', cursor: 'pointer' }}
-              >
-                Limpiar
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={handleCopyLogs}
+                  style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  {copied ? '✅ Copiado' : '📋 Copiar'}
+                </button>
+                <span style={{ color: '#475569' }}>|</span>
+                <button
+                  onClick={() => { clearClientLogs(); setLogs([]); }}
+                  style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '11px', cursor: 'pointer' }}
+                >
+                  Limpiar
+                </button>
+              </div>
             </div>
             <div style={{ maxHeight: '250px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {logs.length === 0 ? (

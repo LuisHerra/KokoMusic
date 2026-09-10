@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { searchTracks, addToJamQueue, getRecommendations } from '../lib/api';
+import { searchTracks, addToJamQueue, getRecommendations, getTrackRadio } from '../lib/api';
 import type { Track } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
@@ -417,8 +417,18 @@ export default function Search() {
     setTrack(track, [track]);
     addRecentSearch({ type: 'track', ...track });
     try {
-      // Recomendar de una en una basándose en los elementos de la cola activa
-      const recs = await getRecommendations(1, undefined, undefined, [track.id]);
+      // Generar cola completa contextual a través de la Radio Oficial de YouTube Music (sin duplicados)
+      const radio = await getTrackRadio(track.id);
+      const existingIds = new Set([track.id]);
+      const existingKeys = new Set([`${track.title.toLowerCase().trim()}_${track.artist.toLowerCase().trim()}`]);
+      const recs = (radio?.tracks || []).filter(t => {
+        const key = `${t.title.toLowerCase().trim()}_${t.artist.toLowerCase().trim()}`;
+        if (existingIds.has(t.id) || existingKeys.has(key)) return false;
+        existingIds.add(t.id);
+        existingKeys.add(key);
+        return true;
+      }).slice(0, 15);
+
       if (recs && recs.length > 0) {
         const currentStore = usePlayerStore.getState();
         if (currentStore.currentTrack?.id === track.id) {
@@ -430,14 +440,24 @@ export default function Search() {
         }
       }
     } catch (err) {
-      console.error('Error fetching recommendation for played search track:', err);
+      console.error('Error fetching radio recommendations for played search track:', err);
     }
   };
 
   const handlePlayRecentTrack = async (track: any) => {
     setTrack(track, [track]);
     try {
-      const recs = await getRecommendations(1, undefined, undefined, [track.id]);
+      const radio = await getTrackRadio(track.id);
+      const existingIds = new Set([track.id]);
+      const existingKeys = new Set([`${track.title.toLowerCase().trim()}_${track.artist.toLowerCase().trim()}`]);
+      const recs = (radio?.tracks || []).filter(t => {
+        const key = `${t.title.toLowerCase().trim()}_${t.artist.toLowerCase().trim()}`;
+        if (existingIds.has(t.id) || existingKeys.has(key)) return false;
+        existingIds.add(t.id);
+        existingKeys.add(key);
+        return true;
+      }).slice(0, 15);
+
       if (recs && recs.length > 0) {
         const currentStore = usePlayerStore.getState();
         if (currentStore.currentTrack?.id === track.id) {
@@ -449,7 +469,7 @@ export default function Search() {
         }
       }
     } catch (err) {
-      console.error('Error fetching recommendation for played recent track:', err);
+      console.error('Error fetching radio recommendations for played recent track:', err);
     }
   };
 

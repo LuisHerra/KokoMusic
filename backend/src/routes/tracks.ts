@@ -27,246 +27,38 @@ import { getTrackById } from '../services/metadataService';
 import { cache } from '../services/cacheService';
 import { audioExists } from '../services/ytdlpService';
 import { logTrackPlay, readHistory, saveSessionMinutes, HistoryEntry, getHistoryForUser } from '../services/historyService';
-import { setUserRegion } from '../services/regionService';
 import { getRecommendations } from '../services/recommendationService';
-import { enrichHistoryBatch } from '../services/metadataEnrichmentService';
+import { getInnerTubeRadioTracks } from '../services/innerTubeService';
+import { searchYouTube } from '../services/metadataService';
 
 const router = Router();
-
-// POST /api/tracks/enrich-metadata
-router.post('/enrich-metadata', async (req: Request, res: Response) => {
-  try {
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
-    const userId = (req.query.userId || req.body?.userId || undefined) as string | undefined;
-
-    // Trigger non-blocking in background
-    enrichHistoryBatch(userId, limit).catch(err => {
-      console.error('[Tracks] Error in async enrichHistoryBatch:', err);
-    });
-
-    return res.json({
-      success: true,
-      message: `Enrichment started in background for up to ${limit} tracks`,
-      targetUser: userId || 'all'
-    });
-  } catch (error) {
-    console.error('[Tracks] Error launching enrichment:', error);
-    return res.status(500).json({ error: 'Error launching metadata enrichment' });
-  }
-});
-
-
-// GET /api/tracks/available-cdn — Returns ALL tracks cached in CDN / local audio_cache with photos & metadata (Paginated)
-router.get('/available-cdn', async (req: Request, res: Response) => {
-  try {
-    const { AUDIO_DIR } = await import('../services/ytdlpService');
-    const { supabase } = await import('../services/supabaseService');
-    const { listObjectsInCDN } = await import('../services/cdnService');
-
-    const page = Math.max(parseInt((req.query.page as string) || '1', 10), 1);
-    const limit = Math.min(parseInt((req.query.limit as string) || '30', 10), 100);
-
-    const foundIds = new Set<string>();
-
-    // 1. Scan Cloudflare R2 bucket objects
-    const r2Keys = await listObjectsInCDN().catch(() => []);
-    r2Keys.forEach(k => { if (k) foundIds.add(k); });
-
-    // 2. Scan local filesystem (audio_cache/*.opus)
-    if (fs.existsSync(AUDIO_DIR)) {
-      const files = fs.readdirSync(AUDIO_DIR);
-      files.forEach(file => {
-        if (file.endsWith('.opus')) {
-          const id = file.replace('.opus', '').trim();
-          if (id) foundIds.add(id);
-        }
-      });
-    }
-
-    // 3. Query Supabase tracks_meta for audio_ready = true or youtube_id set
-    let dbRows: any[] = [];
-    if (supabase) {
-      const { data, error } = await supabase
-        .schema('kokomusic')
-        .from('tracks_meta')
-        .select('id, title, artist, album, cover, duration_ms, genre, youtube_id, audio_ready')
-        .limit(500);
-
-      if (!error && data) {
-        dbRows = data;
-        data.forEach(row => {
-          if (row.audio_ready || row.youtube_id) {
-            if (row.id) foundIds.add(String(row.id));
-            if (row.youtube_id) foundIds.add(String(row.youtube_id));
-          }
-        });
-      }
-    }
-
-    const allIdsArray = Array.from(foundIds);
-    const totalCount = allIdsArray.length;
-    const totalPages = Math.ceil(totalCount / limit) || 1;
-
-    if (totalCount === 0) {
-      return res.json({ tracks: [], count: 0, totalCount: 0, page, totalPages: 1 });
-    }
-
-    // Paginate ID slice
-    const startIndex = (page - 1) * limit;
-    const pageIds = allIdsArray.slice(startIndex, startIndex + limit);
-
-    const resolvedTracks: any[] = [];
-    const dbMap = new Map<string, any>();
-    dbRows.forEach(r => {
-      if (r.id) dbMap.set(String(r.id).toLowerCase(), r);
-      if (r.youtube_id) dbMap.set(String(r.youtube_id).toLowerCase(), r);
-    });
-
-    for (const rawId of pageIds) {
-      const lowerId = rawId.toLowerCase();
-      const match = dbMap.get(lowerId);
-
-      if (match) {
-        resolvedTracks.push({
-          id: match.id || rawId,
-          trackId: match.id || rawId,
-          title: match.title,
-          artist: match.artist,
-          album: match.album || 'En CDN',
-          cover: match.cover || `https://i.ytimg.com/vi/${match.youtube_id || rawId}/hqdefault.jpg`,
-          duration: match.duration_ms || 180000,
-          durationMs: match.duration_ms || 180000,
-          genre: match.genre || 'Music',
-          popularity: 95,
-          preview_url: null,
-          isInstantCDN: true,
-          youtubeId: match.youtube_id || (rawId.length === 11 ? rawId : null),
-        });
-      } else {
-        // Reverse lookup by ID
-        const trackMeta = await getTrackById(rawId).catch(() => null);
-        if (trackMeta) {
-          resolvedTracks.push({
-            id: trackMeta.id,
-            trackId: trackMeta.id,
-            title: trackMeta.title,
-            artist: trackMeta.artist,
-            album: trackMeta.album || 'En CDN',
-            cover: trackMeta.cover || `https://i.ytimg.com/vi/${rawId}/hqdefault.jpg`,
-            duration: trackMeta.duration || 180000,
-            durationMs: trackMeta.duration || 180000,
-            genre: trackMeta.genre || 'Music',
-            popularity: 90,
-            preview_url: null,
-            isInstantCDN: true,
-            youtubeId: rawId.length === 11 ? rawId : null,
-          });
-        } else if (rawId.length === 11) {
-          // Direct YouTube ID fallback
-          resolvedTracks.push({
-            id: rawId,
-            trackId: rawId,
-            title: `Pista Koko (${rawId})`,
-            artist: 'YouTube Audio',
-            album: 'En CDN',
-            cover: `https://i.ytimg.com/vi/${rawId}/hqdefault.jpg`,
-            duration: 180000,
-            durationMs: 180000,
-            genre: 'Music',
-            popularity: 80,
-            preview_url: null,
-            isInstantCDN: true,
-            youtubeId: rawId,
-          });
-        }
-      }
-    }
-
-    return res.json({
-      tracks: resolvedTracks,
-      count: resolvedTracks.length,
-      totalCount,
-      page,
-      totalPages,
-    });
-  } catch (err) {
-    console.error('[Tracks] Error in /available-cdn:', err);
-    return res.status(500).json({ error: 'Error al obtener canciones disponibles en CDN' });
-  }
-});
-
-// DELETE /api/tracks/cdn/:id — Purge track from Cloudflare R2 CDN, local storage & DB
-router.delete('/cdn/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    if (!id) return res.status(400).json({ error: 'id requerido' });
-
-    const { deleteFromCDN } = await import('../services/cdnService');
-    const { AUDIO_DIR } = await import('../services/ytdlpService');
-    const { supabase } = await import('../services/supabaseService');
-
-    // 1. Purge Cloudflare R2 CDN
-    await deleteFromCDN(id).catch(() => {});
-
-    // 2. Delete local .opus file
-    if (fs.existsSync(AUDIO_DIR)) {
-      const localPath = path.join(AUDIO_DIR, `${id}.opus`);
-      if (fs.existsSync(localPath)) {
-        try { fs.unlinkSync(localPath); } catch {}
-      }
-    }
-
-    // 3. Update Supabase tracks_meta
-    if (supabase) {
-      await supabase
-        .schema('kokomusic')
-        .from('tracks_meta')
-        .update({ audio_ready: false, cdn_url: null })
-        .or(`id.eq.${id},youtube_id.eq.${id}`);
-    }
-
-    // 4. Invalidate in-memory caches
-    cache.del(`cdn-url:${id}`);
-    cache.del(`audio-ready:${id}`);
-
-    console.log(`[Tracks] 🗑️ Admin deleted CDN track ${id}`);
-    return res.json({ success: true, message: `Track ${id} eliminado del CDN` });
-  } catch (err) {
-    console.error('[Tracks] Error deleting CDN track:', err);
-    return res.status(500).json({ error: 'Error eliminando track del CDN' });
-  }
-});
 
 // GET /api/tracks/recommendations
 router.get('/recommendations', async (req: Request, res: Response) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
     const userId = (req.headers['x-user-id'] || req.query.userId || '') as string;
-    const region = (req.headers['x-user-region'] || req.query.userRegion || '') as string;
-    if (userId && region) {
-      setUserRegion(userId, region);
-    }
     const mood = req.query.mood as string | undefined;
-    const seedTrackId = req.query.seedTrackId as string | undefined;
-    const seedTrackIds = req.query.seedTrackIds ? (req.query.seedTrackIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
-    const excludeTrackIds = req.query.excludeTrackIds ? (req.query.excludeTrackIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
-    // earlySkipIds: tracks the user bailed on in < 10s — passed from localStorage client-side
-    const earlySkipIds = req.query.earlySkipIds ? (req.query.earlySkipIds as string).split(',').map(s => s.trim()).filter(Boolean) : undefined;
-    
-    // Custom user-defined algorithm options (from Profile Settings)
-    const explorationRatio = req.query.explorationRatio ? parseFloat(req.query.explorationRatio as string) : undefined;
-    const maxArtistTracks = req.query.maxArtistTracks ? parseInt(req.query.maxArtistTracks as string, 10) : undefined;
-    const cultureStrictness = req.query.cultureStrictness as 'strict' | 'flexible' | 'off' | undefined;
-    const popularityWeight = req.query.popularityWeight as 'low' | 'balanced' | 'high' | undefined;
+    const rawSeed = (req.query.seedTrackId || req.query.seedTrackIds) as string | undefined;
+    const seedTrackId = rawSeed ? rawSeed.split(',')[0].trim() : undefined;
 
-    const algoOptions = (explorationRatio || maxArtistTracks || cultureStrictness || popularityWeight) ? {
-      explorationRatio: !isNaN(explorationRatio!) ? explorationRatio : undefined,
-      maxArtistTracks: !isNaN(maxArtistTracks!) ? maxArtistTracks : undefined,
-      cultureStrictness,
-      popularityWeight,
-    } : undefined;
+    const decadeMode = req.query.decadeMode as string | undefined;
+    const languagePref = req.query.languagePref as string | undefined;
+    const studioMaster = req.query.studioMaster === 'true';
+    const producerAffinity = req.query.producerAffinity !== 'false';
+    const skipPenalty = req.query.skipPenalty !== 'false';
+    const earlySkipIds = req.query.earlySkipIds
+      ? (req.query.earlySkipIds as string).split(',').filter(Boolean)
+      : undefined;
 
-    const recommendations = await getRecommendations(limit, userId, mood, seedTrackId, seedTrackIds, excludeTrackIds, earlySkipIds, algoOptions);
+    const recommendations = await getRecommendations(limit, userId, mood, seedTrackId, {
+      decadeMode,
+      languagePref,
+      studioMaster,
+      producerAffinity,
+      skipPenalty,
+      earlySkipIds,
+    });
     return res.json(recommendations);
   } catch (error) {
     console.error('[Tracks] Error al obtener recomendaciones:', error);
@@ -274,47 +66,52 @@ router.get('/recommendations', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/tracks/batch — fetch metadata for multiple track IDs in one request
-// Fixes N+1 query pattern in Playlist.tsx (previously: 1 request per track row)
-router.post('/batch', async (req: Request, res: Response) => {
-  const { ids } = req.body as { ids?: string[] };
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'ids debe ser un array no vacío' });
-  }
-  if (ids.length > 50) {
-    return res.status(400).json({ error: 'Máximo 50 IDs por petición' });
-  }
-
+// GET /api/tracks/:id/radio — Generate infinite song radio based on a seed track
+router.get('/:id/radio', async (req: Request, res: Response) => {
   try {
-    // Fetch all tracks in parallel — each internally uses L1/L2/iTunes cache chain
-    const results = await Promise.allSettled(
-      ids.map((id) => getTrackById(id.startsWith('custom_') ? id : (isNaN(Number(id)) ? id : Number(id)) as any))
-    );
+    const { id } = req.params;
+    let videoId = id.startsWith('yt_') ? id.replace('yt_', '') : '';
 
-    const tracks: Record<string, any> = {};
-    for (let i = 0; i < ids.length; i++) {
-      const r = results[i];
-      if (r.status === 'fulfilled' && r.value) {
-        tracks[ids[i]] = r.value;
+    // If it's an iTunes ID, try to get track details to find its YouTube equivalent
+    if (!videoId) {
+      const track = await getTrackById(id);
+      if (track) {
+        const ytResults = await searchYouTube(`${track.artist} ${track.title}`, 1);
+        if (ytResults.length > 0) {
+          videoId = ytResults[0].id.replace('yt_', '');
+        }
       }
     }
 
-    return res.json({ tracks });
+    if (videoId) {
+      const radioTracks = await getInnerTubeRadioTracks(videoId);
+      if (radioTracks.length > 0) {
+        return res.json({
+          seedId: id,
+          seedVideoId: videoId,
+          source: 'innertube_radio',
+          tracks: radioTracks,
+        });
+      }
+    }
+
+    // Fallback: use multi-level recommendations
+    const fallbackRecs = await getRecommendations(25, undefined, undefined, id);
+    return res.json({
+      seedId: id,
+      source: 'recommendations_fallback',
+      tracks: fallbackRecs,
+    });
   } catch (error) {
-    console.error('[Tracks] Error en batch fetch:', error);
-    return res.status(500).json({ error: 'Error al obtener tracks en batch' });
+    console.error('[Tracks] Error generating song radio for', req.params.id, ':', error);
+    return res.status(500).json({ error: 'Error generating song radio' });
   }
 });
-
-
 
 // POST /api/tracks/history/session — save accumulated listening minutes on app exit
 router.post('/history/session', async (req: Request, res: Response) => {
   const { sessions } = req.body;
-  // Read userId from header first (apiFetch always sends x-user-id),
-  // fall back to query param for backward compatibility.
-  const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string) || undefined;
-  const deviceId = (req.query.deviceId as string) || undefined;
+  const { userId, deviceId } = req.query as { userId?: string; deviceId?: string };
   if (!Array.isArray(sessions)) {
     return res.status(400).json({ error: 'sessions debe ser un array' });
   }
@@ -1203,7 +1000,7 @@ function cleanMetadataForLyrics(title: string, author: string) {
   return { artist, title: trackName };
 }
 
-import { searchYtdlp } from '../services/ytdlpSearchService';
+import { searchInvidious } from '../services/invidiousService';
 
 function stringToSafeIntegerHash(str: string): number {
   let hash = 5381;
@@ -1248,11 +1045,11 @@ router.get('/:id/video', async (req: Request, res: Response) => {
       youtubeId = await resolveYoutubeId(trackMeta.itunesId, trackMeta.artist, trackMeta.title);
     }
 
-    // Buscar videos musicales relacionados via yt-dlp
+    // Buscar videos musicales relacionados via Invidious
     let relatedVideos: any[] = [];
     try {
       const query = `${trackMeta.artist} ${trackMeta.title}`;
-      const results = await searchYtdlp(query, 10);
+      const results = await searchInvidious(query, 10);
       relatedVideos = results
         .filter((v: any) => v.videoId && v.videoId !== youtubeId)
         .slice(0, 6)
@@ -1260,7 +1057,7 @@ router.get('/:id/video', async (req: Request, res: Response) => {
           id: v.videoId,
           title: v.title,
           artist: v.author?.name || trackMeta.artist,
-          thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
+          thumbnail: v.thumbnail,
           views: v.views,
           duration: v.duration?.seconds
             ? `${Math.floor(v.duration.seconds / 60)}:${String(v.duration.seconds % 60).padStart(2, '0')}`
@@ -1346,18 +1143,15 @@ router.get('/:id/lyrics', async (req: Request, res: Response) => {
 // POST /api/tracks/:id/play
 router.post('/:id/play', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, artist, cover, genre } = req.body;
-  // Read userId from header first (apiFetch always sends x-user-id),
-  // fall back to query param for backward compatibility.
-  const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string) || undefined;
-  const deviceId = (req.query.deviceId as string) || undefined;
+  const { title, artist, cover } = req.body;
+  const { userId, deviceId } = req.query as { userId?: string; deviceId?: string };
 
   if (!title || !artist) {
     return res.status(400).json({ error: 'Faltan title o artist en el body' });
   }
 
   try {
-    const entry = logTrackPlay(id, { title, artist, cover: cover || '', genre }, userId, deviceId);
+    const entry = logTrackPlay(id, { title, artist, cover: cover || '' }, userId, deviceId);
     return res.json({ success: true, entry });
   } catch (error) {
     console.error('[Tracks] Error al registrar reproducción:', error);

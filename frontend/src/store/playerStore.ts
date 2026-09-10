@@ -5,8 +5,7 @@
  */
 
 import { create } from 'zustand';
-import type { Track } from '../lib/api';
-import { getApiUrl } from '../lib/backendResolver';
+import { getTrackRadio, type Track } from '../lib/api';
 import { logToServer } from '../lib/logger';
 
 let globalUnlockHandler: (() => void) | null = null;
@@ -114,6 +113,7 @@ interface PlayerState {
   cycleRepeat: () => void;
   removeFromQueue: (index: number) => void;
   addToQueue: (track: Track) => void;
+  appendQueue: (tracks: Track[]) => void;
   jumpToQueueIndex: (index: number) => void;
   moveInQueue: (from: number, to: number) => void;
   setSleepTimer: (minutes: number | null) => void;
@@ -125,6 +125,10 @@ interface PlayerState {
   isEmbedMode: boolean;
   embedYoutubeId: string | null;
   setEmbedMode: (active: boolean, youtubeId: string | null) => void;
+
+  // YouTube ID resuelto del track actual (guardado al cargar, reutilizado en fallback embed)
+  currentYoutubeId: string | null;
+  setCurrentYoutubeId: (id: string | null) => void;
 }
 
 // Fisher-Yates shuffle — retorna un nuevo array con el track actual primero
@@ -226,14 +230,6 @@ function recordPlayedTrack(trackId: string, setFn: any, getFn: any) {
   }
 }
 
-function getExcludeIdsForApi(state: PlayerState): string {
-  const queueIds = (state.queue || []).map(t => t.id);
-  const sessionIds = state.sessionPlayedTrackIds || [];
-  const currentId = state.currentTrack?.id ? [state.currentTrack.id] : [];
-  const combined = Array.from(new Set([...queueIds, ...sessionIds, ...currentId])).filter(Boolean);
-  return combined.join(',');
-}
-
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: savedCurrentTrack,
   queue: savedQueue,
@@ -262,6 +258,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isEmbedMode: false,
   embedYoutubeId: null,
   setEmbedMode: (active, youtubeId) => set({ isEmbedMode: active, embedYoutubeId: youtubeId }),
+
+  currentYoutubeId: null,
+  setCurrentYoutubeId: (id) => set({ currentYoutubeId: id }),
+
   setIsShuffle: (val) => set({ isShuffle: val }),
 
   eqBands: JSON.parse(localStorage.getItem('koko_eq_bands') || '[0,0,0,0,0]'),
@@ -287,7 +287,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     logToServer('INFO', `[playerStore] setTrack: ${track.title} - ${track.artist} (${track.id})`);
     if (globalUnlockHandler) globalUnlockHandler();
     const { isShuffle } = get();
-    const newOriginal = queue ?? get().originalQueue;
+    // Si no se pasa una cola explícita (ej. clic individual en búsqueda o home), iniciar cola nueva con solo esta pista
+    const newOriginal = queue ?? [track];
     let newQueue: Track[];
     let idx: number;
 
@@ -337,34 +338,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (queue[next]?.id) recordPlayedTrack(queue[next].id, set, get);
       set({ currentTrack: queue[next], queueIndex: next, progress: 0, error: null, isPlaying: true });
 
-      // ── Dynamic 1-by-1 Queue Enrichment (evaluating all recent queue elements) ──
+      // ── Dynamic 1-by-1 Queue Enrichment (usando Radio de YouTube Music) ──
       const remaining = queue.length - next - 1;
       if (remaining <= 2 && currentTrack && !queueReplenishLock) {
         queueReplenishLock = true;
         (async () => {
           try {
-            const userId = localStorage.getItem('koko_device_id') || '';
-            const headers: HeadersInit = {
-              'Content-Type': 'application/json',
-              ...(userId ? { 'x-user-id': userId } : {}),
-            };
-            const apiBase = await getApiUrl();
-            const recentQueueIds = queue.slice(Math.max(0, next - 4), next + 1).map(t => t.id).join(',');
-            const allQueueIds = getExcludeIdsForApi(get());
-            const res = await fetch(
-              `${apiBase}/tracks/recommendations?seedTrackIds=${encodeURIComponent(recentQueueIds)}&excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`,
-              { headers }
-            );
-            if (!res.ok) return;
-            const recs = await res.json() as Track[];
-            if (recs && recs.length > 0) {
+            const radio = await getTrackRadio(currentTrack.id);
+            if (radio?.tracks && radio.tracks.length > 0) {
               const { queue: currentQueue, sessionPlayedTrackIds } = get();
               const existingIds = new Set([...currentQueue.map(t => t.id), ...(sessionPlayedTrackIds || [])]);
-              const fresh = recs.filter(t => !existingIds.has(t.id));
+              const fresh = radio.tracks.filter(t => !existingIds.has(t.id));
               if (fresh.length > 0) {
-                const extended = [...currentQueue, ...fresh];
+                const extended = [...currentQueue, ...fresh.slice(0, 3)];
                 set({ queue: extended, originalQueue: extended });
-                console.log(`[playerStore] Dynamic queue enriched: +${fresh.length} tracks evaluated across queue context`);
+                console.log(`[playerStore] Dynamic queue enriched via Radio: +${Math.min(fresh.length, 3)} tracks`);
               }
             }
           } catch (err) {
@@ -382,63 +370,34 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return;
     }
 
-    // ── ENDLESS PLAYBACK GUARANTEE (Evaluating whole queue context) ──────────
-    try {
-      set({ isLoading: true });
-      const userId = localStorage.getItem('koko_device_id') || '';
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(userId ? { 'x-user-id': userId } : {}),
-      };
-      const apiBase = await getApiUrl();
-      const recentQueueIds = queue.slice(Math.max(0, queue.length - 5)).map(t => t.id).join(',');
-      const allQueueIds = getExcludeIdsForApi(get());
-      
-      const seedUrl = recentQueueIds 
-        ? `${apiBase}/tracks/recommendations?seedTrackIds=${encodeURIComponent(recentQueueIds)}&excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`
-        : `${apiBase}/tracks/recommendations?excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`;
-
-      let res = await fetch(seedUrl, { headers });
-      let recs: Track[] = [];
-
-      if (res.ok) {
-        recs = await res.json() as Track[];
-      }
-
-      // If seed-based recs empty, fetch general recs — ALWAYS with full exclude list to prevent popular-song loop
-      if (!recs || recs.length === 0) {
-        const fallbackRes = await fetch(
-          `${apiBase}/tracks/recommendations?excludeTrackIds=${encodeURIComponent(allQueueIds)}&limit=2`,
-          { headers }
-        );
-        if (fallbackRes.ok) {
-          recs = await fallbackRes.json() as Track[];
+    // ── ENDLESS PLAYBACK GUARANTEE (Using Smart Track Radio) ──────────
+    if (currentTrack) {
+      try {
+        set({ isLoading: true });
+        const radio = await getTrackRadio(currentTrack.id);
+        if (radio?.tracks && radio.tracks.length > 0) {
+          const { queue: currentQueue, sessionPlayedTrackIds } = get();
+          const existingIds = new Set([...currentQueue.map(t => t.id), ...(sessionPlayedTrackIds || [])]);
+          const fresh = radio.tracks.filter(t => !existingIds.has(t.id));
+          if (fresh.length > 0) {
+            const newQueue = [...queue, ...fresh.slice(0, 10)];
+            if (fresh[0]?.id) recordPlayedTrack(fresh[0].id, set, get);
+            set({
+              queue: newQueue,
+              originalQueue: newQueue,
+              queueIndex: next,
+              currentTrack: fresh[0],
+              progress: 0,
+              error: null,
+              isPlaying: true,
+              isLoading: false
+            });
+            return;
+          }
         }
+      } catch (err) {
+        console.error('[playerStore] Endless playback radio fetch failed:', err);
       }
-
-      if (recs && recs.length > 0) {
-        const { queue: currentQueue, sessionPlayedTrackIds } = get();
-        const existingIds = new Set([...currentQueue.map(t => t.id), ...(sessionPlayedTrackIds || [])]);
-        // LOOP FIX: Only add tracks NOT already in the queue or played in session.
-        const fresh = recs.filter(t => !existingIds.has(t.id));
-        if (fresh.length > 0) {
-          const newQueue = [...queue, ...fresh];
-          if (fresh[0]?.id) recordPlayedTrack(fresh[0].id, set, get);
-          set({
-            queue: newQueue,
-            originalQueue: newQueue,
-            queueIndex: next,
-            currentTrack: queue[next] ?? fresh[0],
-            progress: 0,
-            error: null,
-            isPlaying: true,
-            isLoading: false
-          });
-          return;
-        }
-      }
-    } catch (err) {
-      console.error('[playerStore] Endless playback recommendation fetch failed:', err);
     }
 
     // Ultimate fallback: Shuffle queue and restart so music NEVER plays the same order
@@ -540,6 +499,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ currentTrack: track, queue: [track], originalQueue: [track], queueIndex: 0, isPlaying: true, progress: 0, error: null });
       return;
     }
+    // Evitar duplicados exactos si ya está justo delante
+    const isDuplicate = queue.some(t => t.id === track.id || (t.title.toLowerCase().trim() === track.title.toLowerCase().trim() && t.artist.toLowerCase().trim() === track.artist.toLowerCase().trim()));
+    if (isDuplicate) return;
+
     // Insertar justo después de la canción actual en la cola activa (cabeza de la pila)
     const newQueue = [...queue];
     newQueue.splice(queueIndex + 1, 0, track);
@@ -554,6 +517,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     set({ queue: newQueue, originalQueue: newOriginalQueue });
+  },
+
+  appendQueue: (tracks) => {
+    if (!tracks || tracks.length === 0) return;
+    const { queue, originalQueue, currentTrack } = get();
+    if (!currentTrack) {
+      const first = tracks[0];
+      if (globalUnlockHandler) globalUnlockHandler();
+      set({ currentTrack: first, queue: tracks, originalQueue: tracks, queueIndex: 0, isPlaying: true, progress: 0, error: null });
+      return;
+    }
+    const existingIds = new Set(queue.map(t => t.id));
+    const existingKeys = new Set(queue.map(t => `${t.title.toLowerCase().trim()}_${t.artist.toLowerCase().trim()}`));
+    
+    const fresh = tracks.filter(t => {
+      const key = `${t.title.toLowerCase().trim()}_${t.artist.toLowerCase().trim()}`;
+      if (existingIds.has(t.id) || existingKeys.has(key)) return false;
+      existingIds.add(t.id);
+      existingKeys.add(key);
+      return true;
+    });
+
+    if (fresh.length > 0) {
+      const newQueue = [...queue, ...fresh];
+      set({ queue: newQueue, originalQueue: [...originalQueue, ...fresh] });
+    }
   },
 
   jumpToQueueIndex: (index) => {

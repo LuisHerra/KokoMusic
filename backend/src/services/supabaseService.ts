@@ -33,6 +33,9 @@ export interface TrackRow {
   duration_ms: number | null;
   genre:       string | null;
   release_date: string | null;
+  language?:   string | null;
+  label?:      string | null;
+  source_preference?: string | null;
 }
 
 export interface ArtistRow {
@@ -125,19 +128,3 @@ export async function getYouTubeResolution(itunesId: number): Promise<string | n
   if (error || !data) return null;
   return (data as YouTubeResolutionRow).youtube_id;
 }
-
-/** Inicializa las tablas de BeMusic (koko_daily_drops y koko_daily_drop_comments) si no existen */
-export async function initBeMusicTables(): Promise<void> {
-  if (!supabase) return;
-  try {
-    // Check tables existence by lightweight select
-    const { error: dropsErr } = await supabase.schema('kokomusic').from('koko_daily_drops').select('id').limit(1);
-    if (dropsErr && dropsErr.code === '42P01') {
-      console.log('[Supabase] Creando tablas para BeMusic Daily Drops...');
-    }
-  } catch (e) {
-    console.error('[Supabase Init BeMusic Tables Error]:', e);
-  }
-}
-
-initBeMusicTables();

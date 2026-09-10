@@ -183,10 +183,11 @@ export function applyEqBands(audio: HTMLAudioElement, bands: number[]) {
 const audio1 = new Audio();
 const audio2 = new Audio();
 audio1.preload = 'metadata';
-audio2.preload = 'metadata';
-// crossOrigin needed for Web Audio API
-audio1.crossOrigin = 'anonymous';
-audio2.crossOrigin = 'anonymous';
+// crossOrigin needed for Web Audio API on desktop; bypassed on mobile to avoid CORS/range issues
+if (!isMobileDevice()) {
+  audio1.crossOrigin = 'anonymous';
+  audio2.crossOrigin = 'anonymous';
+}
 // Necesario para que iOS mantenga la sesión de audio en background
 // (sin esto Safari puede pausar el audio al bloquear la pantalla)
 audio1.setAttribute('playsinline', '');
@@ -213,61 +214,43 @@ export function setAudioPlaybackRate(rate: number) {
   audio2.playbackRate = rate;
 }
 
+let audioElementsUnlocked = false;
+
 /**
- * Unlocks the Web Audio API AudioContext and the HTML5 Audio elements on mobile browsers.
- * Must be called synchronously within a user interaction handler.
+ * Unlocks the Web Audio API AudioContext and HTML5 Audio on mobile browsers.
+ * Uses a dedicated dummy Audio element to satisfy user-gesture autoplay policies
+ * without polluting or mutating the main playback elements (audio1, audio2).
  */
 export function unlockAudio() {
-  logToServer('INFO', `[useAudioPlayer] unlockAudio() triggered by user interaction.`);
+  if (audioElementsUnlocked) return;
   try {
     const ctx = getAudioContext();
-    logToServer('INFO', `[useAudioPlayer] AudioContext state: ${ctx.state}`);
-    if (ctx && ctx.state === 'suspended') {
-      ctx.resume()
-        .then(() => logToServer('INFO', '[useAudioPlayer] AudioContext resumed successfully'))
-        .catch((err) => logToServer('WARN', '[useAudioPlayer] AudioContext resume failed', err));
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch((err) => {
+        logToServer('WARN', '[useAudioPlayer] AudioContext resume failed', err);
+      });
     }
   } catch (e) {
     logToServer('ERROR', '[useAudioPlayer] Error resuming AudioContext', e);
   }
 
-  // Play a silent short sound to unlock audio1 and audio2
-  const silentSrc = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-  
-  [audio1, audio2].forEach((audio, idx) => {
-    try {
-      const label = `audio${idx + 1}`;
-      logToServer('INFO', `[useAudioPlayer] Unlocking ${label}. src: ${audio.src ? audio.src.substring(0, 50) : 'empty'}, paused: ${audio.paused}`);
-      if (!audio.src || audio.src.startsWith('data:')) {
-        audio.src = silentSrc;
-        audio.play()
-          .then(() => {
-            audio.pause();
-            audio.removeAttribute('src');
-            logToServer('INFO', `[useAudioPlayer] ${label} unlocked successfully (silent play finished)`);
-          })
-          .catch((err) => {
-            logToServer('WARN', `[useAudioPlayer] ${label} silent play failed`, err);
-          });
-      } else {
-        const active = getActiveAudio();
-        if (audio === active && audio.paused) {
-          logToServer('INFO', `[useAudioPlayer] ${label} is active and paused. Attempting sync play...`);
-          audio.play()
-            .then(() => logToServer('INFO', `[useAudioPlayer] ${label} sync play succeeded`))
-            .catch((err) => {
-              logToServer('WARN', `[useAudioPlayer] ${label} sync play failed`, err);
-              if (err.name !== 'NotAllowedError') {
-                const event = new Event('error');
-                audio.dispatchEvent(event);
-              }
-            });
-        }
-      }
-    } catch (e) {
-      logToServer('ERROR', `[useAudioPlayer] Error unlocking audio element index ${idx}`, e);
-    }
-  });
+  try {
+    const unlocker = new Audio();
+    unlocker.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+    unlocker.play()
+      .then(() => {
+        unlocker.pause();
+        unlocker.removeAttribute('src');
+        logToServer('INFO', '[useAudioPlayer] Mobile audio unlocked successfully via dedicated dummy');
+      })
+      .catch((err) => {
+        logToServer('WARN', '[useAudioPlayer] Mobile audio unlock attempt failed', err);
+      });
+  } catch (e) {
+    logToServer('ERROR', '[useAudioPlayer] Error in unlockAudio execution', e);
+  }
+
+  audioElementsUnlocked = true;
 }
 
 // Register the unlock handler with the store
@@ -485,12 +468,12 @@ export function useAudioPlayer() {
         // Si no estamos ya en modo embed, podemos intentar cambiar a modo embed como fallback
         if (!isEmbedModeStore) {
           logToServer('INFO', `[useAudioPlayer] onError: Intentando fallback a YouTube Embed Mode para track: ${currentT.id}`);
-          let youtubeId: string | null = null;
+          let youtubeId: string | null = usePlayerStore.getState().currentYoutubeId;
           
           if (isLegacyYoutubeId) {
             youtubeId = currentT.id;
-          } else {
-            // Intentar resolver desde el backend
+          } else if (!youtubeId) {
+            // Intentar resolver desde el backend si no estaba en el store
             try {
               const API_BASE = await getApiUrl();
               const res = await fetch(`${API_BASE}/stream/${currentT.id}/status`);
@@ -498,6 +481,7 @@ export function useAudioPlayer() {
                 const data = await res.json();
                 if (data.youtubeId) {
                   youtubeId = data.youtubeId;
+                  usePlayerStore.getState().setCurrentYoutubeId(youtubeId);
                 }
               }
             } catch (fetchErr) {
@@ -589,8 +573,10 @@ export function useAudioPlayer() {
     // embedMode=true, abrimos el VideoPanel con el iframe de YouTube en lugar de
     // cargar audio. Esto permite escuchar con pantalla apagada vía YouTube nativo.
     const checkEmbedMode = async (): Promise<boolean> => {
-      const useYtPlayer = localStorage.getItem('koko_use_youtube_player') === 'true';
-      if (!useYtPlayer) return false;
+      const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(currentTrack.id) && isNaN(Number(currentTrack.id));
+      if (isLegacyYoutubeId) {
+        usePlayerStore.getState().setCurrentYoutubeId(currentTrack.id);
+      }
 
       try {
         const API_BASE = await getApiUrl();
@@ -598,12 +584,16 @@ export function useAudioPlayer() {
         if (res.ok) {
           const data = await res.json();
           if (data.youtubeId) {
-             usePlayerStore.getState().setEmbedMode(true, data.youtubeId);
-             return true;
+            usePlayerStore.getState().setCurrentYoutubeId(data.youtubeId);
+            const useYtPlayer = localStorage.getItem('koko_use_youtube_player') === 'true';
+            if (useYtPlayer) {
+              usePlayerStore.getState().setEmbedMode(true, data.youtubeId);
+              return true;
+            }
           }
         }
       } catch (e) {
-         console.error('Failed to get youtubeId for embed mode', e);
+         console.error('Failed to get youtubeId for status/embed check', e);
       }
       return false;
     };

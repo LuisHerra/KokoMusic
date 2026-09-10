@@ -12,6 +12,7 @@ import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
 import AudioVisualizer from './AudioVisualizer';
+import SongCreditsModal from './SongCreditsModal';
 
 function formatTime(secs: number): string {
   if (!secs || isNaN(secs)) return '0:00';
@@ -52,6 +53,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
   // Offline track download status
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
 
   // Touch-to-dismiss gesture state
   const touchStartY = useRef(0);
@@ -373,20 +375,61 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
       <div className="mfp-info-row">
         <div className="mfp-track-text">
           <div className="mfp-track-title">{currentTrack?.title}</div>
-          <Link
-            to={
-              currentTrack?.artistId && currentTrack.artistId !== 0
-                ? `/artist/${currentTrack.artistId}`
-                : `/artist/${encodeURIComponent(currentTrack?.artist || '')}`
-            }
-            className="mfp-track-artist"
-            onClick={onClose}
-          >
-            {currentTrack?.artist}
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+            <Link
+              to={
+                currentTrack?.artistId && currentTrack.artistId !== 0
+                  ? `/artist/${currentTrack.artistId}`
+                  : `/artist/${encodeURIComponent(currentTrack?.artist || '')}`
+              }
+              className="mfp-track-artist"
+              onClick={onClose}
+            >
+              {currentTrack?.artist}
+            </Link>
+            <span
+              onClick={(e) => { e.stopPropagation(); setShowCreditsModal(true); }}
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                background: 'rgba(29,185,84,0.14)',
+                color: '#1DB954',
+                border: '1px solid rgba(29,185,84,0.3)',
+                padding: '1px 6px',
+                borderRadius: 6,
+                letterSpacing: 0.4,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="Ver créditos y calidad de audio"
+            >
+              320k Hi-Fi
+            </span>
+          </div>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Song Radio & Credits Button */}
+          <button
+            onClick={() => setShowCreditsModal(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255,255,255,0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 8,
+              cursor: 'pointer',
+            }}
+            title="Radio de la Canción & Créditos"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="2" />
+              <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
+            </svg>
+          </button>
+
           {/* Caching/Offline Button */}
           <button
             className={`mfp-download-btn ${downloadStatus === 'downloaded' ? 'active' : ''}`}
@@ -554,6 +597,10 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           <span>Visualización</span>
         </button>
       </div>
+
+      {showCreditsModal && currentTrack && (
+        <SongCreditsModal track={currentTrack} onClose={() => setShowCreditsModal(false)} />
+      )}
     </div>
   );
 }

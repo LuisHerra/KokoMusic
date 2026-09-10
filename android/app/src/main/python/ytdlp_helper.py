@@ -66,30 +66,58 @@ def get_stream_url(youtube_id):
     logger.info(f"Iniciando extracción de stream URL para YouTube ID: {youtube_id}")
 
     ydl_opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+        'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
         'quiet': False,
         'no_warnings': False,
         'logger': YtdlpLogger(),
         'nocheckcertificate': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'android'],
+                'player_client': ['mweb', 'android', 'ios', 'web'],
             }
         },
         'force_ipv4': True,
         'legacy_server_connect': True,
-        'http_headers': {
-            'User-Agent': 'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X)',
-            'Accept-Language': 'en-US,en;q=0.9',
-        },
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(yt_url, download=False)
             url = info.get('url')
-            ext = info.get('ext', 'webm')
-            mime = 'audio/webm' if ext == 'webm' else ('audio/mp4' if ext == 'm4a' else 'audio/mpeg')
+            ext = info.get('ext', 'm4a')
+            
+            if not url:
+                # Buscar en requested_formats
+                req_formats = info.get('requested_formats') or []
+                for rf in req_formats:
+                    if rf.get('url') and rf.get('vcodec') == 'none':
+                        url = rf.get('url')
+                        ext = rf.get('ext', ext)
+                        break
+                    elif rf.get('url') and not url:
+                        url = rf.get('url')
+                        ext = rf.get('ext', ext)
+
+            if not url:
+                # Buscar en formats
+                all_formats = info.get('formats') or []
+                audio_formats = [f for f in all_formats if f.get('vcodec') == 'none' and f.get('url')]
+                if audio_formats:
+                    audio_formats.sort(key=lambda f: f.get('tbr') or f.get('abr') or 0, reverse=True)
+                    url = audio_formats[0].get('url')
+                    ext = audio_formats[0].get('ext', ext)
+                elif all_formats:
+                    # Cualquier formato con URL
+                    formats_with_url = [f for f in all_formats if f.get('url')]
+                    if formats_with_url:
+                        url = formats_with_url[0].get('url')
+                        ext = formats_with_url[0].get('ext', ext)
+
+            if not url:
+                raise ValueError("yt-dlp no devolvió ninguna URL de stream reproducible")
+
+            mime = 'audio/mp4' if ext in ['m4a', 'mp4'] else ('audio/webm' if ext == 'webm' else 'audio/mpeg')
+            http_headers = info.get('http_headers') or {}
             
             logger.info(f"Extracción exitosa para {youtube_id}. Formato: {ext}, MIME: {mime}")
             return {
@@ -98,7 +126,8 @@ def get_stream_url(youtube_id):
                 'title': info.get('title'),
                 'duration': info.get('duration'),
                 'ext': ext,
-                'mime': mime
+                'mime': mime,
+                'http_headers': http_headers
             }
     except Exception as e:
         tb = traceback.format_exc()
@@ -173,7 +202,7 @@ def search_youtube_local(query, max_results=5):
         'nocheckcertificate': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'android'],
+                'player_client': ['mweb', 'android', 'ios', 'web'],
             }
         },
         'force_ipv4': True,

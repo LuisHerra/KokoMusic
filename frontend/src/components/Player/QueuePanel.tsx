@@ -1,7 +1,7 @@
 import { usePlayerStore } from '../../store/playerStore';
 import { useState, useEffect } from 'react';
 import DjMixerModal from './DjMixerModal';
-import { getJamQueue, voteJamQueueItem, removeFromJamQueue, getRecommendations } from '../../lib/api';
+import { getJamQueue, voteJamQueueItem, removeFromJamQueue, getRecommendations, getTrackRadio } from '../../lib/api';
 import { useResizableRightPanel } from '../../hooks/useResizable';
 
 function getUserId(): string {
@@ -33,7 +33,7 @@ export default function QueuePanel() {
     }
   }, [jamQueue]);
 
-  // Automatically populate active queue with dynamic recommendation when queue is short
+  // Automatically populate active queue with contextual Radio tracks when queue is short
   useEffect(() => {
     if (!currentTrack || !autoplayEnabled || activeJamCode) {
       return;
@@ -45,15 +45,29 @@ export default function QueuePanel() {
     if (remaining === 0) {
       const loadRecs = async () => {
         try {
-          const recentQueueIds = q.slice(Math.max(0, qIdx - 4), qIdx + 1).map(t => t.id);
-          const data = await getRecommendations(1, undefined, undefined, recentQueueIds);
-          if (data && data.length > 0) {
-            const currentQ = usePlayerStore.getState().queue;
-            const existingIds = new Set(currentQ.map(t => t.id));
-            const fresh = data.filter(t => !existingIds.has(t.id));
-            if (fresh.length > 0) {
-              usePlayerStore.getState().addToQueue(fresh[0]);
+          const currentQ = usePlayerStore.getState().queue;
+          const existingIds = new Set(currentQ.map(t => t.id));
+
+          let candidates: any[] = [];
+          // 1. Prioridad: Radio inteligente de YouTube Music (RDAMVM) para la pista en reproducción
+          try {
+            const radio = await getTrackRadio(currentTrack.id);
+            if (radio?.tracks && radio.tracks.length > 0) {
+              candidates = radio.tracks;
             }
+          } catch (e) {
+            console.warn('[QueuePanel] Radio no disponible, usando afinidad contextual:', e);
+          }
+
+          // 2. Fallback: Recomendaciones contextuales por artista/género
+          if (candidates.length === 0) {
+            const recentQueueIds = q.slice(Math.max(0, qIdx - 4), qIdx + 1).map(t => t.id);
+            candidates = await getRecommendations(5, currentTrack.artist, currentTrack.genre, recentQueueIds);
+          }
+
+          const fresh = (candidates || []).filter(t => !existingIds.has(t.id));
+          if (fresh.length > 0) {
+            usePlayerStore.getState().appendQueue(fresh.slice(0, 10));
           }
         } catch (err) {
           console.error('Error auto-enriching queue:', err);

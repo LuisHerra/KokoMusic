@@ -493,7 +493,7 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
 }
 
 /** Búsqueda de YouTube vía yt-dlp */
-async function searchYouTube(query: string, limit: number, cacheKey: string): Promise<TrackMetadata[]> {
+export async function searchYouTube(query: string, limit: number, cacheKey?: string): Promise<TrackMetadata[]> {
   try {
     const videos = await searchYtdlp(query, limit);
 

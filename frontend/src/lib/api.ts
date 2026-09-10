@@ -272,9 +272,31 @@ export const getRecommendations = (limit = 10, mood?: string, seedTrackId?: stri
     if (strictness) params.append('cultureStrictness', strictness);
     const popWeight = localStorage.getItem('koko_algo_popularity_weight');
     if (popWeight) params.append('popularityWeight', popWeight);
+
+    // Enriched Algorithm preferences
+    const decadeMode = localStorage.getItem('koko_algo_decade_mode');
+    if (decadeMode && decadeMode !== 'all') params.append('decadeMode', decadeMode);
+    const languagePref = localStorage.getItem('koko_algo_language_pref');
+    if (languagePref && languagePref !== 'auto') params.append('languagePref', languagePref);
+    const studioMaster = localStorage.getItem('koko_algo_studio_master');
+    if (studioMaster) params.append('studioMaster', studioMaster);
+    const producerAff = localStorage.getItem('koko_algo_producer_affinity');
+    if (producerAff) params.append('producerAffinity', producerAff);
+    const skipPenalty = localStorage.getItem('koko_algo_skip_penalty');
+    if (skipPenalty) params.append('skipPenalty', skipPenalty);
   } catch {}
   return apiFetch<Track[]>(`/tracks/recommendations?${params.toString()}`);
 };
+
+export interface RadioResponse {
+  seedId: string;
+  seedVideoId?: string;
+  source: string;
+  tracks: Track[];
+}
+
+export const getTrackRadio = (trackId: string) =>
+  apiFetch<RadioResponse>(`/tracks/${encodeURIComponent(trackId)}/radio`);
 
 export const getStreamStatus = (trackId: string) =>
   apiFetch<{ cached: boolean; downloading: boolean; status: string }>(`/stream/${trackId}/status`);

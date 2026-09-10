@@ -17,10 +17,19 @@ import { cache } from './cacheService';
 import { getYouTubeResolution, upsertYouTubeResolution } from './supabaseService';
 import { isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './ytdlpSearchService';
 
-// ── Filtros negativos: versiones que NO queremos ───────────────────────────────
-// Coincide si alguna de estas palabras aparece en el título del video.
-const BAD_VERSION_RE = /\b(karaoke|karaoké|instrumental|backing\s*track|piano\s*(?:version|cover)?|acoustic\s*(?:version|cover)?|cover\s*version|(?:^|[\s([])cover(?:[\s)\]]|$)|tribute|homenaje|sped[\s-]up|speed\s*up|slowed|reverb|nightcore|8\s*bit|8-bit|lofi|lo-fi|midi|remix\s+by\s+\w|parody|parodia|letra\s+animada|lyric\s*video|lyrics|letras?|sing\s*along|reaction|reacción|am\s*cover|version\s+en\s+español|versión\s+en\s+inglés)\b/i;
+// ── Normalización de texto para matching exacto ─────────────────────────────
+function normalizeText(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
+// ── Filtros negativos: versiones que NO queremos ───────────────────────────────
+const BAD_VERSION_RE = /\b(karaoke|karaoké|instrumental|backing\s*track|piano\s*(?:version|cover)?|acoustic\s*(?:version|cover)?|cover\s*version|(?:^|[\s([])cover(?:[\s)\]]|$)|tribute|homenaje|sped[\s-]up|speed\s*up|slowed|reverb|nightcore|8\s*bit|8-bit|lofi|lo-fi|midi|remix\s+by\s+\w|parody|parodia|sing\s*along|reaction|reacción|am\s*cover|version\s+en\s+español|versión\s+en\s+inglés)\b/i;
 
 // ── Patrones de canales oficiales ─────────────────────────────────────────────
 const OFFICIAL_CHANNEL_RE = /vevo$|- topic$|official$|records$|music$/i;
@@ -30,39 +39,67 @@ function isOfficialChannel(channelName: string): boolean {
 }
 
 // ── Palabras positivas en el título (suman puntos) ────────────────────────────
-const POSITIVE_TITLE_RE = /\b(official\s*(audio|video|music\s*video|lyric)?|audio\s*oficial|video\s*oficial|original)\b/i;
+const POSITIVE_TITLE_RE = /\b(official\s*(audio|video|music\s*video|lyric)?|audio\s*oficial|video\s*oficial|original|videoclip)\b/i;
 
 /**
- * Puntúa un candidato de video:
- * Mayor puntaje = mejor match para el track buscado.
- *
- * Puntos positivos:
- *  +3  canal VEVO / Topic / Official
- *  +2  "official audio/video" en título
- *  +1  duración razonable (2-7 min) para una canción
- *
- * Penalizaciones:
- *  -∞  cualquier palabra de BAD_VERSION_RE → excluido directamente
+ * Puntúa un candidato de video considerando concordancia léxica estricta de título y artista.
  */
-function scoreVideo(video: any, expectedDurationSec?: number): number {
-  const title: string = video.title ?? '';
-  const channel: string = video.author?.name ?? '';
+function scoreVideo(
+  video: any,
+  targetArtist: string,
+  targetTitle: string,
+  expectedDurationSec?: number
+): number {
+  const vTitle: string = video.title ?? '';
+  const vChannel: string = video.author?.name ?? '';
 
   // Descarte inmediato si el título contiene una versión no deseada
-  if (BAD_VERSION_RE.test(title)) return -Infinity;
+  if (BAD_VERSION_RE.test(vTitle)) return -Infinity;
+
+  const normVTitle = normalizeText(vTitle);
+  const normVChannel = normalizeText(vChannel);
+  const normArtist = normalizeText(targetArtist);
+  const normTitle = normalizeText(targetTitle);
 
   let score = 0;
 
-  if (isOfficialChannel(channel)) score += 3;
-  if (POSITIVE_TITLE_RE.test(title)) score += 2;
+  // 1. Concordancia de tokens del título (crítico: no emparejar canciones con títulos ajenos)
+  const titleWords = normTitle.split(' ').filter(w => w.length > 1);
+  if (titleWords.length > 0) {
+    const matchedWords = titleWords.filter(w => normVTitle.includes(w));
+    const matchRatio = matchedWords.length / titleWords.length;
+    score += matchRatio * 20; // Hasta +20 puntos
+    if (matchRatio < 0.5) {
+      score -= 15; // Penalizar fuertemente si no incluye ni la mitad del título
+    }
+  }
 
-  // Premio por duración cercana a la esperada (±20%)
+  // 2. Concordancia de artista en título o canal
+  const artistWords = normArtist.split(' ').filter(w => w.length > 1);
+  if (artistWords.length > 0) {
+    const inTitle = artistWords.some(w => normVTitle.includes(w));
+    const inChannel = artistWords.some(w => normVChannel.includes(w));
+    if (inTitle || inChannel) {
+      score += 15;
+    } else {
+      score -= 10; // Penalizar si el artista no aparece en ningún sitio
+    }
+  }
+
+  // 3. Canal oficial / Topic / VEVO
+  if (normVChannel.includes(normArtist) || isOfficialChannel(vChannel)) {
+    score += 5;
+  }
+
+  // 4. Palabras positivas en título (official audio/video)
+  if (POSITIVE_TITLE_RE.test(vTitle)) {
+    score += 3;
+  }
+
+  // 5. Duración cercana a la esperada
   if (expectedDurationSec && video.duration?.seconds) {
     const diff = Math.abs(video.duration.seconds - expectedDurationSec);
-    if (diff / expectedDurationSec < 0.2) score += 1;
-  } else if (video.duration?.seconds) {
-    const d = video.duration.seconds;
-    if (d >= 90 && d <= 480) score += 1; // 1.5-8 min → probable canción
+    if (diff / expectedDurationSec < 0.15) score += 3;
   }
 
   return score;
@@ -118,7 +155,7 @@ export async function resolveYoutubeId(
 
     // Puntuar todos los candidatos y ordenar de mayor a menor score
     const scored = videos
-      .map(v => ({ video: v, score: scoreVideo(v, expectedDurationSec) }))
+      .map(v => ({ video: v, score: scoreVideo(v, artistName, trackName, expectedDurationSec) }))
       .filter(s => s.score > -Infinity) // descartar los bloqueados
       .sort((a, b) => b.score - a.score);
 

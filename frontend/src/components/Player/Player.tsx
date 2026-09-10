@@ -48,6 +48,7 @@ import JamModal from './JamModal';
 import EqualizerPanel from './EqualizerPanel';
 import ShareTrackModal from '../ShareTrackModal';
 import KaraokeStudioModal from './KaraokeStudioModal';
+import SongCreditsModal from './SongCreditsModal';
 
 function formatTime(secs: number): string {
   if (!secs || isNaN(secs)) return '0:00';
@@ -188,6 +189,7 @@ export default function Player() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showEq, setShowEq] = useState(false);
   const [showKaraokeStudio, setShowKaraokeStudio] = useState(false);
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
 
   const userId = localStorage.getItem('koko_device_id') || localStorage.getItem('koko_user_id') || '00000000-0000-0000-0000-000000000001';
 
@@ -201,36 +203,12 @@ export default function Player() {
   }, [currentTrack, progress, nextTrack]);
 
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
-  const [cdnStage, setCdnStage] = useState({ progress: 20, label: '🔍 Buscando en caché local...' });
-  // true cuando el track ya está en CDN/local — suprime el banner de carga
-  const [isCDNCached, setIsCDNCached] = useState(false);
   const [showDebugModal, setShowDebugModal] = useState(false);
-
-  useEffect(() => {
-    // Solo mostrar el banner si el track NO está cacheado (cold-start yt-dlp)
-    if (!isLoading || isCDNCached) return;
-    setCdnStage({ progress: 20, label: '🔍 Buscando audio en caché local...' });
-
-    const t1 = setTimeout(() => {
-      setCdnStage({ progress: 55, label: '📥 Extrayendo audio HQ desde YouTube...' });
-    }, 450);
-
-    const t2 = setTimeout(() => {
-      setCdnStage({ progress: 85, label: '⚡ Procesando y subiendo al CDN...' });
-    }, 1200);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [isLoading, currentTrack?.id, isCDNCached]);
-
 
   // Verificar estado de caché/descarga al cambiar de track (single fetch, doble propósito)
   useEffect(() => {
     if (!currentTrack) return;
 
-    setIsCDNCached(false);
     let isMounted = true;
     let pollInterval: any = null;
 
@@ -243,7 +221,6 @@ export default function Player() {
         if (isOffline) {
           if (isMounted) {
             setDownloadStatus('downloaded');
-            setIsCDNCached(true);
           }
           if (pollInterval) clearInterval(pollInterval);
           return;
@@ -253,9 +230,6 @@ export default function Player() {
         if (!res.ok || !isMounted) return;
         const data = await res.json();
         if (!isMounted) return;
-
-        // Actualizar flag CDN (suprime el banner de carga)
-        if (data.downloaded) setIsCDNCached(true);
 
         // Actualizar botón de descarga
         if (data.downloaded) {
@@ -345,51 +319,6 @@ export default function Player() {
 
   return (
     <div className="player" style={playerStyle} onClick={handlePlayerBarClick}>
-      {isLoading && !isCDNCached && (
-        <div
-          onClick={(e) => { e.stopPropagation(); setShowDebugModal(true); }}
-          style={{
-            position: 'absolute',
-            top: '-42px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(14, 14, 18, 0.96)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid var(--accent)',
-            borderRadius: 14,
-            padding: '6px 14px',
-            fontSize: 11,
-            fontWeight: 700,
-            color: '#fff',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 4,
-            boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
-            zIndex: 100,
-            whiteSpace: 'nowrap',
-            minWidth: 260,
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div className="spinner" style={{ width: 10, height: 10, borderWidth: 2 }} />
-            <span>{cdnStage.label}</span>
-            <span style={{ fontSize: 10, color: 'var(--accent)', opacity: 0.9, marginLeft: 4 }}>🛠️ Ver Logs</span>
-          </div>
-          <div style={{ width: '100%', height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
-            <div
-              style={{
-                height: '100%',
-                width: `${cdnStage.progress}%`,
-                background: 'var(--accent)',
-                transition: 'width 0.4s ease',
-                boxShadow: '0 0 8px var(--accent)',
-              }}
-            />
-          </div>
-        </div>
-      )}
       {activeJamCode && (
         <div 
           onClick={(e) => { e.stopPropagation(); setShowJamModal(true); }}
@@ -439,14 +368,34 @@ export default function Player() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
               <div className="player-info">
                 <div className="player-title" title={currentTrack.title}>{currentTrack.title}</div>
-                <Link 
-                  to={(currentTrack.artistId && currentTrack.artistId !== 0) ? `/artist/${currentTrack.artistId}` : `/artist/${encodeURIComponent(currentTrack.artist)}`}
-                  className="player-artist" 
-                  title={currentTrack.artist}
-                  style={{ textDecoration: 'none' }}
-                >
-                  {currentTrack.artist}
-                </Link>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Link 
+                    to={(currentTrack.artistId && currentTrack.artistId !== 0) ? `/artist/${currentTrack.artistId}` : `/artist/${encodeURIComponent(currentTrack.artist)}`}
+                    className="player-artist" 
+                    title={currentTrack.artist}
+                    style={{ textDecoration: 'none' }}
+                  >
+                    {currentTrack.artist}
+                  </Link>
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setShowCreditsModal(true); }}
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      background: 'rgba(29,185,84,0.14)',
+                      color: '#1DB954',
+                      border: '1px solid rgba(29,185,84,0.3)',
+                      padding: '1px 5px',
+                      borderRadius: 5,
+                      letterSpacing: 0.4,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                    title="Ver créditos y calidad de audio"
+                  >
+                    320k Hi-Fi
+                  </span>
+                </div>
               </div>
               <div className="hide-on-mobile" style={{ flexShrink: 0 }}>
                 <HeartButton
@@ -456,13 +405,24 @@ export default function Player() {
                 />
               </div>
               <button 
+                className="ctrl-btn hide-on-mobile" 
+                onClick={() => setShowCreditsModal(true)}
+                title="Radio de la Canción & Créditos"
+                style={{ padding: 4, flexShrink: 0 }}
+              >
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                  <circle cx="12" cy="12" r="2" />
+                  <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
+                </svg>
+              </button>
+              <button 
                 className="ctrl-btn flex-add-to-playlist hide-on-mobile" 
                 onClick={() => setShowPlaylistModal(true)}
                 title="Añadir a playlist"
                 style={{ padding: 4, flexShrink: 0 }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'block' }}>
-                  <circle cx="12" cy="12" r="10" />
+                  <circle cx="12" cy="8" r="10" />
                   <line x1="12" y1="8" x2="12" y2="16" />
                   <line x1="8" y1="12" x2="16" y2="12" />
                 </svg>
@@ -796,6 +756,17 @@ export default function Player() {
               </button>
 
               <button
+                onClick={() => { setShowCreditsModal(true); setShowMobileMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(29,185,84,0.1)', border: '1px solid rgba(29,185,84,0.3)', color: '#1DB954', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="2" />
+                  <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
+                </svg>
+                <span>Radio de la Canción & Créditos</span>
+              </button>
+
+              <button
                 onClick={() => { setShowDebugModal(true); setShowMobileMenu(false); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
               >
@@ -805,6 +776,10 @@ export default function Player() {
             </div>
           </div>
         </div>
+      )}
+
+      {showCreditsModal && currentTrack && (
+        <SongCreditsModal track={currentTrack} onClose={() => setShowCreditsModal(false)} />
       )}
 
       <DebugStreamModal isOpen={showDebugModal} onClose={() => setShowDebugModal(false)} />
