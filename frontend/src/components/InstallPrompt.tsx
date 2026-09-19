@@ -75,12 +75,11 @@ export default function InstallPrompt() {
       {/* Icono */}
       <div style={{
         width: 48, height: 48, borderRadius: 12, flexShrink: 0,
-        background: 'linear-gradient(135deg, #1db954, #0a7a35)',
+        background: 'rgba(255, 255, 255, 0.06)',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="black">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-        </svg>
+        <img src="/icons/icon-192.png" alt="KokoMusic" width="34" height="34" className="app-logo-accent" style={{ objectFit: 'contain' }} />
       </div>
 
       {/* Texto */}

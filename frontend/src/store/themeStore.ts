@@ -39,6 +39,64 @@ export function adjustBrightness(hex: string, percent: number): string {
   return '#' + (g | (b << 8) | (r << 16)).toString(16).padStart(6, '0');
 }
 
+export function getHexHue(hex: string): number {
+  const cleanHex = hex.replace('#', '');
+  if (cleanHex.length !== 6) return 141;
+  const r = parseInt(cleanHex.substring(0, 2), 16) / 255;
+  const g = parseInt(cleanHex.substring(2, 4), 16) / 255;
+  const b = parseInt(cleanHex.substring(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const d = max - min;
+  let h = 0;
+  switch (max) {
+    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+    case g: h = (b - r) / d + 2; break;
+    case b: h = (r - g) / d + 4; break;
+  }
+  return Math.round(h * 60);
+}
+
+export function getLogoHueFilter(hex: string): string {
+  const targetHue = getHexHue(hex);
+  const BASE_GREEN_HUE = 141.2;
+  const diff = Math.round((targetHue - BASE_GREEN_HUE + 360) % 360);
+  if (diff <= 4 || diff >= 356) return 'none';
+  return `hue-rotate(${diff}deg)`;
+}
+
+let faviconTimer: any = null;
+export function updateFaviconWithHue(hueDiff: number) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (faviconTimer) clearTimeout(faviconTimer);
+  faviconTimer = setTimeout(() => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = '/icons/icon-192.png';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        if (hueDiff > 4 && hueDiff < 356) {
+          ctx.filter = `hue-rotate(${hueDiff}deg)`;
+        }
+        ctx.drawImage(img, 0, 0, 64, 64);
+        const dataUrl = canvas.toDataURL('image/png');
+        const links = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
+        links.forEach((link) => {
+          link.href = dataUrl;
+        });
+      };
+    } catch {
+      /* ignore canvas cross-origin or security restrictions */
+    }
+  }, 80);
+}
+
 export const ACCENT_COLORS: Record<string, AccentColorConfig> = {
   green: {
     key: 'green',
@@ -277,6 +335,14 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     root.style.setProperty('--accent-dim', cfg.dim);
     root.style.setProperty('--accent-glow', cfg.glow);
     root.style.setProperty('--wallpaper-blur', `${wallpaperBlur}px`);
+
+    // Dynamic Hue adjustment for the logo & favicon
+    const targetHue = getHexHue(cfg.accent);
+    const hueDiff = Math.round((targetHue - 141.2 + 360) % 360);
+    const logoFilter = hueDiff <= 4 || hueDiff >= 356 ? 'none' : `hue-rotate(${hueDiff}deg)`;
+    root.style.setProperty('--logo-filter', logoFilter);
+    root.style.setProperty('--logo-hue-deg', `${hueDiff}deg`);
+    updateFaviconWithHue(hueDiff);
 
     // Dynamically update PWA / Direct Access Mobile Status Bar Theme Color
     try {

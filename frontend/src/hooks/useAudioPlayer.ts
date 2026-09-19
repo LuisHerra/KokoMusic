@@ -12,11 +12,12 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler } from '../store/playerStore';
-import { getStreamUrl, logTrackPlay } from '../lib/api';
+import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
 import { logToServer } from '../lib/logger';
 import { usePrefetchAudio } from './usePrefetchAudio';
+import { reportAudioStall, reportAudioHealthy } from '../lib/adaptiveBitrate';
 
 let currentBlobUrl: string | null = null;
 
@@ -117,20 +118,6 @@ function getAudioContext(): AudioContext {
   return audioCtx;
 }
 
-let analyserNode: AnalyserNode | null = null;
-
-export function getAudioAnalyser(): AnalyserNode | null {
-  if (typeof window === 'undefined') return null;
-  if (isMobileDevice()) return null; // Bypassed on mobile for background play compatibility
-  const ctx = getAudioContext();
-  if (!analyserNode) {
-    analyserNode = ctx.createAnalyser();
-    analyserNode.fftSize = 256;
-    analyserNode.connect(ctx.destination);
-  }
-  return analyserNode;
-}
-
 function getOrCreateChain(audio: HTMLAudioElement): AudioChain | null {
   if (isMobileDevice()) return null; // Bypassed on mobile for background play compatibility
   if (chains.has(audio)) return chains.get(audio)!;
@@ -148,19 +135,13 @@ function getOrCreateChain(audio: HTMLAudioElement): AudioChain | null {
   const gain = ctx.createGain();
   gain.gain.value = 1;
 
-  // Chain: source → filter[0] → ... → filter[n] → gain → analyser/destination
+  // Chain: source → filter[0] → ... → filter[n] → gain → destination
   source.connect(filters[0]);
   for (let i = 0; i < filters.length - 1; i++) {
     filters[i].connect(filters[i + 1]);
   }
   filters[filters.length - 1].connect(gain);
-  
-  const analyser = getAudioAnalyser();
-  if (analyser) {
-    gain.connect(analyser);
-  } else {
-    gain.connect(ctx.destination);
-  }
+  gain.connect(ctx.destination);
 
   const chain = { source, filters, gain };
   chains.set(audio, chain);
@@ -169,9 +150,17 @@ function getOrCreateChain(audio: HTMLAudioElement): AudioChain | null {
 
 /**
  * Aplica los valores de EQ a los BiquadFilterNodes del audio dado.
+ * Si el EQ está plano (todo en 0, el estado por defecto) y todavía no existe
+ * una cadena Web Audio para este elemento, no la crea — conectar
+ * `createMediaElementSource` es una operación irreversible que exige
+ * `crossOrigin` en el audio (ver `armCrossOriginForEq`), y la mayoría de
+ * usuarios nunca toca el ecualizador. Sin este atajo, escritorio pagaría
+ * siempre el coste de CORS aunque el EQ nunca se use.
  */
 export function applyEqBands(audio: HTMLAudioElement, bands: number[]) {
   if (isMobileDevice()) return; // Bypassed on mobile for background play compatibility
+  const isFlat = bands.every(b => b === 0);
+  if (isFlat && !chains.has(audio)) return;
   const chain = getOrCreateChain(audio);
   if (!chain) return;
   bands.forEach((gainDb, i) => {
@@ -183,10 +172,56 @@ export function applyEqBands(audio: HTMLAudioElement, bands: number[]) {
 const audio1 = new Audio();
 const audio2 = new Audio();
 audio1.preload = 'metadata';
-// crossOrigin needed for Web Audio API on desktop; bypassed on mobile to avoid CORS/range issues
-if (!isMobileDevice()) {
+
+// crossOrigin solo se activa cuando de verdad hace falta (ecualizador en uso),
+// no por defecto — ver armCrossOriginForEq() más abajo. Sin crossOrigin,
+// hasta escritorio puede usar el redirect directo a googlevideo con la IP
+// real del usuario en vez de pasar por nuestro proxy (más resiliente al 403
+// de Google, que penaliza más las IPs de datacenter — ver stream.ts).
+const savedEqBands: number[] = (() => {
+  try { return JSON.parse(localStorage.getItem('koko_eq_bands') || '[0,0,0,0,0]'); }
+  catch { return [0, 0, 0, 0, 0]; }
+})();
+let crossOriginArmed = !isMobileDevice() && savedEqBands.some((b: number) => b !== 0);
+if (crossOriginArmed) {
   audio1.crossOrigin = 'anonymous';
   audio2.crossOrigin = 'anonymous';
+}
+
+export function isCrossOriginArmed(): boolean {
+  return crossOriginArmed;
+}
+
+/**
+ * Activa `crossOrigin` para el ecualizador la primera vez que el usuario
+ * mueve una banda fuera de 0 en esta sesión. Como cambiar `crossOrigin` en un
+ * elemento que ya tiene un recurso cargado/cargando no lo vuelve CORS-limpio
+ * retroactivamente, hace falta recargar la pista activa a través de nuestro
+ * proxy (forceStream=true) para que el EQ no deje el audio en silencio.
+ */
+export function armCrossOriginForEq(): void {
+  if (crossOriginArmed || isMobileDevice()) return;
+  crossOriginArmed = true;
+  audio1.crossOrigin = 'anonymous';
+  audio2.crossOrigin = 'anonymous';
+
+  const store = usePlayerStore.getState();
+  if (!store.currentTrack) return;
+
+  const audio = getActiveAudio();
+  const wasPlaying = store.isPlaying;
+  const savedTime = audio.currentTime;
+  const url = getStreamUrl(store.currentTrack.id, { forceStream: true });
+  logToServer('INFO', '[useAudioPlayer] armCrossOriginForEq: recargando pista activa con forceStream para habilitar el EQ');
+
+  const onReady = () => {
+    audio.removeEventListener('canplay', onReady);
+    if (savedTime > 0) audio.currentTime = savedTime;
+    if (wasPlaying) audio.play().catch(() => {});
+  };
+  audio.addEventListener('canplay', onReady);
+  audio.src = url;
+  audio.load();
 }
 // Necesario para que iOS mantenga la sesión de audio en background
 // (sin esto Safari puede pausar el audio al bloquear la pantalla)
@@ -260,8 +295,12 @@ registerUnlockHandler(unlockAudio);
  * Función global de seek — úsala en cualquier componente sin instanciar el hook.
  */
 export function seekAudio(seconds: number) {
-  const audio = getActiveAudio();
-  audio.currentTime = seconds;
+  // En isEmbedMode, useVideoSync detecta el salto de progreso (>1.5s) y envía
+  // el comando seekTo al iframe de YouTube automáticamente.
+  if (!usePlayerStore.getState().isEmbedMode) {
+    const audio = getActiveAudio();
+    audio.currentTime = seconds;
+  }
   usePlayerStore.getState().setProgress(seconds);
 }
 
@@ -292,6 +331,10 @@ export function useAudioPlayer() {
   // playWhenReady captures its generation at creation time; if a newer load has
   // already started by the time canplay fires, the listener self-destructs.
   const loadGenerationRef = useRef(0);
+  // ── Transition guard: true while we are loading a new track.
+  // Prevents the native 'pause' event from prevAudio (triggered by prevAudio.pause())
+  // from writing isPlaying=false into the store and blocking playWhenReady.
+  const isLoadingNewTrackRef = useRef(false);
 
   // Predictive prefetch: start downloading next 2 queued tracks in background
   usePrefetchAudio();
@@ -318,6 +361,7 @@ export function useAudioPlayer() {
   // Apply EQ whenever eqBands change
   useEffect(() => {
     try {
+      if (eqBands.some((b) => b !== 0)) armCrossOriginForEq();
       applyEqBands(audio1, eqBands);
       applyEqBands(audio2, eqBands);
     } catch {
@@ -342,7 +386,15 @@ export function useAudioPlayer() {
     }
 
     if (!crossfadeTriggered.current) {
-      // Track ended naturally — not an early skip, no penalty needed
+      // Track ended naturally — not an early skip, no penalty needed.
+      // Señal real de "escuchado completo": dispara el refresco del perfil de
+      // gustos/candidatos para que esta canción quede excluida de próximas
+      // recomendaciones durante un tiempo (sin esto el Koko-Mix la repite).
+      const finishedTrack = usePlayerStore.getState().currentTrack;
+      if (finishedTrack) {
+        triggerRecommendationEvent('track_completed', finishedTrack.id);
+        sendRecommendationFeedback(finishedTrack.id, 'track_completed');
+      }
       nextTrack();
     }
   }, [sleepTimerMinutes, clearSleepTimer, setIsPlaying, repeatMode, nextTrack]);
@@ -350,7 +402,14 @@ export function useAudioPlayer() {
   // ── Media Session: actualizar metadatos cuando cambia el track o el estado ──
   useEffect(() => {
     updateMediaSession(currentTrack ?? null, {
-      onPlay:  () => { usePlayerStore.getState().setIsPlaying(true);  },
+      // Ignorar un 'play' de Media Session (control de bloqueo de pantalla /
+      // auriculares / barra de medios del SO) hasta que el usuario haya
+      // iniciado playback explícitamente al menos una vez en esta sesión.
+      // Sin esto, al recargar la página con una canción restaurada de la
+      // sesión anterior, algunos sistemas reafirman el estado "reproduciendo"
+      // del Media Session apenas se registran los handlers, arrancando el
+      // audio solo sin que el usuario pulse play — justo el bug reportado.
+      onPlay:  () => { if (audioElementsUnlocked) usePlayerStore.getState().setIsPlaying(true); },
       onPause: () => { usePlayerStore.getState().setIsPlaying(false); },
       onPrev:  () => { usePlayerStore.getState().prevTrack();          },
       onNext:  () => { usePlayerStore.getState().nextTrack();          },
@@ -421,8 +480,16 @@ export function useAudioPlayer() {
             crossfadeTriggered.current = true;
             // Log as early skip if the track was skipped before 10 seconds
             const state = usePlayerStore.getState();
-            if (state.currentTrack && audio.currentTime < 10) {
-              recordEarlySkip(state.currentTrack.id, state.currentTrack.artist, state.currentTrack.title);
+            if (state.currentTrack) {
+              if (audio.currentTime < 10) {
+                recordEarlySkip(state.currentTrack.id, state.currentTrack.artist, state.currentTrack.title);
+                sendRecommendationFeedback(state.currentTrack.id, 'skip');
+              } else {
+                // Crossfade cerca del final (o transición DJ ya avanzada) — se
+                // trata como escucha completa a efectos de refrescar recomendaciones.
+                triggerRecommendationEvent('track_completed', state.currentTrack.id);
+                sendRecommendationFeedback(state.currentTrack.id, 'track_completed');
+              }
             }
             nextTrack();
           }
@@ -436,12 +503,56 @@ export function useAudioPlayer() {
     const onWaiting = (e: Event) => {
       const audioEl = e.target as HTMLAudioElement;
       logToServer('INFO', `[useAudioPlayer] audio onWaiting. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isActive: ${audioEl === getActiveAudio()}`);
-      if (audioEl === getActiveAudio()) setLoading(true);
+      if (audioEl === getActiveAudio()) {
+        setLoading(true);
+        reportAudioStall();
+      }
     };
     const onCanPlay = (e: Event) => {
       const audioEl = e.target as HTMLAudioElement;
       logToServer('INFO', `[useAudioPlayer] audio onCanPlay. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isActive: ${audioEl === getActiveAudio()}`);
       if (audioEl === getActiveAudio()) setLoading(false);
+    };
+    const onPlay = (e: Event) => {
+      const audioEl = e.target as HTMLAudioElement;
+      if (audioEl === getActiveAudio()) {
+        logToServer('INFO', `[useAudioPlayer] native onPlay. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}`);
+        setIsPlaying(true);
+      }
+    };
+    const onPlaying = (e: Event) => {
+      const audioEl = e.target as HTMLAudioElement;
+      if (audioEl === getActiveAudio()) {
+        logToServer('INFO', `[useAudioPlayer] native onPlaying. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}`);
+        setIsPlaying(true);
+        setLoading(false);
+        reportAudioHealthy();
+
+        // Safety volume & AudioContext unfreeze
+        const targetVol = isMuted ? 0 : volume;
+        if (!fadeIntervalRef.current && audioEl.volume === 0 && targetVol > 0) {
+          logToServer('WARN', `[useAudioPlayer] audio volume was 0 during onPlaying! Restoring to ${targetVol}`);
+          audioEl.volume = targetVol;
+        }
+
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+      }
+    };
+    const onPause = (e: Event) => {
+      const audioEl = e.target as HTMLAudioElement;
+      if (audioEl === getActiveAudio()) {
+        logToServer('INFO', `[useAudioPlayer] native onPause. src: ${audioEl.src ? audioEl.src.substring(0, 100) : 'none'}, isLoadingNewTrack: ${isLoadingNewTrackRef.current}`);
+        // FIX: Ignore the native pause event while we are transitioning to a new track.
+        // When prevAudio.pause() is called during a track change, the 'pause' event fires
+        // on what was the active audio at that moment. This must NOT set isPlaying=false
+        // because the new track is about to start playing.
+        if (isLoadingNewTrackRef.current) return;
+        if (!usePlayerStore.getState().isEmbedMode) {
+          setIsPlaying(false);
+        }
+      }
     };
     const onError = async (e: Event) => {
       const audioEl = e.target as HTMLAudioElement;
@@ -462,76 +573,94 @@ export function useAudioPlayer() {
           } catch {}
         }
 
-        const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(currentT.id) && isNaN(Number(currentT.id));
         const isEmbedModeStore = usePlayerStore.getState().isEmbedMode;
+        if (isEmbedModeStore) return;
 
-        // Si no estamos ya en modo embed, podemos intentar cambiar a modo embed como fallback
-        if (!isEmbedModeStore) {
-          logToServer('INFO', `[useAudioPlayer] onError: Intentando fallback a YouTube Embed Mode para track: ${currentT.id}`);
-          let youtubeId: string | null = usePlayerStore.getState().currentYoutubeId;
-          
-          if (isLegacyYoutubeId) {
-            youtubeId = currentT.id;
-          } else if (!youtubeId) {
-            // Intentar resolver desde el backend si no estaba en el store
-            try {
-              const API_BASE = await getApiUrl();
-              const res = await fetch(`${API_BASE}/stream/${currentT.id}/status`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data.youtubeId) {
-                  youtubeId = data.youtubeId;
-                  usePlayerStore.getState().setCurrentYoutubeId(youtubeId);
-                }
-              }
-            } catch (fetchErr) {
-              console.error('[useAudioPlayer] Failed to fetch resolved youtubeId on error fallback:', fetchErr);
-            }
-          }
-
-          if (youtubeId) {
-            logToServer('INFO', `[useAudioPlayer] onError: Cambiando a YouTube Embed Mode con ID ${youtubeId}`);
-            usePlayerStore.getState().setEmbedMode(true, youtubeId);
-            setLoading(false);
-            // Detener audios nativos y limpiar su src para evitar bucles de error
-            audio1.pause();
-            audio2.pause();
-            audio1.removeAttribute('src');
-            audio2.removeAttribute('src');
-            if (currentBlobUrl) {
-              URL.revokeObjectURL(currentBlobUrl);
-              currentBlobUrl = null;
-            }
-            setIsPlaying(true);
-            return;
-          }
-        }
-
-        // NEVER auto-skip to a different track on stream error!
-        // Instead, perform an automatic retry reload on the CURRENT track to preserve the user's mood.
-        logToServer('WARN', `[useAudioPlayer] onError: Error cargando stream para "${currentT.title}". Reintentando reproducción del mismo track...`);
-        setError(`Reintentando conexión para "${currentT.title}"...`);
-        
+        // PRIORIDAD 1: reintentar el stream nativo antes de rendirnos al embed de
+        // YouTube. La mayoría de "Format error" son fallos puntuales de un edge de
+        // googlevideo (403/IP-mismatch) — una resolución fresca (con purge-cache ya
+        // ejecutado arriba) suele bastar. Saltar directo a embed en el primer fallo
+        // convertía cualquier glitch transitorio en una interrupción total de la
+        // transición entre canciones (audio nativo cortado + iframe de YouTube
+        // abriéndose de golpe), así que el embed queda como último recurso tras
+        // agotar los 3 reintentos nativos.
+        const currentTForRetry = currentT;
         const activeAudio = getActiveAudio();
-        const retryCount = retryCountRef.current[currentT.id] || 0;
+        const retryCount = retryCountRef.current[currentTForRetry.id] || 0;
         if (retryCount < 3) {
-          retryCountRef.current[currentT.id] = retryCount + 1;
+          retryCountRef.current[currentTForRetry.id] = retryCount + 1;
+          logToServer('WARN', `[useAudioPlayer] onError: Error cargando stream para "${currentTForRetry.title}". Reintentando reproducción del mismo track (${retryCount + 1}/3)...`);
+          setError(`Reintentando conexión para "${currentTForRetry.title}"...`);
           // Exponential backoff: 1.5s, 3s, 6s — gives purge-cache time to complete
           const delayMs = 1500 * Math.pow(2, retryCount);
           setTimeout(() => {
-            logToServer('INFO', `[useAudioPlayer] Reintentando carga de stream (${retryCount + 1}/3) para track ${currentT.id}`);
-            // Build a clean URL — getStreamUrl returns a base path with no query params
-            const streamUrl = `${getStreamUrl(currentT.id)}?retry=${retryCount + 1}`;
+            logToServer('INFO', `[useAudioPlayer] Reintentando carga de stream (${retryCount + 1}/3) para track ${currentTForRetry.id}`);
+            const baseStreamUrl = getStreamUrl(currentTForRetry.id, { forceStream: isCrossOriginArmed() });
+            const sep = baseStreamUrl.includes('?') ? '&' : '?';
+            const streamUrl = `${baseStreamUrl}${sep}retry=${retryCount + 1}`;
             activeAudio.src = streamUrl;
+            activeAudio.volume = isMuted ? 0 : volume;
+            if (audioCtx && audioCtx.state === 'suspended') {
+              audioCtx.resume().catch(() => {});
+            }
             activeAudio.load();
             activeAudio.play().catch(() => {});
           }, delayMs);
-        } else {
-          delete retryCountRef.current[currentT.id];
-          setIsPlaying(false);
-          setLoading(false);
-          setError(`No se pudo conectar al audio de "${currentT.title}". Pulsa reproducir para reintentar.`);
+          return;
         }
+
+        // PRIORIDAD 2: reintentos nativos agotados — probar el fallback de YouTube Embed.
+        delete retryCountRef.current[currentT.id];
+        const isLegacyYoutubeId = /^[a-zA-Z0-9_-]{11}$/.test(currentT.id) && isNaN(Number(currentT.id));
+        logToServer('INFO', `[useAudioPlayer] onError: Reintentos nativos agotados. Intentando fallback a YouTube Embed Mode para track: ${currentT.id}`);
+        let youtubeId: string | null = usePlayerStore.getState().currentYoutubeId;
+
+        if (isLegacyYoutubeId) {
+          youtubeId = currentT.id;
+        } else if (!youtubeId) {
+          // Intentar resolver desde el backend si no estaba en el store
+          try {
+            const API_BASE = await getApiUrl();
+            const res = await fetch(`${API_BASE}/stream/${currentT.id}/status`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.youtubeId) {
+                youtubeId = data.youtubeId;
+                usePlayerStore.getState().setCurrentYoutubeId(youtubeId);
+              }
+            }
+          } catch (fetchErr) {
+            console.error('[useAudioPlayer] Failed to fetch resolved youtubeId on error fallback:', fetchErr);
+          }
+        }
+
+        if (youtubeId) {
+          logToServer('INFO', `[useAudioPlayer] onError: Cambiando a YouTube Embed Mode con ID ${youtubeId}`);
+          usePlayerStore.getState().setEmbedMode(true, youtubeId);
+          setLoading(false);
+          // Detener audios nativos y limpiar su src para evitar bucles de error
+          audio1.pause();
+          audio2.pause();
+          audio1.removeAttribute('src');
+          audio2.removeAttribute('src');
+          if (currentBlobUrl) {
+            URL.revokeObjectURL(currentBlobUrl);
+            currentBlobUrl = null;
+          }
+          // FIX-A: Deactivate the transition guard — embed mode takes over from here.
+          isLoadingNewTrackRef.current = false;
+          setIsPlaying(true);
+          return;
+        }
+
+        // PRIORIDAD 3: ni el nativo ni el embed funcionan — nos rendimos.
+        // FIX-A: Deactivate the transition guard — all retries exhausted, player is now idle.
+        // The user must press play manually to retry; from this point on, native pause
+        // events are legitimate and must update the store.
+        isLoadingNewTrackRef.current = false;
+        setIsPlaying(false);
+        setLoading(false);
+        setError(`No se pudo conectar al audio de "${currentT.title}". Pulsa reproducir para reintentar.`);
       }
     };
 
@@ -542,6 +671,9 @@ export function useAudioPlayer() {
       a.addEventListener('waiting', onWaiting);
       a.addEventListener('canplay', onCanPlay);
       a.addEventListener('error', onError);
+      a.addEventListener('play', onPlay);
+      a.addEventListener('playing', onPlaying);
+      a.addEventListener('pause', onPause);
     });
 
     return () => {
@@ -552,6 +684,9 @@ export function useAudioPlayer() {
         a.removeEventListener('waiting', onWaiting);
         a.removeEventListener('canplay', onCanPlay);
         a.removeEventListener('error', onError);
+        a.removeEventListener('play', onPlay);
+        a.removeEventListener('playing', onPlaying);
+        a.removeEventListener('pause', onPause);
       });
     };
   }, [handleEnded, setDuration, setError, setIsPlaying, setLoading, setProgress, nextTrack, repeatMode]);
@@ -564,9 +699,22 @@ export function useAudioPlayer() {
     // will see the mismatch and self-destruct without starting audio playback.
     loadGenerationRef.current += 1;
 
+    // FIX: Activate loading guard BEFORE pausing prevAudio.
+    // This prevents the native 'pause' event on prevAudio from writing
+    // isPlaying=false into the store, which would block playWhenReady.
+    isLoadingNewTrackRef.current = true;
+
     const prevTrackId = globalLastLoadedTrackId;
     globalLastLoadedTrackId = currentTrack.id;
     crossfadeTriggered.current = false;
+
+    // FIX: currentYoutubeId nunca se limpiaba entre tracks — solo se
+    // sobrescribía si checkEmbedMode()/el status fetch de ESTA pista
+    // encontraban un youtubeId válido. Si esa comprobación fallaba o no
+    // devolvía nada (justo lo que pasa con las pistas que más necesitan el
+    // fallback), el valor quedaba con el de la pista ANTERIOR, y al caer a
+    // YouTube Embed se abría el vídeo de la canción equivocada.
+    usePlayerStore.getState().setCurrentYoutubeId(null);
 
     // ── Embed Mode Check: para videos de YouTube directos de larga duración ────
     // Realizamos un HEAD/fetch breve al endpoint de stream. Si devuelve JSON con
@@ -606,17 +754,25 @@ export function useAudioPlayer() {
       ? usePlayerStore.getState().transitions[`${prevTrackId}-${currentTrack.id}`]
       : undefined;
 
-    // Detener audio anterior inmediatamente para evitar sangrado de sonido durante la carga
-    if (!rule && !crossfadeTriggered.current) {
+    // FIX: Always stop prevAudio immediately when changing track — even if
+    // crossfade was triggered. The crossfade path (shouldCrossfade in onTimeUpdate)
+    // can leave prevAudio running. We stop it here unconditionally unless there
+    // is an active DJ rule that requires a simultaneous fade.
+    // For DJ rules (rule != null), prevAudio will be faded out inside playWhenReady.
+    if (!rule) {
       try {
         prevAudio.pause();
+        prevAudio.currentTime = 0;
+        prevAudio.removeAttribute('src');
       } catch (e) {
         /* ignore */
       }
     }
 
     const autoDownload = localStorage.getItem('autoDownloadYt') !== 'false';
-    const url = `${getStreamUrl(currentTrack.id)}?autoDownload=${autoDownload}`;
+    const baseStreamUrl = getStreamUrl(currentTrack.id, { forceStream: isCrossOriginArmed() });
+    const sep = baseStreamUrl.includes('?') ? '&' : '?';
+    const url = `${baseStreamUrl}${sep}autoDownload=${autoDownload}`;
     logToServer('INFO', `[useAudioPlayer] Loading new track. id: ${currentTrack.id}, title: ${currentTrack.title}, autoDownload: ${autoDownload}, URL: ${url}`);
     setLoading(true);
 
@@ -691,9 +847,18 @@ export function useAudioPlayer() {
           return;
         }
 
+        // FIX: Deactivate the transition guard. From this point on, native pause
+        // events are legitimate user-initiated pauses and should update the store.
+        isLoadingNewTrackRef.current = false;
+
         const { isPlaying: shouldPlay } = usePlayerStore.getState();
         logToServer('INFO', `[useAudioPlayer] playWhenReady callback fired. shouldPlay: ${shouldPlay}`);
         
+        // FIX: Only restore saved progress when explicitly resuming a paused track
+        // (not playing). When shouldPlay=true we are starting a NEW track —
+        // progress was already reset to 0 by setTrack/nextTrack/prevTrack in the
+        // store. Restoring a non-zero savedProg here would seek into the wrong
+        // position (leftover from the previous track before localStorage caught up).
         const savedProg = usePlayerStore.getState().progress;
         if (savedProg > 0 && !shouldPlay) {
           nextAudio.currentTime = savedProg;
@@ -719,14 +884,16 @@ export function useAudioPlayer() {
           const isMobile = isMobileDevice();
 
           let fadeInStartVol = targetVolume;
-          if (isMobile) {
+          const shouldCrossfade = !isMobile && (rule || (crossfadeTriggered.current && prevAudio.src && !prevAudio.paused));
+
+          if (isMobile || !shouldCrossfade) {
             prevAudio.pause();
             prevAudio.removeAttribute('src');
             nextAudio.volume = targetVolume;
           } else {
             fadeInStartVol = rule?.fadeInPercent
               ? targetVolume * (1 - rule.fadeInPercent / 100)
-              : prevAudio.paused ? targetVolume : 0;
+              : 0;
             nextAudio.volume = fadeInStartVol;
           }
 
@@ -834,6 +1001,10 @@ export function useAudioPlayer() {
     const audio = getActiveAudio();
     if (!currentTrack) return;
 
+    // En isEmbedMode, useVideoSync (registrado sobre el iframe de YouTube)
+    // se encarga de enviar los comandos playVideo/pauseVideo al embed.
+    if (usePlayerStore.getState().isEmbedMode) return;
+
     logToServer('INFO', `[useAudioPlayer] isPlaying changed effect: ${isPlaying}. audio.src: ${audio.src ? audio.src.substring(0, 100) : 'none'}, readyState: ${audio.readyState}`);
 
     if (isPlaying) {
@@ -857,20 +1028,64 @@ export function useAudioPlayer() {
           });
       } else {
         logToServer('INFO', `[useAudioPlayer] isPlaying effect: cannot play yet, readyState is ${audio.readyState}`);
+        // FIX-B+C: Only attempt stream recovery when the audio is genuinely stuck
+        // (src set, readyState=0) AND there is no active retry cycle in progress.
+        // Checking retryCountRef prevents this from firing mid-retry — which would
+        // reset the counter to 0 and restart the retry sequence from 1/3 indefinitely.
+        // This path is designed exclusively for the manual-play-after-exhausted-retries
+        // scenario where the player is idle and the user explicitly requests playback.
+        const stuckTrackId = usePlayerStore.getState().currentTrack?.id;
+        const isRetryInProgress = stuckTrackId && !!retryCountRef.current[stuckTrackId];
+        if (audio.src && audio.src !== 'about:blank' && audio.readyState === 0 && !isRetryInProgress) {
+          logToServer('INFO', '[useAudioPlayer] isPlaying effect: readyState=0, no retry in progress — calling audio.load() to recover stuck stream');
+
+          // Register a one-shot canplay listener BEFORE calling load() to guarantee
+          // playback starts even if playWhenReady was already consumed by prior retries.
+          const resumeAfterLoad = () => {
+            audio.removeEventListener('canplay', resumeAfterLoad);
+            if (usePlayerStore.getState().isPlaying) {
+              const targetVol = usePlayerStore.getState().isMuted ? 0 : usePlayerStore.getState().volume;
+              audio.volume = targetVol;
+              if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+              logToServer('INFO', '[useAudioPlayer] resumeAfterLoad: calling audio.play() after stuck-stream recovery');
+              audio.play().catch((err) => {
+                logToServer('ERROR', '[useAudioPlayer] resumeAfterLoad: play REJECTED', err);
+                if (err.name !== 'NotAllowedError') {
+                  const event = new Event('error');
+                  audio.dispatchEvent(event);
+                } else {
+                  setIsPlaying(false);
+                }
+              });
+            }
+          };
+          audio.addEventListener('canplay', resumeAfterLoad);
+          audio.load();
+        }
       }
     } else {
       logToServer('INFO', '[useAudioPlayer] isPlaying effect: Calling audio.pause()');
+      // FIX: Always pause both audio elements when stopping. During a track
+      // transition the "active" audio may have just switched to the new track
+      // (nextAudio) while the old track (now inactive) is still playing.
+      // Pausing only getActiveAudio() would leave the previous track running.
       audio.pause();
       getInactiveAudio().pause();
       if (fadeIntervalRef.current) {
         clearInterval(fadeIntervalRef.current);
         fadeIntervalRef.current = null;
       }
+      if (fadeOutIntervalRef.current) {
+        clearInterval(fadeOutIntervalRef.current);
+        fadeOutIntervalRef.current = null;
+      }
     }
   }, [isPlaying, currentTrack, setIsPlaying]);
 
   // Volume: apply immediately, respecting crossfade
   useEffect(() => {
+    // En isEmbedMode, useVideoSync sincroniza volumen/mute con el iframe.
+    if (usePlayerStore.getState().isEmbedMode) return;
     const audio = getActiveAudio();
     audio.volume = isMuted ? 0 : volume;
     const inactive = getInactiveAudio();

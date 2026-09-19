@@ -40,6 +40,8 @@ import {
 } from '../services/backgroundJobRunner';
 import { seedInitialProfile } from '../services/tasteProfileBuilder';
 import { setUserRegion, getUserRegion } from '../services/regionService';
+import { addTracksToLikedSongs } from './playlists';
+import { getTrendingTracks } from '../services/trendingService';
 
 const router = Router();
 
@@ -276,7 +278,11 @@ router.post('/trigger/:event', (req: Request, res: Response) => {
 
 router.post('/onboarding', async (req: Request, res: Response) => {
   const userId = (req.headers['x-user-id'] || 'default') as string;
-  const { genres, artists } = req.body as { genres?: string[]; artists?: string[] };
+  const { genres, artists, trackIds } = req.body as {
+    genres?: string[];
+    artists?: string[];
+    trackIds?: string[];
+  };
 
   if (!genres || !artists) {
     return res.status(400).json({ error: 'genres and artists arrays required' });
@@ -284,6 +290,12 @@ router.post('/onboarding', async (req: Request, res: Response) => {
 
   try {
     console.log(`[Recs] Onboarding request for ${userId}`);
+
+    // If initial liked tracks were selected, record them into the user's liked-songs playlist
+    if (Array.isArray(trackIds) && trackIds.length > 0) {
+      addTracksToLikedSongs(userId, trackIds);
+    }
+
     // 1. Create and persist synthetic prior
     const profile = await seedInitialProfile(userId, genres, artists);
 
@@ -297,6 +309,40 @@ router.post('/onboarding', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Recs] Onboarding error:', err);
     return res.status(500).json({ error: 'Failed to process onboarding' });
+  }
+});
+
+// ── GET /api/recommendations/trending ─────────────────────────────────────────
+// Expone trendingService.getTrendingTracks (ya usado internamente para boostear
+// resultados de búsqueda) como endpoint propio — antes no existía ninguna ruta
+// HTTP para consumirlo, por lo que el home feed simulaba "tendencias" con una
+// búsqueda literal de "top hits" en vez de datos reales de plays + charts.
+router.get('/trending', async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] || 'default') as string;
+  const region = (req.query.region as string) || getUserRegion(userId);
+  const limit = Math.min(parseInt((req.query.limit as string) || '30', 10), 50);
+
+  try {
+    const tracks = await getTrendingTracks(region);
+    res.json({
+      tracks: tracks.slice(0, limit).map((t) => ({
+        id: t.id,
+        itunesId: t.itunesId,
+        artistId: t.artistId,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        cover: t.cover,
+        duration: t.duration,
+        genre: t.genre,
+        popularity: t.popularity,
+        preview_url: t.preview_url,
+      })),
+      region,
+    });
+  } catch (error) {
+    console.error('[Recs] Error fetching trending tracks:', error);
+    res.status(500).json({ error: 'Failed to fetch trending tracks' });
   }
 });
 

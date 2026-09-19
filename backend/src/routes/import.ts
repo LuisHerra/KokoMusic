@@ -278,7 +278,7 @@ router.post('/spotify-history', async (req, res) => {
     const { data: dbTracks, error: dbError } = await supabase
       .schema('kokomusic')
       .from('tracks_meta')
-      .select('itunes_id, title, artist, genre');
+      .select('itunes_id, title, artist, genre, cover_url');
 
     if (dbError) {
       throw new Error(`Error al leer tracks_meta: ${dbError.message}`);
@@ -330,6 +330,7 @@ router.post('/spotify-history', async (req, res) => {
       let cover = '';
       if (resolvedTrack) {
         trackId = String(resolvedTrack.itunes_id);
+        cover = resolvedTrack.cover_url || '';
         resolvedCount++;
       } else {
         // ID alternativo basado en codificación para no perder la historia

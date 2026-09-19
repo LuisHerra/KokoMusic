@@ -21,6 +21,7 @@ import {
 import { usePlayerStore } from '../store/playerStore';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import { getAllOfflineTracks, deleteOfflineTrack } from '../lib/offlineAudio';
+import ArtistLinks from '../components/Common/ArtistLinks';
 
 function getDeviceId(): string {
   const k = 'koko_device_id';
@@ -139,7 +140,7 @@ function LibraryTrackRow({
                 whiteSpace: 'nowrap',
               }}
             >
-              <span>{track.artist}</span>
+              <ArtistLinks artist={track.artist} artistId={track.artistId} style={{ color: 'inherit' }} />
               {track.album && (
                 <>
                   <span style={{ opacity: 0.4 }}>·</span>
@@ -296,7 +297,7 @@ function LibraryOfflineTrackRow({
           <div style={{ minWidth: 0 }}>
             <div className="track-row-name" style={{ fontSize: 14, fontWeight: 600 }}>{track.title}</div>
             <div className="track-row-artist" style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>{track.artist}</span>
+              <ArtistLinks artist={track.artist} artistId={track.artistId} style={{ color: 'inherit' }} />
               {track.album && (
                 <>
                   <span style={{ opacity: 0.4 }}>·</span>

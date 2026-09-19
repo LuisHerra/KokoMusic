@@ -54,6 +54,21 @@ export default function EqualizerPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
+      {activePreset !== 'Plano' && (
+        <div style={{
+          fontSize: '10.5px',
+          lineHeight: 1.4,
+          color: 'rgba(255,255,255,0.45)',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: '10px',
+          padding: '8px 10px',
+          marginBottom: '14px',
+        }}>
+          Con el EQ activo, la reproducción usa una ruta menos resiliente a fallos de red que "Plano". Si notas más errores de formato, prueba "Resetear".
+        </div>
+      )}
+
       {/* Presets */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
         {Object.keys(EQ_PRESETS).map((name) => (

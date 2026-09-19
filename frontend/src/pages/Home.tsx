@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import TrackGrid, { TrackCard } from '../components/TrackCard/TrackGrid';
-import { getPersonalizedRecommendations, getRecommendations } from '../lib/api';
+import { TrackCard } from '../components/TrackCard/TrackGrid';
+import { getPersonalizedRecommendations, getRecommendations, getTrendingTracks, resolveImageUrl } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 
 import { useThemeStore } from '../store/themeStore';
@@ -74,8 +74,34 @@ export default function Home() {
   const recommendations = recData?.tracks ?? [];
   const recSource = recData?.source;
 
+  const { data: trendingData, isLoading: isTrendingLoading } = useQuery({
+    queryKey: ['trending-tracks'],
+    queryFn: () => getTrendingTracks(20),
+    refetchOnWindowFocus: false,
+    staleTime: 10 * 60 * 1000,
+  });
+  const trendingTracks = trendingData?.tracks ?? [];
+
+  // "Emisoras recomendadas" reales: los artistas top de tu Koko-Mix, con su
+  // portada real (antes era una lista fija de 6 artistas ajenos al usuario
+  // con fotos de stock de Unsplash que ni siquiera eran suyas).
+  const recommendedStations = useMemo(() => {
+    const seen = new Map<string, { name: string; artistId?: number; cover: string }>();
+    for (const track of recommendations) {
+      if (!track.artist || seen.has(track.artist)) continue;
+      if (!track.cover) continue;
+      seen.set(track.artist, { name: track.artist, artistId: track.artistId, cover: track.cover });
+      if (seen.size >= 6) break;
+    }
+    return Array.from(seen.values());
+  }, [recommendations]);
+
   useEffect(() => {
     if (recSource === 'cold_start' && !hasAutoOpenedOnboarding) {
+      if (localStorage.getItem('koko_onboarding_dismissed') === 'true') {
+        setHasAutoOpenedOnboarding(true);
+        return;
+      }
       setIsOnboardingOpen(true);
       setHasAutoOpenedOnboarding(true);
     }
@@ -157,16 +183,6 @@ export default function Home() {
       isGradient: false,
       action: () => navigate('/search?mood=chill')
     }
-  ];
-
-  // Recommended stations
-  const recommendedStations = [
-    { name: 'Rosalía', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=60' },
-    { name: 'Coldplay', image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=150&auto=format&fit=crop&q=60' },
-    { name: 'Daft Punk', image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=150&auto=format&fit=crop&q=60' },
-    { name: 'Billie Eilish', image: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=150&auto=format&fit=crop&q=60' },
-    { name: 'Olivia Dean', image: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=150&auto=format&fit=crop&q=60' },
-    { name: 'Kendrick Lamar', image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=60' }
   ];
 
   // Podcasts lists
@@ -383,26 +399,28 @@ export default function Home() {
             </div>
           )}
 
-          {/* Emisoras recomendadas */}
-          <div style={{ marginBottom: 28 }}>
-            <h2 className="section-title" style={{ marginBottom: 4 }}>Emisoras recomendadas</h2>
-            <p className="section-subtitle" style={{ marginBottom: 14 }}>Estaciones de radio basadas en tus artistas</p>
-            <div className="stations-row">
-              {recommendedStations.map((station) => (
-                <div
-                  key={station.name}
-                  className="station-card"
-                  onClick={() => navigate(`/search?q=${encodeURIComponent(station.name + ' radio')}`)}
-                >
-                  <div className="station-avatar-container">
-                    <img src={station.image} alt={station.name} className="station-avatar" />
+          {/* Emisoras recomendadas — artistas reales de tu Koko-Mix */}
+          {recommendedStations.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <h2 className="section-title" style={{ marginBottom: 4 }}>Emisoras recomendadas</h2>
+              <p className="section-subtitle" style={{ marginBottom: 14 }}>Estaciones de radio basadas en tus artistas</p>
+              <div className="stations-row">
+                {recommendedStations.map((station) => (
+                  <div
+                    key={station.name}
+                    className="station-card"
+                    onClick={() => navigate(station.artistId ? `/artist/${station.artistId}` : `/artist/${encodeURIComponent(station.name)}`)}
+                  >
+                    <div className="station-avatar-container">
+                      <img src={resolveImageUrl(station.cover)} alt={station.name} className="station-avatar" />
+                    </div>
+                    <div className="station-title">Radio de {station.name}</div>
+                    <div className="station-subtitle">Con {station.name} y más</div>
                   </div>
-                  <div className="station-title">Radio de {station.name}</div>
-                  <div className="station-subtitle">Con {station.name} y más</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Recomendaciones (Koko-Mix) */}
           <div style={{ marginBottom: 28 }}>
@@ -489,7 +507,7 @@ export default function Home() {
             </div>
 
             {isRecLoading ? (
-              <div className="tracks-grid">
+              <div className="tracks-rail">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="track-card" style={{ cursor: 'default' }}>
                     <div className="skeleton" style={{ aspectRatio: '1', borderRadius: 'var(--radius-md)', marginBottom: 12 }} />
@@ -499,7 +517,7 @@ export default function Home() {
                 ))}
               </div>
             ) : recommendations && recommendations.length > 0 ? (
-              <div className="tracks-grid">
+              <div className="tracks-rail">
                 {recommendations.map((track) => (
                   <TrackCard
                     key={track.id}
@@ -520,10 +538,42 @@ export default function Home() {
             )}
           </div>
 
-          {/* Éxitos Mundiales y Tendencias */}
-          <h2 className="section-title">Éxitos Mundiales & Tendencias</h2>
-          <p className="section-subtitle">Las canciones más escuchadas y populares del momento</p>
-          <TrackGrid initialQuery="top hits" showInput={false} />
+          {/* Éxitos Mundiales y Tendencias — datos reales de trendingService (plays + charts),
+              antes era una búsqueda literal de "top hits" sin relación con tendencias reales. */}
+          <div style={{ marginBottom: 28 }}>
+            <h2 className="section-title">Éxitos Mundiales & Tendencias</h2>
+            <p className="section-subtitle">Las canciones más escuchadas y populares del momento</p>
+            {isTrendingLoading ? (
+              <div className="tracks-rail">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="track-card" style={{ cursor: 'default' }}>
+                    <div className="skeleton" style={{ aspectRatio: '1', borderRadius: 'var(--radius-md)', marginBottom: 12 }} />
+                    <div className="skeleton" style={{ height: 14, width: '80%', marginBottom: 8 }} />
+                    <div className="skeleton" style={{ height: 12, width: '60%' }} />
+                  </div>
+                ))}
+              </div>
+            ) : trendingTracks.length > 0 ? (
+              <div className="tracks-rail">
+                {trendingTracks.map((track) => (
+                  <TrackCard
+                    key={track.id}
+                    track={track}
+                    isPlaying={currentTrack?.id === track.id && isPlaying}
+                    onClick={() => handlePlay(track, trendingTracks)}
+                    onAddToQueue={() => {
+                      addToQueue(track);
+                      setError(`Añadido a la cola: ${track.title}`);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state" style={{ padding: '24px 0', border: '1px dashed #ffffff15', borderRadius: 8 }}>
+                <p style={{ color: 'var(--text-secondary)' }}>Aún no hay suficientes datos de tendencias — vuelve pronto</p>
+              </div>
+            )}
+          </div>
         </>
       )}
 

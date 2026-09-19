@@ -1,188 +1,165 @@
 /**
  * Stream Resolver Service — KokoMusic
  *
- * Coordina la resolución multi-fuente de audio con estrategia waterfall:
- *   1. L1 Memory Cache (URL directa ya resuelta y vigente)
- *   2. Cloudflare R2 CDN (si el track ya fue cacheado en R2)
- *   3. InnerTube API (YouTube Music Android Client, <300ms)
- *   4. JioSaavn API (Akamai CDN directo 320k, <200ms)
- *   5. Invidious (Instancias descentralizadas como fallback, 500-2000ms)
- *   6. yt-dlp (Último recurso, solo entornos locales)
+ * Resuelve el stream de audio exclusivamente a través del microservicio
+ * KokoMusic-lite (InnerTube / youtubei.js), sin yt-dlp ni CDN local.
+ *
+ * Estrategia de caché:
+ *   1. L1 Memory Cache con TTL exacto derivado del `expiresAt` real de googlevideo.
+ *   2. Resolución directa vía KokoMusic-lite.
  */
 
 import { cache } from './cacheService';
-import { isCDNEnabled, findTrackInCDN } from './cdnService';
-import { getInnerTubeStreamUrl } from './innerTubeService';
-import { searchJioSaavn, type JioSaavnTrackResult } from './jiosaavnService';
-import { getInvidiousStreamUrl } from './invidiousService';
-import { exec } from 'child_process';
-import { getCookiesArg } from './ytdlpService';
+import { resolveLiteStream, purgeLiteCache, type KokoLiteResolvedStream } from './kokoLiteService';
+import { resolveYoutubeId } from './ytResolverService';
+import { metrics } from './metricsService';
 
-export type StreamSourceType = 'cdn' | 'innertube' | 'jiosaavn' | 'invidious' | 'ytdlp';
+export type StreamSourceType = 'innertube' | 'lite';
 
 export interface ResolvedStream {
   url: string;
-  source: StreamSourceType;
+  source: string;
   mimeType: string;
   bitrate?: number;
   durationMs?: number;
-  isDirectCdn: boolean;    // true = no necesita proxy, se puede redirigir 302 o descargar directo
-  jioSaavnMeta?: JioSaavnTrackResult;
+  expiresAt?: number;
+  client?: string;
+  cached?: boolean;
 }
 
 export interface StreamResolutionHints {
   artist?: string;
   title?: string;
   itunesId?: number | string;
-  allowCdnRedirect?: boolean;
-}
-
-/** Extrae la URL de streaming directa de YouTube via yt-dlp como fallback de último recurso */
-function getYTStreamUrlWithYtDlp(youtubeId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const formatSelector = `bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best`;
-    const ytUrl = `"https://www.youtube.com/watch?v=${youtubeId}"`;
-    const cookiesArg = getCookiesArg();
-    const baseArgs = `${cookiesArg ? cookiesArg + ' ' : ''}--force-ipv4 --legacy-server-connect --get-url --no-playlist -f ${formatSelector}`;
-
-    let cmd = `yt-dlp ${baseArgs} ${ytUrl}`;
-
-    if (process.platform === 'win32') {
-      const wingetPath = `"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\yt-dlp.exe"`;
-      cmd = `yt-dlp ${baseArgs} ${ytUrl} || ${wingetPath} ${baseArgs} ${ytUrl}`;
-    }
-
-    exec(cmd, (error, stdout, stderr) => {
-      if (error && !stdout) {
-        console.error('[yt-dlp fallback] Error extrayendo URL:', stderr);
-        return reject(error);
-      }
-      const lines = stdout.trim().split('\n').filter(l => l.trim().length > 0);
-      const url = lines[lines.length - 1].trim();
-      if (!url) {
-        return reject(new Error('yt-dlp no devolvió ninguna URL de stream'));
-      }
-      resolve(url);
-    });
-  });
+  quality?: string;
 }
 
 /**
- * Resuelve la mejor URL de streaming disponible para un video/track dado.
+ * Purga la entrada de caché local y la del microservicio KokoMusic-lite.
+ */
+export async function purgeStreamCache(youtubeId: string): Promise<boolean> {
+  const cacheKey = `resolved-stream:${youtubeId}`;
+  cache.del(cacheKey);
+  const litePurged = await purgeLiteCache(youtubeId);
+  console.log(`[StreamResolver] Cache purgada para ${youtubeId} (L1 local + Lite: ${litePurged})`);
+  return litePurged;
+}
+
+/**
+ * Resuelve la mejor URL de streaming disponible para un video/track dado
+ * utilizando KokoMusic-lite.
  */
 export async function resolveAudioStream(
   youtubeId: string,
   hints?: StreamResolutionHints
 ): Promise<ResolvedStream | null> {
-  const cacheKey = `resolved-stream:${youtubeId}`;
+  const quality = hints?.quality;
+  const cacheKey = quality ? `resolved-stream:${youtubeId}:${quality}` : `resolved-stream:${youtubeId}`;
 
   // ── 1. Cache L1 de memoria ───────────────────────────────────────────────────
   const cached = cache.get(cacheKey);
   if (cached) {
     try {
       const parsed = JSON.parse(cached) as ResolvedStream;
-      return parsed;
+      metrics.recordStreamResolution('cached');
+      return { ...parsed, cached: true };
     } catch {
       // Ignorar fallo de parseo
     }
   }
 
-  // ── 2. Cloudflare R2 CDN (si está activo y el track ya fue procesado) ────────
-  if (isCDNEnabled()) {
-    const cdnUrl = await findTrackInCDN(youtubeId);
-    if (cdnUrl) {
-      const res: ResolvedStream = {
-        url: cdnUrl,
-        source: 'cdn',
-        mimeType: 'audio/ogg; codecs=opus',
-        isDirectCdn: true,
-      };
-      cache.setex(cacheKey, 86400 * 30, JSON.stringify(res));
-      console.log(`[StreamResolver] 🚀 Nivel 1 (CDN R2 Hit): ${youtubeId} → ${cdnUrl}`);
-      return res;
-    }
-  }
-
-  // ── 3. InnerTube API (YouTube Music Android Client) ───────────────────────────
+  // ── 2. KokoMusic-lite API (InnerTube microservice) ────────────────────────────
   try {
-    const innerTubeResult = await getInnerTubeStreamUrl(youtubeId);
-    if (innerTubeResult && innerTubeResult.url) {
+    const liteResult = await resolveLiteStream(youtubeId, { quality });
+    if (liteResult && liteResult.url) {
       const res: ResolvedStream = {
-        url: innerTubeResult.url,
-        source: 'innertube',
-        mimeType: innerTubeResult.mimeType,
-        bitrate: innerTubeResult.bitrate,
-        durationMs: innerTubeResult.durationMs,
-        isDirectCdn: false, // googlevideo se suele servir con proxy para evitar CORS en navegador
+        url: liteResult.url,
+        source: liteResult.source || 'innertube',
+        mimeType: liteResult.mimeType || 'audio/mp4; codecs="mp4a.40.2"',
+        bitrate: liteResult.bitrate,
+        expiresAt: liteResult.expiresAt,
+        client: liteResult.client,
+        cached: false,
       };
-      // Cachear por 30 minutos (googlevideo tokens duran ~6h)
-      cache.setex(cacheKey, 1800, JSON.stringify(res));
-      console.log(`[StreamResolver] ⚡ Nivel 2 (InnerTube Hit): ${youtubeId} via ${innerTubeResult.clientUsed}`);
-      return res;
-    }
-  } catch (err) {
-    console.warn(`[StreamResolver] InnerTube falló para ${youtubeId}:`, (err as Error).message);
-  }
 
-  // ── 4. JioSaavn API (Si se dispone de artista y título) ───────────────────────
-  if (hints?.artist && hints?.title) {
-    try {
-      const jioResult = await searchJioSaavn(hints.artist, hints.title);
-      if (jioResult && jioResult.streamUrl) {
-        const res: ResolvedStream = {
-          url: jioResult.streamUrl320 || jioResult.streamUrl,
-          source: 'jiosaavn',
-          mimeType: 'audio/mp4; codecs="mp4a.40.2"',
-          bitrate: 320000,
-          durationMs: jioResult.durationMs,
-          isDirectCdn: true, // Akamai CDN de Saavn tiene CORS y soporte nativo
-          jioSaavnMeta: jioResult,
-        };
-        cache.setex(cacheKey, 7200, JSON.stringify(res));
-        console.log(`[StreamResolver] 🎵 Nivel 3 (JioSaavn Hit): "${hints.artist} - ${hints.title}" → Akamai CDN (320k)`);
-        return res;
+      // Calcular TTL real en segundos a partir de expiresAt con margen de seguridad de 30s
+      let ttlSec = 1800; // 30 min por defecto
+      if (liteResult.expiresAt) {
+        const remainingMs = liteResult.expiresAt - Date.now();
+        ttlSec = Math.max(60, Math.floor(remainingMs / 1000) - 30);
       }
-    } catch (err) {
-      console.warn(`[StreamResolver] JioSaavn falló para "${hints.artist} - ${hints.title}":`, (err as Error).message);
-    }
-  }
 
-  // ── 5. Invidious API (Fallback descentralizado) ──────────────────────────────
-  try {
-    const invidiousUrl = await getInvidiousStreamUrl(youtubeId);
-    if (invidiousUrl) {
-      const res: ResolvedStream = {
-        url: invidiousUrl,
-        source: 'invidious',
-        mimeType: 'audio/webm; codecs="opus"',
-        isDirectCdn: false,
-      };
-      cache.setex(cacheKey, 1500, JSON.stringify(res));
-      console.log(`[StreamResolver] 🌐 Nivel 4 (Invidious Hit): ${youtubeId}`);
+      cache.setex(cacheKey, ttlSec, JSON.stringify(res));
+      metrics.recordStreamResolution('hit');
+      console.log(`[StreamResolver] ⚡ KokoMusic-lite Hit: ${youtubeId} via ${liteResult.client || 'InnerTube'} (TTL: ${ttlSec}s)`);
       return res;
     }
-  } catch (err) {
-    console.warn(`[StreamResolver] Invidious falló para ${youtubeId}:`, (err as Error).message);
+  } catch (err: any) {
+    metrics.recordStreamResolution('error');
+    console.error(`[StreamResolver] Error resolviendo ${youtubeId} vía KokoMusic-lite:`, err.message || err);
+    return null;
   }
 
-  // ── 6. yt-dlp (Último recurso, generalmente solo en local) ───────────────────
-  try {
-    console.log(`[StreamResolver] ⚠️ Intentando último recurso (yt-dlp) para ${youtubeId}...`);
-    const ytdlpUrl = await getYTStreamUrlWithYtDlp(youtubeId);
-    if (ytdlpUrl) {
-      const res: ResolvedStream = {
-        url: ytdlpUrl,
-        source: 'ytdlp',
-        mimeType: 'audio/webm',
-        isDirectCdn: false,
-      };
-      cache.setex(cacheKey, 1800, JSON.stringify(res));
-      console.log(`[StreamResolver] 💾 Nivel 5 (yt-dlp Hit): ${youtubeId}`);
-      return res;
-    }
-  } catch (err) {
-    console.error(`[StreamResolver] ❌ Todos los métodos del waterfall fallaron para ${youtubeId}:`, (err as Error).message);
-  }
-
+  metrics.recordStreamResolution('miss');
   return null;
 }
+
+export interface PrewarmableTrack {
+  id: string;
+  itunesId?: number;
+  artist: string;
+  title: string;
+  duration?: number; // ms
+}
+
+const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+/**
+ * Resuelve por adelantado el youtubeId + stream de un track de resultados de
+ * búsqueda, en segundo plano, para que cuando el usuario pulse play ya esté
+ * en caché (L1 de streamResolverService/kokoLiteClient) y la reproducción
+ * arranque casi al instante.
+ */
+export async function prewarmTrackStream(track: PrewarmableTrack): Promise<void> {
+  try {
+    if (!track?.id || track.id.startsWith('custom_')) return;
+
+    let youtubeId: string | null = null;
+
+    // Tracks que ya vienen de YouTube (búsqueda ?source=youtube) traen el
+    // propio videoId como id — no necesitan pasar por resolveYoutubeId.
+    if (YOUTUBE_ID_RE.test(track.id) && isNaN(Number(track.id))) {
+      youtubeId = track.id;
+    } else {
+      const itunesId = track.itunesId || Math.abs(hashCode(track.id));
+      const durationSec = track.duration ? Math.round(track.duration / 1000) : undefined;
+      youtubeId = await resolveYoutubeId(itunesId, track.artist, track.title, durationSec);
+    }
+
+    if (!youtubeId) return;
+    await resolveAudioStream(youtubeId, { artist: track.artist, title: track.title });
+  } catch (err) {
+    console.warn('[StreamResolver] Prewarm falló para', track?.id, err);
+  }
+}
+
+function hashCode(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) hash = (hash * 33) ^ str.charCodeAt(i);
+  return hash;
+}
+
+/**
+ * Precalienta en segundo plano los primeros `count` resultados de una
+ * búsqueda, con concurrencia limitada para no saturar KokoMusic-lite ni
+ * disparar demasiadas búsquedas de YouTube en paralelo.
+ */
+export function prewarmTopTracks(tracks: PrewarmableTrack[], count = 4): void {
+  const targets = tracks.slice(0, count);
+  (async () => {
+    for (const track of targets) {
+      await prewarmTrackStream(track);
+    }
+  })().catch(() => {});
+}
+

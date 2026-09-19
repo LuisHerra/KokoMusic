@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylist, removeTrackFromPlaylist, apiFetch } from '../lib/api';
+import { getPlaylist, removeTrackFromPlaylist, apiFetch, sendRecommendationFeedback } from '../lib/api';
 
 export function useLikedSongs() {
   const queryClient = useQueryClient();
@@ -28,6 +28,7 @@ export function useLikedSongs() {
             method: 'POST',
             body: JSON.stringify({ trackId: idStr }),
           });
+          sendRecommendationFeedback(idStr, 'liked');
         } catch (err: any) {
           if (err?.status !== 409 && !err?.message?.includes('409')) {
             throw err;

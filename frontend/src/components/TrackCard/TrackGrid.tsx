@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { searchTracks, resolveImageUrl } from '../../lib/api';
 import type { Track } from '../../lib/api';
 import { usePlayerStore } from '../../store/playerStore';
+import ArtistLinks from '../Common/ArtistLinks';
 
 export interface TrackCardProps {
   track: Track;
@@ -77,7 +78,7 @@ export function TrackCard({ track, isPlaying, onClick, onAddToQueue }: TrackCard
         </button>
       </div>
       <div className="track-card-title">{track.title}</div>
-      <div className="track-card-artist">{track.artist}</div>
+      <ArtistLinks artist={track.artist} artistId={track.artistId} className="track-card-artist" />
     </div>
   );
 }

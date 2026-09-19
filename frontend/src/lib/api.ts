@@ -21,13 +21,14 @@ export function getEmbedOriginParam(): string {
   return '';
 }
 
-export function formatYoutubeEmbedUrl(youtubeId: string, options: { autoplay?: boolean; mute?: boolean; controls?: boolean } = {}): string {
-  const { autoplay = true, mute = false, controls = true } = options;
+export function formatYoutubeEmbedUrl(youtubeId: string, options: { autoplay?: boolean; mute?: boolean; controls?: boolean; enableApi?: boolean } = {}): string {
+  const { autoplay = true, mute = false, controls = true, enableApi = false } = options;
   const autoParam = autoplay ? '1' : '0';
   const muteParam = mute ? '1' : '0';
   const ctrlParam = controls ? '1' : '0';
   const cleanId = youtubeId ? youtubeId.replace(/^yt_/, '') : '';
-  return `https://www.youtube-nocookie.com/embed/${cleanId}?autoplay=${autoParam}&mute=${muteParam}&controls=${ctrlParam}&playsinline=1&rel=0&modestbranding=1`;
+  const jsApiParam = enableApi ? `&enablejsapi=1${getEmbedOriginParam()}` : '';
+  return `https://www.youtube-nocookie.com/embed/${cleanId}?autoplay=${autoParam}&mute=${muteParam}&controls=${ctrlParam}&playsinline=1&rel=0&modestbranding=1${jsApiParam}`;
 }
 
 
@@ -91,9 +92,17 @@ export interface Playlist {
   updatedAt: string;
 }
 
+export interface InferredArtist {
+  id: number | string;
+  name: string;
+  image: string;
+  genre: string;
+  confidence: number;
+}
+
 // ── Search ────────────────────────────────────────────────────────────────────
 export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube' | 'lyrics' = 'itunes') =>
-  apiFetch<{ tracks: Track[]; source: string }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`);
+  apiFetch<{ tracks: Track[]; source: string; artist?: InferredArtist | null }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`);
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 export const getTrack = async (id: string) => {
@@ -201,10 +210,22 @@ export const prefetchAudio = async (ids: string[]): Promise<void> => {
 
 
 
-export const getStreamUrl = (trackId: string) => {
+/**
+ * `crossOrigin="anonymous"` en el `<audio>` exige CORS incluso en cargas
+ * redirigidas — y googlevideo.com no manda cabeceras CORS, así que cuando el
+ * elemento lo necesita (ecualizador Web Audio activo, o los reproductores
+ * secundarios de DJ Mixer/Karaoke que sí lo usan siempre) el backend debe
+ * seguir haciendo de proxy (mismo origen) en vez de un 302 directo a Google.
+ * Por defecto NO se pide forceStream: así hasta escritorio se beneficia del
+ * redirect con la IP real del usuario, que es bastante más resiliente al
+ * 403 de Google que la IP de datacenter de nuestro propio backend — ver
+ * stream.ts. El caller decide cuándo realmente hace falta same-origin.
+ */
+export const getStreamUrl = (trackId: string, opts?: { forceStream?: boolean }) => {
   const cached = getCachedBaseUrl();
   const apiBase = cached ? `${cached}/api` : BASE;
-  return `${apiBase}/stream/${trackId}`;
+  const base = `${apiBase}/stream/${trackId}`;
+  return opts?.forceStream ? `${base}?forceStream=true` : base;
 };
 
 export interface Lyrics {
@@ -403,6 +424,7 @@ export const addTrackToPlaylist = async (playlistId: string, trackId: string) =>
     body: JSON.stringify({ trackId }),
   });
   incrementPlaylistTrackCount(playlistId);
+  if (playlistId !== 'liked-songs') sendRecommendationFeedback(trackId, 'added_to_playlist');
   return res;
 };
 
@@ -851,15 +873,40 @@ export const getPersonalizedRecommendations = (limit = 30, mood?: string) =>
     `/recommendations?limit=${limit}${mood ? `&mood=${encodeURIComponent(mood)}` : ''}`
   );
 
+export const getTrendingTracks = (limit = 30) =>
+  apiFetch<{ tracks: Track[]; region: string }>(`/recommendations/trending?limit=${limit}`);
+
+/**
+ * Dispara los pipelines offline de recomendación (perfil de gustos + candidatos)
+ * en los momentos naturales en que el usuario genera señal real. Sin esto, el
+ * motor de recomendación nunca se refresca tras el arranque inicial y sigue
+ * sugiriendo canciones ya escuchadas indefinidamente (hasta la caducidad de 6h
+ * del caché) porque el filtro de "escuchado recientemente" solo se aplica al
+ * regenerar candidatos, y regenerar candidatos solo ocurre en estos eventos.
+ */
+export const triggerRecommendationEvent = (event: 'app_open' | 'track_completed' | 'artist_followed', trackId?: string) =>
+  apiFetch<{ ok: boolean }>(`/recommendations/trigger/${event}`, {
+    method: 'POST',
+    body: JSON.stringify(trackId ? { trackId } : {}),
+  }).catch(() => {});
+
+export type RecommendationFeedbackEvent = 'skip' | 'track_completed' | 'liked' | 'added_to_playlist';
+
+export const sendRecommendationFeedback = (trackId: string, event: RecommendationFeedbackEvent) =>
+  apiFetch<{ ok: boolean; action: string }>('/recommendations/feedback', {
+    method: 'POST',
+    body: JSON.stringify({ trackId, event }),
+  }).catch(() => {});
+
 export const getAvailableCDNTracks = (page = 1, limit = 30) =>
   apiFetch<{ tracks: Track[]; count: number; totalCount: number; page: number; totalPages: number }>(
     `/tracks/available-cdn?page=${page}&limit=${limit}`
   );
 
-export const submitOnboarding = (genres: string[], artists: string[]) =>
+export const submitOnboarding = (genres: string[], artists: string[], trackIds?: string[]) =>
   apiFetch<{ success: boolean; message: string }>('/recommendations/onboarding', {
     method: 'POST',
-    body: JSON.stringify({ genres, artists }),
+    body: JSON.stringify({ genres, artists, trackIds }),
   });
 
 export const importSpotifyHistory = (history: any[]) =>
@@ -871,6 +918,15 @@ export const importSpotifyHistory = (history: any[]) =>
   }>('/import/spotify-history', {
     method: 'POST',
     body: JSON.stringify({ history }),
+  });
+
+export const getSpotifyStatus = () =>
+  apiFetch<{ configured: boolean; redirectUri?: string }>('/spotify/status');
+
+export const syncSpotifyTaste = (accessToken: string, userId?: string) =>
+  apiFetch<{ success: boolean; topArtists: string[]; topGenres: string[]; count: number }>('/spotify/sync-taste', {
+    method: 'POST',
+    body: JSON.stringify({ accessToken, userId }),
   });
 
 

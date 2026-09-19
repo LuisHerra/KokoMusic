@@ -152,6 +152,72 @@ interface ChartTrackNormalised {
   dzRank?: number;
   nbFan?: number;
   lfmListeners?: number;
+  /** BPM real de Deezer (0 = no disponible para ese track; muchos tracks no lo tienen). */
+  bpm?: number;
+  /** Energía 0-1 derivada del loudness real (gain) de Deezer — proxy real, no heurística. */
+  energyFromGain?: number;
+}
+
+/** Caché en memoria (24h) de enriquecimiento por-track para no repetir llamadas en cada ciclo. */
+const trackEnrichCache = new Map<string, { bpm: number; gain: number | null; genre: string; releaseDate: string | null; ts: number }>();
+const ENRICH_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+/**
+ * Enriquece un track de Deezer con datos REALES que el endpoint de chart no
+ * incluye: BPM, loudness (gain) y fecha de lanzamiento vienen de /track/{id};
+ * el género real (Deezer sí lo tiene, a nivel de álbum) viene de /album/{id}.
+ * Se cachea 24h por track para no repetir estas llamadas en cada refresco.
+ */
+async function enrichDeezerTrack(trackId: string, albumId: number): Promise<{ bpm: number; gain: number | null; genre: string; releaseDate: string | null }> {
+  const cached = trackEnrichCache.get(trackId);
+  if (cached && Date.now() - cached.ts < ENRICH_CACHE_TTL) return cached;
+
+  let bpm = 0;
+  let gain: number | null = null;
+  let releaseDate: string | null = null;
+  let genre = 'Otros';
+
+  try {
+    const [trackRes, albumRes] = await Promise.all([
+      fetch(`https://api.deezer.com/track/${trackId}`).catch(() => null),
+      albumId ? fetch(`https://api.deezer.com/album/${albumId}`).catch(() => null) : Promise.resolve(null),
+    ]);
+
+    if (trackRes?.ok) {
+      const t = (await trackRes.json()) as any;
+      bpm = Number(t?.bpm) || 0;
+      gain = typeof t?.gain === 'number' ? t.gain : null;
+      releaseDate = t?.release_date || null;
+    }
+    if (albumRes?.ok) {
+      const a = (await albumRes.json()) as any;
+      const firstGenre = a?.genres?.data?.[0]?.name;
+      if (firstGenre) genre = firstGenre;
+    }
+  } catch (err) {
+    console.error(`[Charts] Deezer track enrich error for ${trackId}:`, err);
+  }
+
+  const result = { bpm, gain, genre, releaseDate };
+  trackEnrichCache.set(trackId, { ...result, ts: Date.now() });
+  return result;
+}
+
+/** Enriquece una lista de tracks con concurrencia limitada (no saturar la API pública de Deezer). */
+async function enrichDeezerTracksBatched<T extends { trackId: string; albumId: number }>(
+  items: T[],
+  concurrency = 5
+): Promise<Map<string, { bpm: number; gain: number | null; genre: string; releaseDate: string | null }>> {
+  const results = new Map<string, { bpm: number; gain: number | null; genre: string; releaseDate: string | null }>();
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const item = items[idx++];
+      results.set(item.trackId, await enrichDeezerTrack(item.trackId, item.albumId));
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
 }
 
 async function fetchDeezerCharts(): Promise<ChartTrackNormalised[]> {
@@ -160,22 +226,83 @@ async function fetchDeezerCharts(): Promise<ChartTrackNormalised[]> {
     if (!res.ok) return [];
     const data = (await res.json()) as any;
     const tracks = data?.data || [];
-    return tracks.map((t: any, idx: number) => ({
-      trackId: String(t.id),
-      title: t.title || '',
-      artist: t.artist?.name || '',
-      artistId: t.artist?.id || 0,
-      cover: t.album?.cover_medium || t.album?.cover || '',
-      durationMs: (t.duration || 0) * 1000,
-      genre: 'Otros', // Deezer chart doesn't include genre inline
-      releaseDate: null,
-      dzRank: idx + 1,
-      nbFan: t.artist?.nb_fan || 0,
-    }));
+
+    const enrichMap = await enrichDeezerTracksBatched(
+      tracks.map((t: any) => ({ trackId: String(t.id), albumId: t.album?.id || 0 }))
+    );
+
+    return tracks.map((t: any, idx: number) => {
+      const enrich = enrichMap.get(String(t.id));
+      // gain típico entre ~-15dB (silencioso) y ~0dB (muy comprimido/energético) — normalizamos a 0-1.
+      const energyFromGain = enrich && enrich.gain !== null
+        ? Math.max(0, Math.min(1, (enrich.gain + 15) / 15))
+        : undefined;
+      return {
+        trackId: String(t.id),
+        title: t.title || '',
+        artist: t.artist?.name || '',
+        artistId: t.artist?.id || 0,
+        cover: t.album?.cover_medium || t.album?.cover || '',
+        durationMs: (t.duration || 0) * 1000,
+        genre: enrich?.genre || 'Otros',
+        releaseDate: enrich?.releaseDate || null,
+        dzRank: idx + 1,
+        nbFan: t.artist?.nb_fan || 0,
+        bpm: enrich?.bpm || 0,
+        energyFromGain,
+      };
+    });
   } catch (err) {
     console.error('[Charts] Deezer fetch error:', err);
     return [];
   }
+}
+
+/**
+ * Last.fm devuelve esta misma imagen (hash fijo) como placeholder genérico
+ * cuando no tiene carátula real para un track — mejor no tener cover que
+ * mostrar su icono de "sin imagen" como si fuera arte real.
+ */
+const LASTFM_PLACEHOLDER_HASH = '2a96cbd8b46e442fc41c2b86b821562f';
+export function isLastfmPlaceholderCover(url: string | null | undefined): boolean {
+  return !url || url.includes(LASTFM_PLACEHOLDER_HASH);
+}
+
+/**
+ * Last.fm dejó de servir imágenes reales hace años — casi todo lo que
+ * devuelve es el placeholder genérico. Para tracks populares (que sí están
+ * en iTunes) resolvemos ahí la carátula real y el género, en vez de dejar
+ * caer la tarjeta al avatar de letra. Cache 7 días por "artista-título" para
+ * no repetir la búsqueda entre regiones/ciclos (mismos tracks se repiten).
+ */
+const itunesCoverCache = new Map<string, { cover: string; genre: string; ts: number }>();
+const ITUNES_COVER_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
+async function lookupItunesCoverAndGenre(artist: string, title: string): Promise<{ cover: string; genre: string }> {
+  const cacheKey = `${artist.toLowerCase().trim()}::${title.toLowerCase().trim()}`;
+  const cached = itunesCoverCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < ITUNES_COVER_CACHE_TTL) return cached;
+
+  let cover = '';
+  let genre = 'Otros';
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`)}&media=music&entity=musicTrack&limit=1`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      const match = data?.results?.[0];
+      if (match) {
+        cover = (match.artworkUrl100 as string || '').replace(/\d+x\d+bb\.jpg$/, '600x600bb.jpg');
+        genre = match.primaryGenreName || 'Otros';
+      }
+    }
+  } catch (err) {
+    console.error(`[Charts] iTunes cover lookup error for "${artist} - ${title}":`, err);
+  }
+
+  const result = { cover, genre };
+  itunesCoverCache.set(cacheKey, { ...result, ts: Date.now() });
+  return result;
 }
 
 async function fetchLastFmGeoTopTracks(region = LFM_GEO_REGION): Promise<ChartTrackNormalised[]> {
@@ -185,18 +312,40 @@ async function fetchLastFmGeoTopTracks(region = LFM_GEO_REGION): Promise<ChartTr
     const res = await fetch(url);
     if (!res.ok) return [];
     const data = (await res.json()) as any;
-    const tracks = data?.tracks?.track || [];
-    return (Array.isArray(tracks) ? tracks : []).map((t: any) => ({
-      trackId: `lfm:${encodeURIComponent(t.artist?.mbid || t.artist?.name || '')}_${encodeURIComponent(t.name || '')}`,
-      title: t.name || '',
-      artist: t.artist?.name || '',
-      artistId: 0,
-      cover: t.image?.find((i: any) => i.size === 'extralarge')?.['#text'] || '',
-      durationMs: 0,
-      genre: 'Otros',
-      releaseDate: null,
-      lfmListeners: Number(t.listeners) || 0,
-    }));
+    const rawTracks: any[] = Array.isArray(data?.tracks?.track) ? data.tracks.track : [];
+
+    // Concurrencia limitada — hasta 50 lookups a iTunes por región, no todos a la vez.
+    const results: ChartTrackNormalised[] = new Array(rawTracks.length);
+    let idx = 0;
+    async function worker() {
+      while (idx < rawTracks.length) {
+        const i = idx++;
+        const t = rawTracks[i];
+        const artist = t.artist?.name || '';
+        const title = t.name || '';
+        const rawCover = t.image?.find((im: any) => im.size === 'extralarge')?.['#text'] || '';
+        let cover = isLastfmPlaceholderCover(rawCover) ? '' : rawCover;
+        let genre = 'Otros';
+        if (!cover && artist && title) {
+          const itunes = await lookupItunesCoverAndGenre(artist, title);
+          if (itunes.cover) cover = itunes.cover;
+          genre = itunes.genre;
+        }
+        results[i] = {
+          trackId: `lfm:${encodeURIComponent(t.artist?.mbid || artist || '')}_${encodeURIComponent(title)}`,
+          title,
+          artist,
+          artistId: 0,
+          cover,
+          durationMs: 0,
+          genre,
+          releaseDate: null,
+          lfmListeners: Number(t.listeners) || 0,
+        };
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(8, rawTracks.length) }, worker));
+    return results;
   } catch (err) {
     console.error('[Charts] Last.fm geo.gettoptracks error:', err);
     return [];
@@ -247,7 +396,7 @@ async function isChartsCacheOverdue(): Promise<boolean> {
   }
 }
 
-async function runChartsPrefetch(): Promise<void> {
+export async function runChartsPrefetch(): Promise<void> {
   console.log('[Charts] Starting multi-region charts pre-fetch job...');
 
   const [deezerTracks, lfmTracksUS, lfmTracksES, lfmTracksMX, lfmTracksUK] = await Promise.all([

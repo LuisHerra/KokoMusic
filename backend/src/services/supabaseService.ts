@@ -50,6 +50,7 @@ export interface ArtistRow {
 export interface YouTubeResolutionRow {
   itunes_id:   number;
   youtube_id:  string;
+  alt_youtube_ids?: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -106,13 +107,21 @@ export async function getArtistFromDB(artistId: number): Promise<ArtistRow | nul
   return data as ArtistRow;
 }
 
-/** Guarda la resolución de YouTube para un track de iTunes */
-export async function upsertYouTubeResolution(itunesId: number, youtubeId: string): Promise<void> {
+/**
+ * Guarda la resolución de YouTube para un track de iTunes, junto con
+ * candidatos alternativos (otros vídeos del mismo tema — audio oficial,
+ * lyric video, reupload) que `scoreVideo()` ya puntuaba y descartaba.
+ * Si el video principal deja de resolver, stream.ts los prueba en orden
+ * antes de rendirse al embed — ver ytResolverService.ts.
+ */
+export async function upsertYouTubeResolution(itunesId: number, youtubeId: string, altYoutubeIds?: string[]): Promise<void> {
   if (!supabase) return;
+  const row: Record<string, unknown> = { itunes_id: itunesId, youtube_id: youtubeId };
+  if (altYoutubeIds) row.alt_youtube_ids = altYoutubeIds;
   const { error } = await supabase
     .schema('kokomusic')
     .from('youtube_resolutions')
-    .upsert({ itunes_id: itunesId, youtube_id: youtubeId }, { onConflict: 'itunes_id' });
+    .upsert(row, { onConflict: 'itunes_id' });
   if (error) console.error('[Supabase] Error upserting YouTube resolution:', error.message);
 }
 
@@ -127,4 +136,17 @@ export async function getYouTubeResolution(itunesId: number): Promise<string | n
     .single();
   if (error || !data) return null;
   return (data as YouTubeResolutionRow).youtube_id;
+}
+
+/** Igual que getYouTubeResolution pero incluye los candidatos alternativos guardados. */
+export async function getYouTubeResolutionFull(itunesId: number): Promise<YouTubeResolutionRow | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .schema('kokomusic')
+    .from('youtube_resolutions')
+    .select('itunes_id, youtube_id, alt_youtube_ids')
+    .eq('itunes_id', itunesId)
+    .single();
+  if (error || !data) return null;
+  return data as YouTubeResolutionRow;
 }

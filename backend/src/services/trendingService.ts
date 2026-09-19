@@ -37,6 +37,12 @@ function normalizeStr(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
 }
 
+/** Last.fm devuelve este hash fijo como placeholder cuando no tiene carátula real. */
+const LASTFM_PLACEHOLDER_HASH = '2a96cbd8b46e442fc41c2b86b821562f';
+function isLastfmPlaceholderCover(url: string | null | undefined): boolean {
+  return !url || url.includes(LASTFM_PLACEHOLDER_HASH);
+}
+
 /**
  * Recalculates trending tracks and genres from DB (play_events + external_charts_cache).
  */
@@ -88,22 +94,26 @@ export async function updateTrendingData(region = 'spain'): Promise<void> {
       }
     }
 
-    // --- Compute genres from tracks_meta for active local plays ---
+    // --- Compute genres + artistId from tracks_meta for active local plays ---
     const localTrackIds = Array.from(playCounts.keys());
     const localItunesIds = localTrackIds.map(Number).filter(n => !isNaN(n) && n > 0);
     const trackGenres = new Map<string, string>();
+    const trackArtistIds = new Map<string, number>();
 
     if (localItunesIds.length > 0) {
       const { data: metas } = await supabase
         .schema('kokomusic')
         .from('tracks_meta')
-        .select('itunes_id, genre')
+        .select('itunes_id, genre, artist_id')
         .in('itunes_id', localItunesIds);
 
       if (metas) {
         for (const m of metas) {
           if (m.genre) {
             trackGenres.set(String(m.itunes_id), m.genre);
+          }
+          if (m.artist_id) {
+            trackArtistIds.set(String(m.itunes_id), Number(m.artist_id));
           }
         }
       }
@@ -125,11 +135,11 @@ export async function updateTrendingData(region = 'spain'): Promise<void> {
       const track: TrackMetadata = {
         id: trackId,
         itunesId: isNaN(itunesId) ? 0 : itunesId,
-        artistId: 0,
+        artistId: trackArtistIds.get(trackId) || 0,
         title: meta.title,
         artist: meta.artist,
         album: 'Trending Local',
-        cover: meta.cover,
+        cover: isLastfmPlaceholderCover(meta.cover) ? '' : meta.cover,
         duration: 180_000,
         genre: genre,
         releaseDate: null,
@@ -167,6 +177,7 @@ export async function updateTrendingData(region = 'spain'): Promise<void> {
             existing.score += positionScore * 2;
           } else if (trackId) {
             const itunesId = Number(trackId);
+            const rawCover = String(item.cover || item.coverUrl || item.cover_url || item.image || '');
             const track: TrackMetadata = {
               id: trackId,
               itunesId: isNaN(itunesId) ? 0 : itunesId,
@@ -174,7 +185,7 @@ export async function updateTrendingData(region = 'spain'): Promise<void> {
               title,
               artist,
               album: item.albumName || item.collectionName || 'Charts',
-              cover: String(item.cover || item.coverUrl || item.cover_url || item.image || ''),
+              cover: isLastfmPlaceholderCover(rawCover) ? '' : rawCover,
               duration: Number(item.durationMs || item.duration_ms || item.duration || 180_000),
               genre,
               releaseDate: item.releaseDate || item.release_date || null,
@@ -248,24 +259,103 @@ export async function getTrendingGenres(region = 'spain'): Promise<string[]> {
   return cachedTrendingGenresByRegion.get(normRegion) || DEFAULT_TRENDING_GENRES;
 }
 
+// ── Relevancia textual respecto a la query ───────────────────────────────────
+// Antes el score de un resultado dependía casi por completo de la posición que
+// le había dado iTunes (`100 - index`) — nunca se comprobaba si el título o el
+// artista realmente contenían las palabras buscadas. Cuando iTunes devolvía su
+// propio orden "raro" (p. ej. "de lejitos remix" trayendo canciones sin
+// relación en primera posición y el resultado real enterrado en el puesto 26),
+// nada lo corregía, porque ningún boost de personalización/trending es lo
+// bastante grande para remontar esa base. Ahora la relevancia textual es el
+// factor dominante y el orden de iTunes pasa a ser solo un desempate menor.
+function tokenizeQuery(query: string): string[] {
+  return query
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length >= 2);
+}
+
+// Algunos catálogos de iTunes indexan vídeos de reacción, lyric videos o
+// ediciones "speed up" como si fueran canciones normales — con el título
+// literalmente conteniendo la query completa (mejor relevancia textual que la
+// canción real), pero no son lo que el usuario busca. Penalizamos ese patrón
+// para que la versión oficial/canónica siga ganando.
+const LOW_QUALITY_RESULT_RE = /\b(reacciona(ndo)?|reacci[oó]n|reaction|lyrics?|letra\s*(y\s*)?video|speed\s*up|sped\s*up|nightcore|karaoke)\b/i;
+
+function isLowQualityResult(track: TrackMetadata): boolean {
+  return LOW_QUALITY_RESULT_RE.test(track.title) || LOW_QUALITY_RESULT_RE.test(track.artist);
+}
+
+/**
+ * Divide un string de artista en colaboradores individuales — "Jay Wheeler,
+ * Brytiago & DJ Nelson" → ["jay wheeler", "brytiago", "dj nelson"].
+ * Se usa para el boost de "artista relacionado": si el usuario escucha mucho
+ * a Brytiago, una canción donde Brytiago aparece como colaborador (aunque el
+ * artista principal listado sea otro) también es relevante para él.
+ */
+export function splitArtistNames(artist: string): string[] {
+  return artist
+    .split(/,|&|\bfeat\.?\b|\bft\.?\b|\bx\b|\band\b|\bcon\b/i)
+    .map(n => n.toLowerCase().trim())
+    .filter(n => n.length > 0);
+}
+
+function queryRelevanceScore(track: TrackMetadata, queryTokens: string[]): number {
+  if (queryTokens.length === 0) return 0;
+  const titleNorm = normalizeStr(track.title);
+  const artistNorm = normalizeStr(track.artist);
+
+  let matched = 0;
+  for (const tok of queryTokens) {
+    if (titleNorm.includes(tok) || artistNorm.includes(tok)) matched++;
+  }
+  const ratio = matched / queryTokens.length;
+
+  // Bonus si el título coincide (casi) exactamente con la query completa —
+  // para que "de lejitos" encuentre el track "De Lejitos" por encima de
+  // versiones/remixes/colaboraciones con título distinto.
+  const fullQueryNorm = normalizeStr(queryTokens.join(''));
+  const exactBonus = titleNorm === fullQueryNorm ? 0.5 : titleNorm.startsWith(fullQueryNorm) ? 0.2 : 0;
+
+  // Bonus si el ARTISTA aparece literalmente en la query (patrón típico de
+  // búsqueda "artista + canción", p. ej. "bad bunny monaco"). Sin esto, un
+  // cover/piano-version de un canal random puede empatar en ratio con la
+  // canción oficial (todas las palabras sueltas aparecen en su título) y
+  // ganar por delante del track real, cuyo match se reparte entre título y
+  // artista. Coincidir el nombre completo del artista es una señal mucho más
+  // fuerte de intención que sumar palabras sueltas.
+  const artistBonus = artistNorm.length >= 4 && fullQueryNorm.includes(artistNorm) ? 0.6 : 0;
+
+  return ratio + exactBonus + artistBonus; // rango aproximado 0 – 2.1
+}
+
 /**
  * Boosts search results by prioritizing trending tracks and genres.
  *
  * @param results Initial search results from iTunes/YouTube
+ * @param query Texto de búsqueda original — la relevancia textual es ahora el
+ *   factor dominante del ranking (ver queryRelevanceScore)
  * @param userHistoryScores Map of normalized artist name to playcount for user-specific boosting
  * @param region Optional region parameter for localized trending boost
+ * @param genreScores Map of normalized genre to play count — boost para géneros
+ *   que el usuario escucha regularmente (aunque no conozca aún ese artista)
  */
 export async function boostSearchResults(
   results: TrackMetadata[],
+  query: string,
   userHistoryScores?: Record<string, number>,
   region = 'spain',
-  listenedTrackKeys?: Set<string>
+  listenedTrackKeys?: Set<string>,
+  genreScores?: Record<string, number>
 ): Promise<TrackMetadata[]> {
   if (results.length === 0) return results;
 
   const normRegion = normalizeRegionName(region);
   const trendTracks = await getTrendingTracks(normRegion);
   const trendGenres = await getTrendingGenres(normRegion);
+  const queryTokens = tokenizeQuery(query);
 
   // Create fast-lookup sets for exact matching
   const trendTrackKeys = new Set(
@@ -276,30 +366,65 @@ export async function boostSearchResults(
   );
 
   const scored = results.map((track, index) => {
-    // Initial rank score (descending from 100)
-    let score = 100 - index;
+    // El orden que trajo iTunes ahora es solo un desempate menor (máx. ~10pts),
+    // no la base del score — ver comentario de queryRelevanceScore arriba.
+    let score = (100 - index) * 0.1;
+
+    // 0. Relevancia textual: ¿el título/artista realmente contienen lo buscado?
+    // Este es el factor dominante — hasta 300 puntos, muy por encima de
+    // cualquier boost de personalización o tendencia.
+    score += queryRelevanceScore(track, queryTokens) * 200;
+
+    // 0.5. Penalización a vídeos de reacción / lyrics / speed-up que solo
+    // "ganan" por contener literalmente las palabras buscadas en el título.
+    if (isLowQualityResult(track)) {
+      score -= 180;
+    }
 
     const trackKey = normalizeStr(`${track.title}-${track.artist}`);
     const artistNorm = track.artist.toLowerCase().trim();
     const genreNorm = track.genre ? track.genre.toLowerCase().trim() : '';
 
-    // 0. PREVIOUSLY LISTENED / TASTE PROFILE PRIORITY:
+    // 1. PREVIOUSLY LISTENED / TASTE PROFILE PRIORITY:
     // If the track is already in the user's history or taste profile, give it top priority!
     if (listenedTrackKeys && (listenedTrackKeys.has(trackKey) || listenedTrackKeys.has(track.id.toLowerCase()))) {
       score += 500; // Super high priority: puts previously heard songs first!
     }
 
-    // 1. Personalization: User followed/listened artist boost
-    if (userHistoryScores && userHistoryScores[artistNorm]) {
-      score += Math.min(userHistoryScores[artistNorm] * 10, 200); // Max +200 points
+    // 2. Personalization: User followed/listened artist boost.
+    // Comprueba tanto el string completo (coincidencia exacta, boost fuerte)
+    // como cada colaborador por separado (boost más moderado) — si el usuario
+    // escucha mucho a "Brytiago" y sale un tema de "DJ Nelson feat. Brytiago"
+    // que nunca ha escuchado bajo ese artista exacto, sigue siendo relevante.
+    if (userHistoryScores) {
+      if (userHistoryScores[artistNorm]) {
+        score += Math.min(userHistoryScores[artistNorm] * 10, 200); // Max +200 points
+      } else {
+        const collaborators = splitArtistNames(track.artist);
+        if (collaborators.length > 1) {
+          let bestCollabScore = 0;
+          for (const name of collaborators) {
+            if (userHistoryScores[name]) bestCollabScore = Math.max(bestCollabScore, userHistoryScores[name]);
+          }
+          if (bestCollabScore > 0) {
+            score += Math.min(bestCollabScore * 6, 120); // Max +120 — señal algo más débil que el match exacto
+          }
+        }
+      }
     }
 
-    // 2. Trending Track Boost: If track is currently trending globally or locally
+    // 3. Personalization: género que el usuario escucha regularmente — sube
+    // tracks de géneros afines aunque no conozca ese artista en concreto.
+    if (genreScores && genreNorm && genreScores[genreNorm]) {
+      score += Math.min(genreScores[genreNorm] * 4, 80); // Max +80 points
+    }
+
+    // 4. Trending Track Boost: If track is currently trending globally or locally
     if (trendTrackKeys.has(trackKey) || (track.itunesId > 0 && trendTracks.some(t => t.itunesId === track.itunesId))) {
       score += 150; // Significant boost
     }
 
-    // 3. Trending Genre Boost: If track belongs to a trending genre
+    // 5. Trending Genre Boost: If track belongs to a trending genre
     if (genreNorm && trendGenreNorms.has(genreNorm)) {
       score += 35; // Moderate boost
     }

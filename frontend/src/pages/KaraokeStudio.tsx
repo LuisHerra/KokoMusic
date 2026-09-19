@@ -252,7 +252,7 @@ export default function KaraokeStudioPage() {
       audioChunksRef.current = [];
 
       // 1. GUARANTEED DEDICATED BACKGROUND MUSIC PLAYBACK
-      const bgAudio = new Audio(`/api/stream/${currentTrack.id}?autoDownload=true`);
+      const bgAudio = new Audio(`/api/stream/${currentTrack.id}?autoDownload=true&forceStream=true`);
       bgAudio.volume = musicVolume;
       bgAudio.crossOrigin = 'anonymous';
       bgAudioRef.current = bgAudio;
@@ -345,7 +345,7 @@ export default function KaraokeStudioPage() {
 
     // Play Background Beat
     if (currentTrack) {
-      const bgAudio = new Audio(`/api/stream/${currentTrack.id}?autoDownload=true`);
+      const bgAudio = new Audio(`/api/stream/${currentTrack.id}?autoDownload=true&forceStream=true`);
       bgAudio.volume = musicVolume;
       bgAudio.play().catch(() => {});
       bgAudioRef.current = bgAudio;

@@ -1,5 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { submitOnboarding, importSpotifyHistory } from '../lib/api';
+import React, { useState, useRef, useEffect } from 'react';
+import { submitOnboarding, importSpotifyHistory, getAvailableCDNTracks } from '../lib/api';
+import { useLikedSongs } from '../hooks/useLikedSongs';
+import { startSpotifyAuth } from '../lib/spotifyAuth';
+import kokoLogo from '../assets/koko-logo.png';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -8,43 +11,98 @@ interface OnboardingModalProps {
 }
 
 const PRESET_GENRES = [
-  'Reggaeton', 'Trap', 'Urbano Latino', 'Phonk', 'R&B', 'Pop', 
+  'Reggaeton', 'Trap', 'Urbano Latino', 'Phonk', 'R&B', 'Pop',
   'Hip-Hop', 'Rap', 'Rock', 'Electrónica', 'Phonk Brasileño', 'Afrobeat'
 ];
 
 const PRESET_ARTISTS = [
-  'Feid', 'Quevedo', 'Bad Bunny', 'Morad', 'Trueno', 'JC Reyes', 
-  'Myke Towers', 'Charlie Puth', 'KeBlack', 'Santiago', 'Omar Courtz',
-  'Santiago', 'Oasis', 'GIMS', 'Ninho', 'PLK', 'Tiakola', 'Naza'
+  'Feid', 'Quevedo', 'Bad Bunny', 'Morad', 'Trueno', 'JC Reyes',
+  'Myke Towers', 'Mora', 'Rauw Alejandro', 'Duki', 'Anuel AA',
+  'Eladio Carrión', 'Saiko', 'Milo J', 'Cris Mj', 'De La Rose'
+];
+
+interface SeedSong {
+  id: string;
+  title: string;
+  artist: string;
+  cover: string;
+}
+
+const DEFAULT_SAMPLE_SONGS: SeedSong[] = [
+  { id: 'sample-luna', title: 'LUNA', artist: 'Feid, ATL Jacob', cover: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=150&auto=format&fit=crop&q=80' },
+  { id: 'sample-columbia', title: 'Columbia', artist: 'Quevedo', cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80' },
+  { id: 'sample-monaco', title: 'MONACO', artist: 'Bad Bunny', cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=150&auto=format&fit=crop&q=80' },
+  { id: 'sample-pelele', title: 'Pelele', artist: 'Morad', cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=150&auto=format&fit=crop&q=80' },
+  { id: 'sample-mamichula', title: 'Mamichula', artist: 'Trueno, Nicki Nicole', cover: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=150&auto=format&fit=crop&q=80' },
+  { id: 'sample-lala', title: 'LALA', artist: 'Myke Towers', cover: 'https://images.unsplash.com/photo-1487180144351-b8472da7d491?w=150&auto=format&fit=crop&q=80' },
+  { id: 'sample-bizarrap-52', title: 'Bzrp Sessions #52', artist: 'Bizarrap, Quevedo', cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=150&auto=format&fit=crop&q=80' },
+  { id: 'sample-coronamos', title: 'Coronamos', artist: 'JC Reyes', cover: 'https://images.unsplash.com/photo-1511735111819-9a3f7709049c?w=150&auto=format&fit=crop&q=80' },
 ];
 
 export default function OnboardingModal({ isOpen, onClose, onSuccess }: OnboardingModalProps) {
   const [step, setStep] = useState<'welcome' | 'genres_artists' | 'spotify_import' | 'success'>('welcome');
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedArtists, setSelectedArtists] = useState<string[]>([]);
+  const [selectedTrackIds, setSelectedTrackIds] = useState<string[]>([]);
+  const [songsList, setSongsList] = useState<SeedSong[]>(DEFAULT_SAMPLE_SONGS);
   const [customArtistInput, setCustomArtistInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [spotifyLoading, setSpotifyLoading] = useState(false);
+  const [spotifyError, setSpotifyError] = useState<string | null>(null);
   const [importStats, setImportStats] = useState<{
     totalPlays: number;
     uniqueTracks: number;
     resolved: number;
   } | null>(null);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const { isLiked, toggleLike } = useLikedSongs();
+
+  useEffect(() => {
+    getAvailableCDNTracks(1, 16)
+      .then((res) => {
+        if (res?.tracks && res.tracks.length > 0) {
+          const formatted = res.tracks.map((t) => ({
+            id: String(t.id),
+            title: t.title,
+            artist: t.artist,
+            cover: t.cover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80',
+          }));
+          setSongsList(formatted);
+        }
+      })
+      .catch(() => {
+        // Fallback already in DEFAULT_SAMPLE_SONGS
+      });
+  }, []);
 
   if (!isOpen) return null;
 
   const toggleGenre = (genre: string) => {
-    setSelectedGenres(prev => 
+    setSelectedGenres(prev =>
       prev.includes(genre) ? prev.filter(g => g !== genre) : [...prev, genre]
     );
   };
 
   const toggleArtist = (artist: string) => {
-    setSelectedArtists(prev => 
+    setSelectedArtists(prev =>
       prev.includes(artist) ? prev.filter(a => a !== artist) : [...prev, artist]
     );
+  };
+
+  const toggleTrackLike = (song: SeedSong) => {
+    const isCurrentlyLiked = selectedTrackIds.includes(song.id) || isLiked(song.id);
+    if (isCurrentlyLiked) {
+      setSelectedTrackIds(prev => prev.filter(id => id !== song.id));
+    } else {
+      setSelectedTrackIds(prev => [...prev, song.id]);
+      const primaryArtist = song.artist.split(',')[0].trim();
+      if (primaryArtist && !selectedArtists.includes(primaryArtist)) {
+        setSelectedArtists(prev => [...prev, primaryArtist]);
+      }
+    }
+    toggleLike(song.id);
   };
 
   const addCustomArtist = (e: React.FormEvent) => {
@@ -61,14 +119,14 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
   };
 
   const handlePreferencesSubmit = async () => {
-    if (selectedGenres.length === 0 && selectedArtists.length === 0) {
-      alert('Por favor selecciona al menos un género o artista');
+    if (selectedGenres.length === 0 && selectedArtists.length === 0 && selectedTrackIds.length === 0) {
+      alert('Por favor selecciona al menos un género, artista o canción favorita');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await submitOnboarding(selectedGenres, selectedArtists);
+      await submitOnboarding(selectedGenres, selectedArtists, selectedTrackIds);
       setStep('success');
     } catch (err: any) {
       console.error('Error al guardar preferencias:', err);
@@ -76,6 +134,30 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSpotifyConnect = () => {
+    setSpotifyLoading(true);
+    setSpotifyError(null);
+    startSpotifyAuth({
+      origin: 'onboarding',
+      onSuccess: (payload) => {
+        setSpotifyLoading(false);
+        setImportStats({
+          totalPlays: 50,
+          uniqueTracks: payload.topTracks?.length || 25,
+          resolved: payload.topArtists?.length || 25,
+        });
+        setStep('success');
+      },
+      onError: (err) => {
+        setSpotifyLoading(false);
+        setSpotifyError(err);
+      },
+      onClose: () => {
+        setSpotifyLoading(false);
+      },
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,7 +188,7 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
             throw jsonErr;
           }
         }
-        
+
         // Validar formato mínimo de Spotify (puede ser Extended, Legacy o Normalizado)
         const sample = historyArray[0];
         const isValid = sample && (
@@ -161,18 +243,18 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
         width: '100%',
         maxWidth: 640,
         background: 'var(--bg-elevated)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
         borderRadius: 'var(--radius-lg)',
         padding: 32,
-        boxShadow: '0 24px 64px rgba(0, 0, 0, 0.8)',
+        boxShadow: '0 24px 70px rgba(0, 0, 0, 0.85), 0 0 45px var(--accent-glow), 0 0 90px var(--accent-glow)',
         maxHeight: '90vh',
         overflowY: 'auto',
         position: 'relative'
       }}>
-        
+
         {step !== 'success' && (
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             style={{
               position: 'absolute',
               top: 20, right: 20,
@@ -189,61 +271,146 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
 
         {step === 'welcome' && (
           <div style={{ textAlign: 'center' }}>
+            {/* Logo Oficial de KokoMusic Individual (Sin forma circular contenedora) */}
             <div style={{
-              width: 64, height: 64,
-              background: 'linear-gradient(135deg, var(--accent), #0f8b3c)',
-              borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
               margin: '0 auto 20px',
-              boxShadow: '0 8px 24px rgba(29, 185, 84, 0.3)'
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="black">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-              </svg>
+              <img
+                src={kokoLogo}
+                alt="KokoMusic Logo"
+                className="app-logo-accent"
+                style={{
+                  width: 68,
+                  height: 68,
+                  objectFit: 'contain',
+                  filter: 'drop-shadow(0 8px 20px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 20px var(--accent-glow))',
+                  userSelect: 'none',
+                  pointerEvents: 'none',
+                }}
+              />
             </div>
             <h2 style={{ fontSize: 26, fontWeight: 700, marginBottom: 12 }}>Personaliza tu Recomendación</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.5, marginBottom: 32 }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.5, marginBottom: 28 }}>
               ¿Cómo quieres que KokoMusic aprenda de tus gustos? Elige una opción para sintonizar tu Koko-Mix y evitar canciones repetitivas.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-              {/* Option A */}
-              <div 
-                onClick={() => setStep('genres_artists')}
+            {/* Opción Prioritaria Elegante: Seleccionar Gustos (Sin estridencias, SVG balanceado) */}
+            <div
+              onClick={() => setStep('genres_artists')}
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: 'var(--radius-md)',
+                padding: '16px 20px',
+                cursor: 'pointer',
+                marginBottom: 14,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                transition: 'all 0.2s ease',
+                textAlign: 'left',
+              }}
+              className="onboarding-opt-card"
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                e.currentTarget.style.borderColor = 'var(--accent)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 8px 24px var(--accent-glow)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.transform = 'none';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              <div style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                background: 'rgba(255, 255, 255, 0.06)',
+                color: 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18V5l12-2v13" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="16" r="3" />
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+                  <h4 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#fff' }}>Seleccionar Gustos</h4>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-glow)', padding: '2px 8px', borderRadius: 10 }}>
+                    Recomendado
+                  </span>
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0, lineHeight: 1.4 }}>
+                  Elige tus géneros, artistas y canciones favoritas para tu perfil interactivo.
+                </p>
+              </div>
+            </div>
+
+            {/* Opciones Secundarias: Spotify y JSON */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              {/* Opción Spotify */}
+              <div
+                onClick={handleSpotifyConnect}
                 style={{
                   background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                   borderRadius: 'var(--radius-md)',
-                  padding: 24,
+                  padding: 20,
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   textAlign: 'left'
                 }}
                 className="onboarding-opt-card"
                 onMouseEnter={e => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-                  e.currentTarget.style.borderColor = 'var(--accent)';
+                  e.currentTarget.style.background = 'rgba(29, 185, 84, 0.08)';
+                  e.currentTarget.style.borderColor = '#1DB954';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                  e.currentTarget.style.transform = 'none';
                 }}
               >
-                <div style={{ fontSize: 24, marginBottom: 12 }}>🎵</div>
-                <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Seleccionar Gustos</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4 }}>
-                  Elige tus géneros y artistas urbanos favoritos directamente en una lista interactiva.
+                <div style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: 'rgba(29, 185, 84, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 12,
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#1DB954">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.5 17.3a.75.75 0 01-1.03.25c-2.82-1.72-6.37-2.11-10.55-1.16a.75.75 0 01-.34-1.46c4.58-1.04 8.52-.6 11.67 1.33.35.21.46.68.25 1.04zm1.47-3.26a.94.94 0 01-1.29.31c-3.23-1.99-8.15-2.56-11.97-1.4a.94.94 0 01-.55-1.8c4.37-1.33 9.8-.69 13.5 1.59.4.25.53.78.31 1.3zm.13-3.39c-3.87-2.3-10.26-2.51-13.97-1.38a1.13 1.13 0 01-.66-2.16c4.27-1.3 11.33-1.04 15.8 1.61a1.13 1.13 0 01-1.17 1.93z" />
+                  </svg>
+                </div>
+                <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Conectar Spotify</h4>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4, margin: 0 }}>
+                  {spotifyLoading ? 'Conectando...' : 'Sincroniza tus artistas favoritos sin subir archivos.'}
                 </p>
               </div>
 
-              {/* Option B */}
-              <div 
+              {/* Opción JSON */}
+              <div
                 onClick={() => setStep('spotify_import')}
                 style={{
                   background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                   borderRadius: 'var(--radius-md)',
-                  padding: 24,
+                  padding: 20,
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   textAlign: 'left'
@@ -252,18 +419,78 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
                 onMouseEnter={e => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
                   e.currentTarget.style.borderColor = 'var(--accent)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                  e.currentTarget.style.transform = 'none';
                 }}
               >
-                <div style={{ fontSize: 24, marginBottom: 12 }}>🚀</div>
-                <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Historial Spotify</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4 }}>
-                  Importa tus archivos Extended Streaming History (.json) para transferir todas tus reproducciones.
+                <div style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: 'rgba(255,255,255,0.06)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--accent)',
+                  marginBottom: 12,
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                </div>
+                <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Archivos JSON</h4>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4, margin: 0 }}>
+                  Sube tus archivos Extended Streaming History (.json).
                 </p>
               </div>
+            </div>
+
+            {spotifyError && (
+              <div style={{ color: '#ff6b6b', fontSize: 12, background: 'rgba(255,107,107,0.1)', padding: '10px 14px', borderRadius: 10, marginBottom: 16 }}>
+                {spotifyError}
+              </div>
+            )}
+
+            {/* Footer: Acción única directa para no volver a preguntar */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: 20,
+              paddingTop: 16,
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.setItem('koko_onboarding_dismissed', 'true');
+                  onClose();
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.color = '#fff';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                  e.currentTarget.style.background = 'none';
+                }}
+              >
+                No volver a preguntar
+              </button>
             </div>
           </div>
         )}
@@ -348,7 +575,7 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
                   outline: 'none'
                 }}
               />
-              <button 
+              <button
                 type="submit"
                 style={{
                   background: 'var(--text-primary)',
@@ -381,7 +608,7 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
                     }}
                   >
                     {artist}
-                    <button 
+                    <button
                       onClick={() => removeArtist(artist)}
                       style={{ background: 'none', border: 'none', color: 'red', cursor: 'pointer', fontWeight: 'bold' }}
                     >
@@ -391,6 +618,131 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
                 ))}
               </div>
             )}
+
+            {/* Canciones que te gustan */}
+            <div style={{ marginTop: 24, marginBottom: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: 0.5, margin: 0 }}>
+                  Canciones que te gustan
+                </h4>
+                {selectedTrackIds.length > 0 && (
+                  <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, background: 'var(--accent-glow)', padding: '2px 8px', borderRadius: 8 }}>
+                    {selectedTrackIds.length} {selectedTrackIds.length === 1 ? 'canción indicada' : 'canciones indicadas'}
+                  </span>
+                )}
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 14px', lineHeight: 1.4 }}>
+                Toca el corazón en las canciones que te agraden para afinar el algoritmo con tus temas favoritos.
+              </p>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                gap: 10,
+                maxHeight: 250,
+                overflowY: 'auto',
+                paddingRight: 4,
+              }}>
+                {songsList.map(song => {
+                  const isTrackLiked = selectedTrackIds.includes(song.id) || isLiked(song.id);
+                  return (
+                    <div
+                      key={song.id}
+                      onClick={() => toggleTrackLike(song)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-md)',
+                        background: isTrackLiked ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+                        border: isTrackLiked ? '1.5px solid var(--accent)' : '1px solid rgba(255, 255, 255, 0.07)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseEnter={e => {
+                        if (!isTrackLiked) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!isTrackLiked) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.07)';
+                        }
+                      }}
+                    >
+                      <img
+                        src={song.cover}
+                        alt={song.title}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 6,
+                          objectFit: 'cover',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: '#fff',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {song.title}
+                        </div>
+                        <div style={{
+                          fontSize: 12,
+                          color: 'var(--text-secondary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {song.artist}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleTrackLike(song);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 6,
+                          cursor: 'pointer',
+                          color: isTrackLiked ? 'var(--accent)' : 'var(--text-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          transition: 'transform 0.15s ease, color 0.15s ease',
+                        }}
+                        title={isTrackLiked ? 'Quitar de favoritos' : 'Me gusta'}
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill={isTrackLiked ? 'var(--accent)' : 'none'}
+                          stroke={isTrackLiked ? 'var(--accent)' : 'currentColor'}
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Acciones */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
@@ -436,7 +788,7 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
               Sube tus archivos JSON de Extended Streaming History de Spotify. Esto asociará tus reproducciones con las canciones de la base de datos para afinar el algoritmo.
             </p>
 
-            <div 
+            <div
               onClick={() => fileInputRef.current?.click()}
               style={{
                 border: '2px dashed rgba(255, 255, 255, 0.15)',
@@ -490,7 +842,23 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>📥</div>
+                  <div style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 12,
+                    background: 'rgba(255,255,255,0.06)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--accent)',
+                    margin: '0 auto 12px',
+                  }}>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                  </div>
                   <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Arrastra o selecciona tu archivo JSON</h4>
                   <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4, maxWidth: 380, margin: '0 auto' }}>
                     Sube archivos tipo <code>StreamingHistory_music_0.json</code> o <code>AudioPlay.json</code> de tu cuenta de Spotify.
@@ -507,9 +875,17 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
                 color: '#e74c3c',
                 padding: '12px 16px',
                 fontSize: 13,
-                marginBottom: 20
+                marginBottom: 20,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
               }}>
-                ⚠️ {fileError}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                {fileError}
               </div>
             )}
 
@@ -521,10 +897,17 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
                   color: 'var(--text-secondary)',
                   border: 'none',
                   fontSize: 14,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                 }}
               >
-                ← Atrás
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12" />
+                  <polyline points="12 19 5 12 12 5" />
+                </svg>
+                Atrás
               </button>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 Se ignoran saltos de canciones de menos de 10s.
@@ -537,23 +920,25 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <div style={{
               width: 56, height: 56,
-              background: '#2ecc71',
+              background: 'var(--accent)',
               borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               margin: '0 auto 20px',
               color: '#000',
-              fontSize: 24
+              boxShadow: '0 8px 24px var(--accent-glow)',
             }}>
-              ✓
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
             </div>
-            
+
             {importStats ? (
               <>
                 <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>¡Historial Importado!</h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>
                   Hemos analizado tus archivos de Spotify y transferido tu historial a KokoMusic.
                 </p>
-                
+
                 <div style={{
                   background: 'rgba(255,255,255,0.03)',
                   border: '1px solid rgba(255,255,255,0.05)',

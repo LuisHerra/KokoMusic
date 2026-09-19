@@ -29,13 +29,14 @@ import QueuePanel from './components/Player/QueuePanel';
 import ImmersiveLyrics from './components/Player/ImmersiveLyrics';
 import NotificationBell from './components/NotificationBell';
 import { useNotifications } from './hooks/useNotifications';
-import { joinJam, getJam, getMyProfile, getProfileNames, cleanName, resolveImageUrl } from './lib/api';
+import { joinJam, getJam, getMyProfile, getProfileNames, cleanName, resolveImageUrl, triggerRecommendationEvent } from './lib/api';
 import { cleanupOldOfflineTracks } from './lib/offlineAudio';
 import InstallPrompt from './components/InstallPrompt';
 import AppSplash from './components/AppSplash';
 import { useVoiceControl } from './hooks/useVoiceControl';
 import VoiceControlModal, { IconMic } from './components/VoiceControlModal';
 import ThemeModal from './components/ThemeModal';
+import AuthModal from './components/Auth/AuthModal';
 import { useThemeStore } from './store/themeStore';
 
 
@@ -220,6 +221,9 @@ function AppShell() {
     useThemeStore.getState().applyThemeToDOM();
     cleanupOldOfflineTracks()
       .catch((err) => console.error('[App] Error en la limpieza de IndexedDB:', err));
+    // Dispara la reconstrucción del perfil de gustos/candidatos si está desactualizado
+    // (>6h) — sin esto, el Koko-Mix nunca se refresca tras el arranque inicial.
+    triggerRecommendationEvent('app_open');
   }, []);
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -236,6 +240,19 @@ function AppShell() {
 
   const joinJamCode = searchParams.get('join_jam');
   const [hasAutoJoined, setHasAutoJoined] = useState(false);
+
+  // Primera vez: modal de login inicial si el usuario nunca se ha autenticado ni es invitado
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(() => {
+    const hasAuth = localStorage.getItem('koko_auth_completed');
+    const isGuest = localStorage.getItem('koko_guest_mode');
+    return !hasAuth && !isGuest;
+  });
+
+  useEffect(() => {
+    const openAuth = () => setIsAuthModalOpen(true);
+    window.addEventListener('koko-open-auth', openAuth);
+    return () => window.removeEventListener('koko-open-auth', openAuth);
+  }, []);
 
   useEffect(() => {
     if (joinJamCode && !hasAutoJoined) {
@@ -529,6 +546,7 @@ function AppShell() {
       />
 
       <ThemeModal />
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 }

@@ -1,38 +1,29 @@
 /**
- * Stream Route — Multi-Source Waterfall Architecture
+ * Stream Route — KokoMusic (InnerTube via KokoMusic-lite)
  *
  * Flujo de streaming:
- *   1. Si es custom track upload → stream local o redirect CDN
- *   2. Si existe localmente en disco → stream local con soporte Range
- *   3. Resolver stream con StreamResolver (L1 Cache → CDN R2 → InnerTube → JioSaavn → Invidious → yt-dlp)
- *   4. Si es CDN R2 → redirect 302
- *   5. Si es InnerTube / JioSaavn / Invidious / yt-dlp → proxy en streaming con backpressure y Range support
- *   6. En background (no-bloqueante): si CDN está habilitado y es track corto, descargar + transcodificar para R2
+ *   1. Si es custom track upload → stream local o redirect
+ *   2. Resolver videoId de YouTube (cache L1/L2 o búsqueda)
+ *   3. Resolver stream con KokoMusic-lite (InnerTube)
+ *   4. Redirigir 302 a la URL directa del stream (o proxy si req.query.proxy=true)
  */
 
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
-import { resolveYoutubeId } from '../services/ytResolverService';
+import { resolveYoutubeIdWithAlternates, promoteYoutubeCandidate } from '../services/ytResolverService';
 import { getTrackById } from '../services/metadataService';
 import { cache } from '../services/cacheService';
 import {
-  isCDNEnabled,
-  findTrackInCDN,
-  uploadToCDN,
-  getCDNUsageStats,
-  cleanupLargeLocalFiles,
-  MAX_CDN_SIZE_MB,
-  BUCKET_CAPACITY_MB,
-} from '../services/cdnService';
-import { downloadAndTranscode, getAudioPath, AUDIO_DIR } from '../services/ytdlpService';
-import { resolveAudioStream, type ResolvedStream } from '../services/streamResolverService';
+  resolveAudioStream,
+  purgeStreamCache,
+  type ResolvedStream,
+} from '../services/streamResolverService';
+import { diagnoseLiteStream } from '../services/kokoLiteService';
+import { metrics } from '../services/metricsService';
+import { findTrackInCDN, isCDNEnabled, getCDNUsageStats } from '../services/cdnService';
+import { cacheStreamInBackground } from '../services/cdnAutoCacheService';
 
 const router = Router();
-
-// Limpieza de archivos locales antiguos al arrancar
-cleanupLargeLocalFiles(AUDIO_DIR);
-
-const EMBED_THRESHOLD_MIN = parseInt(process.env.EMBED_THRESHOLD_MIN ?? '25', 10);
 
 function stringToSafeIntegerHash(str: string): number {
   let hash = 5381;
@@ -42,7 +33,7 @@ function stringToSafeIntegerHash(str: string): number {
   return Math.abs(hash % 4503599627370495);
 }
 
-/** Stream de archivo local con soporte Range */
+/** Stream de archivo local con soporte Range (para custom tracks) */
 function streamLocalFile(req: Request, res: Response, filePath: string, contentType = 'audio/mpeg'): void {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
@@ -71,23 +62,37 @@ function streamLocalFile(req: Request, res: Response, filePath: string, contentT
   }
 }
 
-/** Proxy hacia URL directa de audio con soporte Range y bypass CORS */
-async function proxyAudioStream(req: Request, res: Response, rawUrl: string, defaultContentType = 'audio/webm'): Promise<void> {
+/** Proxy de fallback hacia URL directa de audio (activable con ?proxy=true) */
+async function proxyAudioStream(req: Request, res: Response, rawUrl: string, defaultContentType = 'audio/mp4'): Promise<boolean> {
   const requestHeaders: Record<string, string> = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Connection': 'keep-alive',
   };
-  if (req.headers.range) {
-    requestHeaders['Range'] = req.headers.range;
-  }
+  // Googlevideo throttla brutalmente las descargas sin cabecera Range (anti-scraping).
+  // Si el cliente no pidió un rango, forzamos uno abierto hacia el upstream para
+  // recibir el stream a velocidad normal.
+  requestHeaders['Range'] = req.headers.range || 'bytes=0-';
 
   try {
     const upstream = await fetch(rawUrl, { headers: requestHeaders });
 
     if (!upstream.ok && upstream.status !== 206) {
+      metrics.recordStreamProxy('error');
       console.error(`[Stream] Proxy upstream error ${upstream.status} para URL: ${rawUrl.substring(0, 80)}...`);
-      if (!res.headersSent) res.status(upstream.status).end();
-      return;
+      return false;
+    }
+
+    // Googlevideo a veces responde 200 con un cuerpo HTML/JSON de error (captcha,
+    // rate-limit, URL caducada) en vez del binario de audio. Si lo reenviamos tal
+    // cual, el <audio> del cliente recibe "bytes" que no son audio y lanza
+    // MEDIA_ELEMENT_ERROR (Format error) tras descargarlos — detectarlo aquí y
+    // tratarlo como fallo permite reintentar con una URL fresca ANTES de que el
+    // cliente llegue a ver ningún byte.
+    const ct = upstream.headers.get('content-type');
+    if (ct && !ct.startsWith('audio/') && !ct.startsWith('video/') && !ct.includes('octet-stream')) {
+      metrics.recordStreamProxy('error');
+      console.error(`[Stream] Proxy upstream devolvió content-type no-audio "${ct}" para URL: ${rawUrl.substring(0, 80)}...`);
+      return false;
     }
 
     const responseHeaders: Record<string, string> = {
@@ -95,17 +100,17 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string, def
       'Cache-Control': 'public, max-age=3600',
     };
 
-    const ct = upstream.headers.get('content-type');
     if (ct) responseHeaders['Content-Type'] = ct;
     else responseHeaders['Content-Type'] = defaultContentType;
 
     const cl = upstream.headers.get('content-length');
     if (cl) responseHeaders['Content-Length'] = cl;
 
+    const clientWantedRange = Boolean(req.headers.range);
     const cr = upstream.headers.get('content-range');
-    if (cr) responseHeaders['Content-Range'] = cr;
+    if (cr && clientWantedRange) responseHeaders['Content-Range'] = cr;
 
-    res.writeHead(upstream.status === 206 ? 206 : 200, responseHeaders);
+    res.writeHead(upstream.status === 206 && clientWantedRange ? 206 : 200, responseHeaders);
 
     if (upstream.body) {
       const reader = upstream.body.getReader();
@@ -122,43 +127,29 @@ async function proxyAudioStream(req: Request, res: Response, rawUrl: string, def
     } else {
       res.end();
     }
+    metrics.recordStreamProxy('ok');
+    return true;
   } catch (e) {
+    metrics.recordStreamProxy('error');
     console.error('[Stream] Error en proxy de audio:', e);
-    if (!res.headersSent) res.status(502).end();
-  }
-}
-
-/**
- * Descarga y transcodifica en background para almacenar en CDN R2 sin bloquear.
- */
-async function downloadAndUploadToCDN(youtubeId: string, keepLocal = false): Promise<void> {
-  try {
-    await downloadAndTranscode(youtubeId);
-    const localPath = getAudioPath(youtubeId);
-
-    if (!fs.existsSync(localPath)) {
-      console.warn(`[CDN Background] Archivo no encontrado tras descarga: ${localPath}`);
-      return;
-    }
-
-    const cdnUrl = await uploadToCDN(youtubeId, localPath, !keepLocal);
-    if (cdnUrl) {
-      cache.setex(`cdn-url:${youtubeId}`, 86400 * 365, cdnUrl);
-      console.log(`[CDN Background] ✅ ${youtubeId} disponible en CDN: ${cdnUrl}`);
-    }
-  } catch (err) {
-    console.error(`[CDN Background] Error procesando ${youtubeId}:`, err);
+    return false;
   }
 }
 
 async function resolveYoutubeIdForTrack(itunesId: string): Promise<{
   youtubeId: string | null;
+  /** Candidatos de respaldo si `youtubeId` no resuelve — ver PROMOTE_CANDIDATE_ON_FALLBACK. */
+  alternates: string[];
+  /** itunesId numérico necesario para promover un candidato alternativo — null si no aplica (custom/directo). */
+  resolvableItunesId: number | null;
   isDirectYouTube: boolean;
   artist?: string;
   title?: string;
   durationSeconds?: number;
 }> {
   let youtubeId: string | null = null;
+  let alternates: string[] = [];
+  let resolvableItunesId: number | null = null;
   let isDirectYouTube = false;
   let artist: string | undefined;
   let title: string | undefined;
@@ -201,15 +192,51 @@ async function resolveYoutubeIdForTrack(itunesId: string): Promise<{
         artist = track.artist;
         title = track.title;
         durationSeconds = Math.round((track.duration || 0) / 1000);
-        youtubeId = await resolveYoutubeId(itunesIdNum, track.artist, track.title, durationSeconds);
+        const resolution = await resolveYoutubeIdWithAlternates(itunesIdNum, track.artist, track.title, durationSeconds);
+        youtubeId = resolution?.primary ?? null;
+        alternates = resolution?.alternates ?? [];
+        resolvableItunesId = itunesIdNum;
       }
     }
   }
 
-  return { youtubeId, isDirectYouTube, artist, title, durationSeconds };
+  return { youtubeId, alternates, resolvableItunesId, isDirectYouTube, artist, title, durationSeconds };
 }
 
-// ── GET /api/stream/:itunesId ─────────────────────────────────────────────────
+/**
+ * Tras agotar el videoId principal, prueba los candidatos alternativos
+ * guardados (otros vídeos del mismo tema) antes de rendirse. Si uno
+ * resuelve, lo promueve a principal para que las próximas peticiones vayan
+ * directas a él. Acotado a los candidatos guardados (máx. 3) para no volar
+ * la latencia — cada intento ya falla rápido gracias a la caché negativa de
+ * kokoLiteClient si ya se había probado antes.
+ */
+async function resolveWithAlternates(
+  primaryYoutubeId: string,
+  alternates: string[],
+  resolvableItunesId: number | null,
+  hints: { artist?: string; title?: string; itunesId: string; quality?: string }
+): Promise<{ youtubeId: string; resolvedStream: ResolvedStream } | null> {
+  let resolvedStream = await resolveAudioStream(primaryYoutubeId, hints);
+  if (resolvedStream?.url) return { youtubeId: primaryYoutubeId, resolvedStream };
+
+  const remaining = [...alternates];
+  while (remaining.length > 0) {
+    const candidate = remaining.shift()!;
+    console.warn(`[Stream] Video principal ${primaryYoutubeId} no resolvió — probando candidato alternativo ${candidate}`);
+    resolvedStream = await resolveAudioStream(candidate, hints);
+    if (resolvedStream?.url) {
+      if (resolvableItunesId !== null) {
+        promoteYoutubeCandidate(resolvableItunesId, candidate, remaining).catch(() => {});
+      }
+      return { youtubeId: candidate, resolvedStream };
+    }
+  }
+
+  return null;
+}
+
+// ── GET /api/stream/:itunesId — Stream o Redirect 302 ──────────────────────────
 
 router.get('/:itunesId', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
@@ -241,41 +268,95 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
       }
     }
 
-    // 2. Resolución de IDs y metadatos
-    const { youtubeId, isDirectYouTube, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);
+    // El cliente pide bytes reales (no un redirect) cuando necesita leerlos con
+    // fetch() para guardarlos en IndexedDB offline — ver lib/offlineAudio.ts.
+    // Es la única razón real para seguir proxyando en vez de redirigir.
+    const forceStream = req.query.forceStream === 'true';
 
-    if (!youtubeId) {
-      return res.status(404).json({ error: 'No se pudo resolver la fuente de audio para este track' });
-    }
-
-    // 3. ¿Existe localmente en disco?
-    const localPath = getAudioPath(youtubeId);
-    if (fs.existsSync(localPath)) {
-      console.log(`[Stream] 💾 Local hit: ${youtubeId}`);
-      streamLocalFile(req, res, localPath, 'audio/ogg; codecs=opus');
+    // 2. Comprobar si ya lo tenemos cacheado en R2 — si es así, ni tocamos
+    // KokoMusic-lite ni googlevideo. Evita por completo el problema de IP.
+    const cdnUrl = await findTrackInCDN(itunesId);
+    if (cdnUrl) {
+      if (!forceStream) {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        return res.redirect(302, cdnUrl);
+      }
+      const proxiedFromCdn = await proxyAudioStream(req, res, cdnUrl, 'audio/ogg; codecs=opus');
+      if (!proxiedFromCdn && !res.headersSent) {
+        res.status(502).json({ error: 'Stream temporalmente no disponible' });
+      }
       return;
     }
 
-    // 4. Resolver mediante el waterfall unificado de StreamResolver
-    const resolvedStream = await resolveAudioStream(youtubeId, {
+    // 3. Resolución de IDs y metadatos
+    const { youtubeId: primaryYoutubeId, alternates, resolvableItunesId, artist, title } = await resolveYoutubeIdForTrack(itunesId);
+
+    if (!primaryYoutubeId) {
+      return res.status(404).json({ error: 'No se pudo resolver la fuente de audio para este track' });
+    }
+
+    // 4. Resolver mediante KokoMusic-lite (con bitrate adaptativo/elástico).
+    // Si el video principal no resuelve (bloqueado, retirado...), prueba los
+    // candidatos alternativos guardados (otros vídeos del mismo tema) antes
+    // de rendirse — así una canción que le gusta al usuario sigue sonando
+    // aunque su video "elegido" original ya no sirva.
+    const quality = (req.query.quality as string) || (req.query.bitrate as string) || undefined;
+    const resolved = await resolveWithAlternates(primaryYoutubeId, alternates, resolvableItunesId, {
       artist,
       title,
       itunesId,
+      quality,
     });
 
-    if (!resolvedStream) {
+    if (!resolved) {
       return res.status(404).json({
-        error: 'No se pudo obtener el stream de audio. Todas las fuentes (InnerTube, JioSaavn, Invidious, yt-dlp) fallaron.',
+        error: 'No se pudo obtener el stream de audio desde KokoMusic-lite.',
       });
     }
 
-    // 5. Si es CDN R2, redirigir directamente
-    if (resolvedStream.source === 'cdn') {
+    const youtubeId = resolved.youtubeId;
+    let resolvedStream = resolved.resolvedStream;
+
+    // La primera vez que resolvemos un track con éxito, lo cacheamos en R2 en
+    // segundo plano — las próximas reproducciones lo encontrarán en el paso 2
+    // de arriba y nunca volverán a depender de Google.
+    cacheStreamInBackground(itunesId, resolvedStream.url);
+
+    // 5. Camino principal (reproducción normal en <audio>): 302 directo a la
+    // URL de googlevideo. El navegador la pide con la IP real del usuario
+    // (residencial/móvil), no con la IP de datacenter de nuestro backend —
+    // que es precisamente la que más 403 recibe del CDN de Google. Este es
+    // el diseño que KokoMusic-lite documenta como el correcto; proxyar todo
+    // por nuestro backend era la causa principal del "Format error".
+    if (!forceStream) {
+      res.setHeader('Cache-Control', 'public, max-age=1800');
       return res.redirect(302, resolvedStream.url);
     }
 
-    // 6. Proxy del stream hacia el cliente (InnerTube, JioSaavn, Invidious, etc.)
-    await proxyAudioStream(req, res, resolvedStream.url, resolvedStream.mimeType);
+    // 6. Proxy del stream (solo para forceStream=true — descarga offline).
+    let proxied = await proxyAudioStream(req, res, resolvedStream.url, resolvedStream.mimeType);
+
+    // Googlevideo firma la URL con la IP del servidor que la resolvió (KokoMusic-lite).
+    // Si nuestro proxy tiene otra IP, el edge de Google a veces responde con un 302
+    // "ipbypass" que sí funciona, pero a veces directamente corta con 403 — es
+    // aleatorio según qué edge de su CDN atienda la petición. Cada resolución fresca
+    // vuelve a tirar los dados con un edge potencialmente distinto, así que
+    // reintentamos un par de veces más antes de rendirnos (el cliente igualmente
+    // tiene su propio fallback a YouTube Embed si todo esto falla).
+    let attempts = 1;
+    while (!proxied && !res.headersSent && attempts < 3) {
+      attempts++;
+      console.warn(`[Stream] Stream caducado o rechazado para ${youtubeId}, purgando caché y reintentando resolución fresca (intento ${attempts}/3)...`);
+      await purgeStreamCache(youtubeId);
+      resolvedStream = await resolveAudioStream(youtubeId, { artist, title, itunesId, quality });
+      if (resolvedStream?.url) {
+        proxied = await proxyAudioStream(req, res, resolvedStream.url, resolvedStream.mimeType);
+      }
+    }
+
+    if (!proxied && !res.headersSent) {
+      res.status(502).json({ error: 'Stream temporalmente no disponible' });
+    }
 
   } catch (error) {
     console.error('[Stream] Error en endpoint de stream:', error);
@@ -285,7 +366,85 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
   }
 });
 
-// ── POST /api/stream/prefetch — Pre-resolución no bloqueante en memoria ───────
+// ── GET /api/stream/:itunesId/resolve — JSON directo para clientes/apps ────────
+
+router.get('/:itunesId/resolve', async (req: Request, res: Response) => {
+  const { itunesId } = req.params;
+
+  try {
+    const { youtubeId, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);
+
+    if (!youtubeId) {
+      return res.status(404).json({ error: 'No se pudo resolver el ID de audio para este track' });
+    }
+
+    const resolvedStream = await resolveAudioStream(youtubeId, { artist, title, itunesId });
+    if (!resolvedStream) {
+      return res.status(404).json({ error: 'No se pudo resolver el stream de audio' });
+    }
+
+    return res.json({
+      trackId: itunesId,
+      youtubeId,
+      durationSeconds,
+      ...resolvedStream,
+    });
+  } catch (err: any) {
+    console.error('[Stream] Error en /resolve:', err);
+    return res.status(500).json({ error: 'Error resolviendo stream' });
+  }
+});
+
+// ── POST /api/stream/:itunesId/purge-cache — Invalida caché local y de Lite ─────
+
+router.post('/:itunesId/purge-cache', async (req: Request, res: Response) => {
+  const { itunesId } = req.params;
+
+  try {
+    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
+    if (youtubeId) {
+      await purgeStreamCache(youtubeId);
+    }
+    return res.json({ success: true, itunesId, youtubeId });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Error purgando cache' });
+  }
+});
+
+// Alias DELETE /api/stream/:itunesId/cache
+router.delete('/:itunesId/cache', async (req: Request, res: Response) => {
+  const { itunesId } = req.params;
+
+  try {
+    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
+    if (youtubeId) {
+      await purgeStreamCache(youtubeId);
+    }
+    return res.json({ success: true, itunesId, youtubeId });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Error purgando cache' });
+  }
+});
+
+// ── GET /api/stream/:itunesId/diagnose — Diagnóstico de clientes InnerTube ─────
+
+router.get('/:itunesId/diagnose', async (req: Request, res: Response) => {
+  const { itunesId } = req.params;
+
+  try {
+    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
+    if (!youtubeId) {
+      return res.status(404).json({ error: 'No se pudo resolver el ID del track' });
+    }
+
+    const diagnosis = await diagnoseLiteStream(youtubeId);
+    return res.json({ trackId: itunesId, youtubeId, ...diagnosis });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Error diagnosticando stream' });
+  }
+});
+
+// ── POST /api/stream/prefetch — Pre-resolución con delay 250ms ─────────────────
 
 router.post('/prefetch', async (req: Request, res: Response) => {
   const { ids } = req.body;
@@ -293,19 +452,21 @@ router.post('/prefetch', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'ids debe ser un array' });
   }
 
-  // Pre-calentar la resolución de stream en caché de memoria (sin descargas pesadas de disco)
+  // Pre-calentar la resolución en memoria con delay entre peticiones (250ms)
   setImmediate(async () => {
-    for (const id of ids.slice(0, 3)) {
+    for (const id of ids.slice(0, 5)) {
       try {
         const { youtubeId, artist, title } = await resolveYoutubeIdForTrack(String(id));
         if (youtubeId) {
           await resolveAudioStream(youtubeId, { artist, title, itunesId: id });
         }
       } catch {}
+      // Espaciado para respetar los límites de InnerTube
+      await new Promise(resolve => setTimeout(resolve, 250));
     }
   });
 
-  return res.json({ success: true, prefetching: ids.length });
+  return res.json({ success: true, prefetching: Math.min(ids.length, 5) });
 });
 
 // ── GET /api/stream/:itunesId/status ─────────────────────────────────────────
@@ -314,46 +475,34 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
 
   try {
-    const { youtubeId, artist, title } = await resolveYoutubeIdForTrack(itunesId);
+    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
 
     if (!youtubeId) {
       return res.json({
         trackId: itunesId,
         downloaded: false,
+        cached: false,
         status: 'none',
         message: 'No se pudo resolver el ID de audio',
       });
     }
 
-    const hasCDNCache = !!cache.get(`cdn-url:${youtubeId}`);
-    const isDownloading = !!cache.get(`downloading:${youtubeId}`);
-    const isLocalAvailable = fs.existsSync(getAudioPath(youtubeId));
-
-    let finalDownloaded = hasCDNCache || isLocalAvailable;
-
-    if (!finalDownloaded && isCDNEnabled()) {
-      const cdnUrl = await findTrackInCDN(youtubeId);
-      if (cdnUrl) {
-        cache.setex(`cdn-url:${youtubeId}`, 86400 * 30, cdnUrl);
-        finalDownloaded = true;
-      }
-    }
+    const isCached = !!cache.get(`resolved-stream:${youtubeId}`);
 
     res.json({
       trackId: itunesId,
       youtubeId,
-      inCDN: hasCDNCache,
-      isLocalAvailable,
-      downloading: isDownloading,
-      downloaded: finalDownloaded,
-      cdnEnabled: isCDNEnabled(),
-      embedThresholdMin: EMBED_THRESHOLD_MIN,
-      status: finalDownloaded ? (isLocalAvailable ? 'local' : 'cdn') : isDownloading ? 'downloading' : 'ready',
+      inCDN: false,
+      downloaded: false,
+      cached: isCached,
+      cdnEnabled: false,
+      status: isCached ? 'ready' : 'ready',
     });
   } catch (err) {
     res.json({
       trackId: itunesId,
       downloaded: false,
+      cached: false,
       status: 'none',
       error: String(err),
     });
@@ -366,39 +515,26 @@ router.post('/:itunesId/download', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
 
   try {
-    const { youtubeId, isDirectYouTube, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);
+    const { youtubeId, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);
 
     if (!youtubeId) {
       return res.status(404).json({ error: 'No se pudo resolver la canción para descargar' });
     }
 
-    // Resolver URL directa para permitir descarga directa instantánea en la APK
     const resolvedStream = await resolveAudioStream(youtubeId, { artist, title, itunesId });
-
-    const localPath = getAudioPath(youtubeId);
-    const isLocal = fs.existsSync(localPath);
-
-    // Lanzar background transcode si aplica
-    const downloadingKey = `downloading:${youtubeId}`;
-    if (!isLocal && !cache.get(downloadingKey)) {
-      cache.setex(downloadingKey, 600, '1');
-      downloadAndUploadToCDN(youtubeId, isDirectYouTube).finally(() => {
-        cache.del(downloadingKey);
-      });
-    }
 
     res.json({
       success: true,
-      status: isLocal ? 'downloaded' : 'downloading',
+      status: 'ready',
       directUrl: resolvedStream?.url || null,
-      source: resolvedStream?.source || 'unknown',
-      mimeType: resolvedStream?.mimeType || 'audio/webm',
+      source: resolvedStream?.source || 'innertube',
+      mimeType: resolvedStream?.mimeType || 'audio/mp4',
       durationSeconds,
-      message: isLocal ? 'Ya disponible localmente' : 'Descarga directa iniciada',
+      message: 'Stream resuelto para descarga directa',
     });
   } catch (err) {
     console.error('[Stream] Error en descarga:', err);
-    res.status(500).json({ error: 'Error al iniciar descarga' });
+    res.status(500).json({ error: 'Error al resolver URL de descarga' });
   }
 });
 
@@ -408,32 +544,10 @@ router.get('/cdn/stats', (_req: Request, res: Response) => {
   if (!isCDNEnabled()) {
     return res.json({
       enabled: false,
-      message: 'CDN no configurado. El sistema funciona con InnerTube y JioSaavn en tiempo real.',
+      message: 'CDN desactivado (faltan credenciales R2 en el entorno).',
     });
   }
-  const stats = getCDNUsageStats();
-  const requestPct = Math.round((stats.requestsThisMonth / 1_000_000) * 100);
-  const storagePct = Math.round((stats.estimatedStorageMB / BUCKET_CAPACITY_MB) * 100);
-
-  res.json({
-    enabled: true,
-    requestsThisMonth: stats.requestsThisMonth,
-    requestLimit: 1_000_000,
-    requestUsagePct: requestPct,
-    estimatedStorageMB: Math.round(stats.estimatedStorageMB),
-    storageLimit: BUCKET_CAPACITY_MB,
-    storageUsagePct: storagePct,
-    freeMB: Math.round(stats.freeMB),
-    freePct: stats.freePct,
-    largeFilesAllowed: stats.largeFilesAllowed,
-    maxFileSizeMB: MAX_CDN_SIZE_MB,
-    embedThresholdMin: EMBED_THRESHOLD_MIN,
-    lastResetDate: stats.lastResetDate,
-    warnThresholds: {
-      requests: stats.requestWarnThreshold,
-      storageMB: stats.storageWarnMB,
-    },
-  });
+  res.json({ enabled: true, ...getCDNUsageStats() });
 });
 
 export default router;

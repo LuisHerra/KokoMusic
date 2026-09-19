@@ -121,10 +121,19 @@ interface PlayerState {
   setTransition: (rule: TransitionRule) => void;
   removeTransition: (fromId: string, toId: string) => void;
 
-  // Embed Mode
+  // Embed Mode — SOLO para el fallback de audio cuando el stream normal falla:
+  // el iframe de YouTube pasa a ser la fuente de audio real (con controles,
+  // sin mute). No usar esto para "vídeo de fondo decorativo" — para eso está
+  // manualVideoId más abajo, que nunca toca la reproducción de audio.
   isEmbedMode: boolean;
   embedYoutubeId: string | null;
   setEmbedMode: (active: boolean, youtubeId: string | null) => void;
+
+  // Vídeo de fondo elegido a mano por el usuario en la pestaña "Vídeo" del
+  // reproductor móvil (decorativo, siempre silenciado — el audio real sigue
+  // viniendo del stream normal, nunca del iframe).
+  manualVideoId: string | null;
+  setManualVideo: (youtubeId: string | null) => void;
 
   // YouTube ID resuelto del track actual (guardado al cargar, reutilizado en fallback embed)
   currentYoutubeId: string | null;
@@ -258,6 +267,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isEmbedMode: false,
   embedYoutubeId: null,
   setEmbedMode: (active, youtubeId) => set({ isEmbedMode: active, embedYoutubeId: youtubeId }),
+  manualVideoId: null,
+  setManualVideo: (youtubeId) => set({ manualVideoId: youtubeId }),
 
   currentYoutubeId: null,
   setCurrentYoutubeId: (id) => set({ currentYoutubeId: id }),

@@ -67,14 +67,20 @@ export default function AppSplash({ onReady }: Props) {
       {/* Logo */}
       <div style={{
         width: 96, height: 96, borderRadius: 24,
-        background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%)',
+        background: 'rgba(255, 255, 255, 0.04)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 0 48px var(--accent-glow)',
+        boxShadow: '0 16px 48px rgba(0, 0, 0, 0.7), 0 0 50px var(--accent-glow)',
         animation: 'pulse 2s ease-in-out infinite',
       }}>
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="black">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-        </svg>
+        <img
+          src="/icons/icon-192.png"
+          alt="KokoMusic"
+          width="64"
+          height="64"
+          className="app-logo-accent"
+          style={{ objectFit: 'contain' }}
+        />
       </div>
 
       <style>{`

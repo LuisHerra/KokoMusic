@@ -4,15 +4,20 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
 import HeartButton from '../Common/HeartButton';
 import ParticleBurst from '../Common/ParticleBurst';
+import ArtistLinks from '../Common/ArtistLinks';
 import { seekAudio } from '../../hooks/useAudioPlayer';
 import { useQuery } from '@tanstack/react-query';
-import { getLyrics, resolveImageUrl, type Lyrics, formatYoutubeEmbedUrl } from '../../lib/api';
+import { getLyrics, resolveImageUrl, getTrackVideo, searchTracks, type Lyrics, type VideoData, formatYoutubeEmbedUrl, BASE } from '../../lib/api';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
-import AudioVisualizer from './AudioVisualizer';
 import SongCreditsModal from './SongCreditsModal';
+import {
+  IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
+  IconLyrics, IconVoice, IconRadio, IconVideo, IconChevronDown, IconInstrumental,
+  IconCheck, IconLoadingSpinner, IconCloudDownload, IconUser, IconQueue,
+} from './PlayerIcons';
 
 function formatTime(secs: number): string {
   if (!secs || isNaN(secs)) return '0:00';
@@ -35,21 +40,48 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     dominantColor,
     isLyricsOpen,
     isEmbedMode, embedYoutubeId,
+    manualVideoId, setManualVideo,
+    queue, queueIndex, removeFromQueue, jumpToQueueIndex,
   } = usePlayerStore();
 
   const { isLiked, toggleLike } = useLikedSongs();
-  
-  // Navigation layout state
-  const [playerView, setPlayerView] = useState<'cover' | 'lyrics' | 'visualizer'>('cover');
+
+  // Navigation layout state — en móvil no hay otra forma de ver la cola (el
+  // botón de cola de escritorio vive en .player-right, oculto en pantallas
+  // pequeñas), así que aquí también hace de sustituto de QueuePanel.
+  const [playerView, setPlayerView] = useState<'cover' | 'lyrics' | 'video' | 'artist' | 'queue'>('cover');
+
+  // Buscador de vídeo de YouTube para la canción (pestaña "Vídeo"): el usuario
+  // elige manualmente qué vídeo de YouTube asociar, no subimos nada a un CDN.
+  const [videoSearchQuery, setVideoSearchQuery] = useState('');
+  const [videoSearchResults, setVideoSearchResults] = useState<Array<{ id: string; title: string; artist: string; cover: string }>>([]);
+  const [isSearchingVideo, setIsSearchingVideo] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragProgress, setDragProgress] = useState(0);
   const progressRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
+  // Vídeo de fondo: al tocar la portada, se sustituye por el vídeo musical de
+  // YouTube (silenciado, el audio sigue viniendo del stream normal) — igual
+  // que el antiguo panel de escritorio, pero integrado en este player único.
+  // Si el usuario eligió un vídeo a mano (pestaña "Vídeo"), ese manda siempre
+  // y se muestra de fondo sin necesidad de tocar la portada.
+  const [showBackgroundVideo, setShowBackgroundVideo] = useState(false);
+  const { data: videoData } = useQuery<VideoData>({
+    queryKey: ['video', currentTrack?.id],
+    queryFn: () => getTrackVideo(currentTrack!.id),
+    enabled: !!currentTrack && isOpen,
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
+  });
+  const autoYoutubeId = videoData?.youtubeId || null;
+  const backgroundYoutubeId = manualVideoId || autoYoutubeId;
+  const isBgVideoActive = !!manualVideoId || showBackgroundVideo;
+
   // Video sync for embed mode
   const [iframeEl, setIframeEl] = useState<HTMLIFrameElement | null>(null);
-  useVideoSync(iframeEl, isEmbedMode ? embedYoutubeId : null);
+  useVideoSync(iframeEl, isEmbedMode ? embedYoutubeId : (isBgVideoActive ? backgroundYoutubeId : null));
 
   // Offline track download status
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
@@ -61,6 +93,53 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
   const [translateY, setTranslateY] = useState(0);
 
   const progressPct = isDragging ? dragProgress : (duration > 0 ? (progress / duration) * 100 : 0);
+
+  // Apagar el vídeo de fondo al cambiar de canción para no arrastrar el vídeo
+  // de la anterior mientras carga el de la nueva.
+  useEffect(() => {
+    setShowBackgroundVideo(false);
+    setManualVideo(null);
+    setVideoSearchQuery('');
+    setVideoSearchResults([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.id]);
+
+  const runVideoSearch = async (query: string) => {
+    if (!query.trim()) { setVideoSearchResults([]); return; }
+    setIsSearchingVideo(true);
+    try {
+      const res = await searchTracks(query, 10, 'youtube');
+      setVideoSearchResults(res.tracks.map(t => ({ id: t.id, title: t.title, artist: t.artist, cover: t.cover })));
+    } catch {
+      setVideoSearchResults([]);
+    } finally {
+      setIsSearchingVideo(false);
+    }
+  };
+
+  // Datos reales del artista (oyentes mensuales + biografía), misma API que la
+  // página de Artista — sin esto la pestaña mostraría datos inventados.
+  //
+  // Siempre buscamos por NOMBRE (nunca por currentTrack.artistId): ese id solo
+  // es un iTunes artistId real cuando el track vino de iTunes. Para tracks de
+  // Deezer trae el id de Deezer, y para YouTube un hash — números que no
+  // significan nada para el lookup de iTunes del backend, así que la búsqueda
+  // fallaba en silencio (404) aunque sí existiera biografía/oyentes reales.
+  const artistLookupName = currentTrack?.artist;
+  const { data: artistInfo, isLoading: isArtistInfoLoading } = useQuery({
+    queryKey: ['artist-summary', artistLookupName],
+    queryFn: async () => {
+      const url = `${BASE}/artist/0?name=${encodeURIComponent(artistLookupName || '')}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('No se pudo cargar el artista');
+      const json = await res.json();
+      return json.artist as { monthlyListeners?: number; bio?: string; image?: string } | null;
+    },
+    enabled: !!artistLookupName && isOpen && playerView === 'artist',
+    retry: 1,
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   // Lock body scroll when open
   useEffect(() => {
@@ -267,7 +346,26 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
       style={{ transform: `translateY(${translateY}px)`, transition: isDragging ? 'none' : 'transform 0.35s cubic-bezier(0.16,1,0.3,1)' }}
     >
       {/* Dynamic gradient background */}
-      <div className="mfp-bg" style={{ background: accentBg }} />
+      <div className="mfp-bg" style={{ background: accentBg, opacity: isBgVideoActive && backgroundYoutubeId ? 0 : 1 }} />
+
+      {/* Vídeo musical de fondo a pantalla completa (no dentro de la portada).
+          Se activa igual tanto si vino del auto-detectado (tocando la portada)
+          como si el usuario lo eligió a mano en la pestaña "Vídeo". */}
+      {isBgVideoActive && backgroundYoutubeId && !isEmbedMode && (
+        <div
+          className="mfp-bg-video"
+          onClick={() => { setShowBackgroundVideo(false); setManualVideo(null); }}
+        >
+          <iframe
+            ref={setIframeEl}
+            src={formatYoutubeEmbedUrl(backgroundYoutubeId, { autoplay: true, mute: true, controls: false })}
+            title="Vídeo musical de fondo"
+            frameBorder="0"
+            allow="autoplay; encrypted-media"
+          />
+          <div className="mfp-bg-video-overlay" />
+        </div>
+      )}
 
       {/* Header */}
       <div
@@ -278,9 +376,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
       >
         <div className="mfp-drag-pill" />
         <button className="mfp-close-btn" onClick={onClose}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
-          </svg>
+          <IconChevronDown />
         </button>
         <div className="mfp-header-context">
           {currentTrack?.album && (
@@ -293,9 +389,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           style={{ color: playerView === 'lyrics' ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
           title="Letras"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17.3 11c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
-          </svg>
+          <IconLyrics />
         </button>
       </div>
 
@@ -311,9 +405,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
               </div>
             ) : lyrics.instrumental ? (
               <div className="mfp-lyrics-empty">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.4 }}>
-                  <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                </svg>
+                <IconInstrumental />
                 <span>Tema instrumental</span>
               </div>
             ) : parsedLines.length > 0 ? (
@@ -338,19 +430,160 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
               <div className="mfp-lyrics-empty">Letras no disponibles</div>
             )}
           </div>
-        ) : playerView === 'visualizer' ? (
-          /* ── Visualizer view ── */
-          <div className="mfp-visualizer-wrap" style={{ flex: 1, width: '100%', height: '100%', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <AudioVisualizer />
+        ) : playerView === 'video' ? (
+          /* ── Vídeo view: elegir manualmente un vídeo de YouTube para la canción ── */
+          <div className="mfp-video-picker">
+            {manualVideoId && (
+              <div className="mfp-video-picker-current">
+                <div className="mfp-video-picker-preview">
+                  <iframe
+                    src={formatYoutubeEmbedUrl(manualVideoId, { autoplay: false, mute: true, controls: false })}
+                    title="Vídeo actual"
+                    frameBorder="0"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                </div>
+                <button className="mfp-video-picker-clear" onClick={() => setManualVideo(null)}>
+                  Quitar vídeo
+                </button>
+              </div>
+            )}
+
+            <form
+              className="mfp-video-search-row"
+              onSubmit={(e) => { e.preventDefault(); runVideoSearch(videoSearchQuery); }}
+            >
+              <input
+                type="text"
+                value={videoSearchQuery}
+                onChange={(e) => setVideoSearchQuery(e.target.value)}
+                placeholder={`Buscar vídeo en YouTube (ej. "${currentTrack?.artist} ${currentTrack?.title}")`}
+                className="mfp-video-search-input"
+              />
+              <button type="submit" className="mfp-video-search-btn">Buscar</button>
+            </form>
+
+            <div className="mfp-video-results">
+              {isSearchingVideo ? (
+                <div className="mfp-lyrics-empty"><div className="spinner" style={{ width: 28, height: 28 }} /></div>
+              ) : videoSearchResults.length > 0 ? (
+                videoSearchResults.map((v) => (
+                  <button
+                    key={v.id}
+                    className={`mfp-video-result ${manualVideoId === v.id ? 'active' : ''}`}
+                    onClick={() => setManualVideo(v.id)}
+                  >
+                    <img src={resolveImageUrl(v.cover) || ''} alt="" />
+                    <div className="mfp-video-result-info">
+                      <span className="mfp-video-result-title">{v.title}</span>
+                      <span className="mfp-video-result-artist">{v.artist}</span>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="mfp-lyrics-empty">
+                  <span>Busca un vídeo de YouTube para asociarlo a esta canción</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : playerView === 'artist' ? (
+          /* ── Artist view ── */
+          <div className="mfp-artist-wrap">
+            <img
+              className="mfp-artist-avatar"
+              src={resolveImageUrl(artistInfo?.image || currentTrack?.cover || '') || ''}
+              alt={currentTrack?.artist}
+            />
+            <h2 className="mfp-artist-name">{currentTrack?.artist}</h2>
+            <span className="mfp-artist-tag">Artista</span>
+
+            <div className="mfp-artist-stat">
+              {isArtistInfoLoading ? (
+                <span className="skeleton" style={{ display: 'inline-block', width: 90, height: 22 }} />
+              ) : artistInfo?.monthlyListeners ? (
+                <span className="mfp-artist-stat-num">{Intl.NumberFormat('es-ES').format(artistInfo.monthlyListeners)}</span>
+              ) : (
+                <span className="mfp-artist-stat-num">—</span>
+              )}
+              <span className="mfp-artist-stat-lbl">Oyentes mensuales</span>
+            </div>
+
+            <div className="mfp-artist-bio">
+              {isArtistInfoLoading ? (
+                <p>Cargando biografía…</p>
+              ) : artistInfo?.bio && artistInfo.bio !== 'Biografía no disponible.' ? (
+                <p>{artistInfo.bio}</p>
+              ) : (
+                <p>Todavía no tenemos una biografía para {currentTrack?.artist}.</p>
+              )}
+            </div>
+
+            <Link
+              to={
+                currentTrack?.artistId && currentTrack.artistId !== 0
+                  ? `/artist/${currentTrack.artistId}`
+                  : `/artist/${encodeURIComponent(currentTrack?.artist || '')}`
+              }
+              className="mfp-artist-full-link"
+              onClick={onClose}
+            >
+              Ver perfil completo
+            </Link>
+          </div>
+        ) : playerView === 'queue' ? (
+          /* ── Queue view — único acceso a la cola en móvil ── */
+          <div className="mfp-queue-wrap">
+            {currentTrack && (
+              <div className="mfp-queue-now-playing">
+                <span className="mfp-queue-section-label">Sonando ahora</span>
+                <div className="mfp-queue-item current">
+                  <img src={resolveImageUrl(currentTrack.cover) || ''} alt="" />
+                  <div className="mfp-queue-item-info">
+                    <span className="mfp-queue-item-title">{currentTrack.title}</span>
+                    <ArtistLinks artist={currentTrack.artist} artistId={currentTrack.artistId} className="mfp-queue-item-artist" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <span className="mfp-queue-section-label">A continuación</span>
+            {queue.length - queueIndex - 1 <= 0 ? (
+              <div className="mfp-lyrics-empty"><span>No hay más canciones en la cola</span></div>
+            ) : (
+              <div className="mfp-queue-list">
+                {queue.slice(queueIndex + 1).map((track, i) => {
+                  const realIndex = queueIndex + 1 + i;
+                  return (
+                    <div key={`${track.id}-${realIndex}`} className="mfp-queue-item">
+                      <button className="mfp-queue-item-main" onClick={() => jumpToQueueIndex(realIndex)}>
+                        <img src={resolveImageUrl(track.cover) || ''} alt="" />
+                        <div className="mfp-queue-item-info">
+                          <span className="mfp-queue-item-title">{track.title}</span>
+                          <span className="mfp-queue-item-artist">{track.artist}</span>
+                        </div>
+                      </button>
+                      <button
+                        className="mfp-queue-item-remove"
+                        onClick={() => removeFromQueue(realIndex)}
+                        title="Quitar de la cola"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
-          /* ── Cover art / Embed view ── */
+          /* ── Cover art / Embed / Background video view ── */
           <div className="mfp-cover-wrap">
             {isEmbedMode && embedYoutubeId ? (
               <div className="mfp-cover-container embed-active" style={{ width: '100%', aspectRatio: '16/9', overflow: 'hidden', borderRadius: 'var(--radius-lg)' }}>
                 <iframe
                   ref={setIframeEl}
-                  src={formatYoutubeEmbedUrl(embedYoutubeId, { autoplay: true, mute: false, controls: true })}
+                  src={formatYoutubeEmbedUrl(embedYoutubeId, { autoplay: true, mute: false, controls: true, enableApi: true })}
                   title="Reproductor YouTube Embed Mobile"
                   frameBorder="0"
                   allow="autoplay; encrypted-media; fullscreen"
@@ -358,13 +591,43 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
                   style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-lg)' }}
                 />
               </div>
+            ) : isBgVideoActive && backgroundYoutubeId ? (
+              /* El vídeo real se pinta a pantalla completa en .mfp-bg-video (fuera de
+                 este contenedor pequeño) — aquí solo dejamos ver la letra activa y
+                 un aviso para volver a la portada, todo tappable y transparente.
+                 Si el vídeo fue elegido a mano (pestaña "Vídeo"), no se puede volver
+                 a la portada tocando aquí — para eso está "Quitar vídeo" en esa
+                 pestaña — solo el auto-detectado se puede cerrar con un toque. */
+              <div
+                className="mfp-cover-video-active"
+                onClick={() => !manualVideoId && setShowBackgroundVideo(false)}
+                title={manualVideoId ? undefined : 'Toca para volver a la portada'}
+              >
+                {activeIndex >= 0 && parsedLines[activeIndex] ? (
+                  <div className="mfp-bg-video-lyric-centered">{parsedLines[activeIndex].text}</div>
+                ) : !manualVideoId ? (
+                  <div className="mfp-video-hint">
+                    <span>Toca para volver a la portada</span>
+                  </div>
+                ) : null}
+              </div>
             ) : (
-              <div className="mfp-cover-container">
+              <div
+                className="mfp-cover-container"
+                onClick={() => backgroundYoutubeId && setShowBackgroundVideo(true)}
+                title={backgroundYoutubeId ? 'Toca para ver el vídeo musical' : undefined}
+              >
                 <img
                   className="mfp-cover"
                   src={resolveImageUrl(currentTrack?.cover || '') || ''}
                   alt={currentTrack?.title}
                 />
+                {backgroundYoutubeId && (
+                  <div className="mfp-video-hint">
+                    <IconPlay size={12} />
+                    <span>Toca para ver el vídeo</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -376,35 +639,14 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         <div className="mfp-track-text">
           <div className="mfp-track-title">{currentTrack?.title}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-            <Link
-              to={
-                currentTrack?.artistId && currentTrack.artistId !== 0
-                  ? `/artist/${currentTrack.artistId}`
-                  : `/artist/${encodeURIComponent(currentTrack?.artist || '')}`
-              }
-              className="mfp-track-artist"
-              onClick={onClose}
-            >
-              {currentTrack?.artist}
-            </Link>
-            <span
-              onClick={(e) => { e.stopPropagation(); setShowCreditsModal(true); }}
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                background: 'rgba(29,185,84,0.14)',
-                color: '#1DB954',
-                border: '1px solid rgba(29,185,84,0.3)',
-                padding: '1px 6px',
-                borderRadius: 6,
-                letterSpacing: 0.4,
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-              title="Ver créditos y calidad de audio"
-            >
-              320k Hi-Fi
-            </span>
+            {currentTrack && (
+              <ArtistLinks
+                artist={currentTrack.artist}
+                artistId={currentTrack.artistId}
+                className="mfp-track-artist"
+                onLinkClick={onClose}
+              />
+            )}
           </div>
         </div>
         
@@ -424,10 +666,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
             }}
             title="Radio de la Canción & Créditos"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="2" />
-              <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
-            </svg>
+            <IconRadio size={22} />
           </button>
 
           {/* Caching/Offline Button */}
@@ -449,22 +688,11 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
             title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión" : downloadStatus === 'downloading' ? "Guardando..." : "Guardar sin conexión"}
           >
             {downloadStatus === 'downloaded' ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+              <IconCheck size={24} />
             ) : downloadStatus === 'downloading' ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.15)" />
-                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor">
-                  <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite" />
-                </path>
-              </svg>
+              <IconLoadingSpinner size={24} />
             ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
-                <polyline points="8 16 12 20 16 16" />
-                <line x1="12" y1="20" x2="12" y2="10" />
-              </svg>
+              <IconCloudDownload size={24} />
             )}
           </button>
 
@@ -506,35 +734,21 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           onClick={toggleShuffle}
           style={{ color: isShuffle ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
-          </svg>
+          <IconShuffle size={22} />
         </button>
 
         <button className="mfp-ctrl-btn mfp-ctrl-prev" onClick={prevTrack}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
-          </svg>
+          <IconPrev size={32} />
         </button>
 
         <ParticleBurst type="note" count={10}>
           <button className="mfp-play-btn" onClick={togglePlay}>
-            {isPlaying ? (
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-              </svg>
-            ) : (
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            )}
+            {isPlaying ? <IconPause size={32} /> : <IconPlay size={32} />}
           </button>
         </ParticleBurst>
 
         <button className="mfp-ctrl-btn mfp-ctrl-next" onClick={nextTrack}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 18l8.5-6L6 6v12zm2.5-6 5.5 4V8l-5.5 4zm7.5-6h2v12h-2z"/>
-          </svg>
+          <IconNext size={32} />
         </button>
 
         <button
@@ -542,15 +756,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           onClick={cycleRepeat}
           style={{ color: repeatMode !== 'off' ? 'var(--accent)' : 'rgba(255,255,255,0.6)', position: 'relative' }}
         >
-          {repeatMode === 'one' ? (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v5zm-4-2V9h-1l-2 1v1h1.5v6H13z"/>
-            </svg>
-          ) : (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v5z"/>
-            </svg>
-          )}
+          {repeatMode === 'one' ? <IconRepeatOne size={22} /> : <IconRepeat size={22} />}
           {repeatMode !== 'off' && <span className="mfp-repeat-dot" />}
         </button>
       </div>
@@ -566,12 +772,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           }}
           style={{ color: 'rgba(255,255,255,0.7)' }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <line x1="12" y1="19" x2="12" y2="23"/>
-            <line x1="8" y1="23" x2="16" y2="23"/>
-          </svg>
+          <IconVoice />
           <span>Voz (Alt+V)</span>
         </button>
 
@@ -580,21 +781,35 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           onClick={() => setPlayerView(prev => prev === 'lyrics' ? 'cover' : 'lyrics')}
           style={{ color: playerView === 'lyrics' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17.3 11c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
-          </svg>
+          <IconLyrics />
           <span>Letras</span>
         </button>
-        
+
         <button
           className="mfp-extra-btn"
-          onClick={() => setPlayerView(prev => prev === 'visualizer' ? 'cover' : 'visualizer')}
-          style={{ color: playerView === 'visualizer' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+          onClick={() => setPlayerView(prev => prev === 'artist' ? 'cover' : 'artist')}
+          style={{ color: playerView === 'artist' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M12 3v18M17 7v10M7 6v12M22 10v4M2 9v6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-          </svg>
-          <span>Visualización</span>
+          <IconUser />
+          <span>Artista</span>
+        </button>
+
+        <button
+          className="mfp-extra-btn"
+          onClick={() => setPlayerView(prev => prev === 'video' ? 'cover' : 'video')}
+          style={{ color: playerView === 'video' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+        >
+          <IconVideo />
+          <span>Vídeo</span>
+        </button>
+
+        <button
+          className="mfp-extra-btn"
+          onClick={() => setPlayerView(prev => prev === 'queue' ? 'cover' : 'queue')}
+          style={{ color: playerView === 'queue' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+        >
+          <IconQueue />
+          <span>Cola</span>
         </button>
       </div>
 

@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, type KokoProfile } from '../lib/api';
+import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, syncSpotifyTaste, type KokoProfile } from '../lib/api';
+import { startSpotifyAuth, isSpotifyConnected, disconnectSpotify } from '../lib/spotifyAuth';
 import { usePlayerStore } from '../store/playerStore';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── SVG Vector Icons (No Emojis) ────────────────────────────────────────────────
+function IconSpotify({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.5 17.3a.75.75 0 01-1.03.25c-2.82-1.72-6.37-2.11-10.55-1.16a.75.75 0 01-.34-1.46c4.58-1.04 8.52-.6 11.67 1.33.35.21.46.68.25 1.04zm1.47-3.26a.94.94 0 01-1.29.31c-3.23-1.99-8.15-2.56-11.97-1.4a.94.94 0 01-.55-1.8c4.37-1.33 9.8-.69 13.5 1.59.4.25.53.78.31 1.3zm.13-3.39c-3.87-2.3-10.26-2.51-13.97-1.38a1.13 1.13 0 01-.66-2.16c4.27-1.3 11.33-1.04 15.8 1.61a1.13 1.13 0 01-1.17 1.93z" />
+    </svg>
+  );
+}
+
 function IconUser({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -61,8 +70,8 @@ function Avatar({ src, name, size = 88 }: { src?: string; name: string; size?: n
           height: size,
           borderRadius: '50%',
           objectFit: 'cover',
-          border: '2px solid rgba(29,185,84,0.4)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          border: '2px solid var(--accent)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 16px var(--accent-glow)',
           flexShrink: 0,
         }}
       />
@@ -71,11 +80,11 @@ function Avatar({ src, name, size = 88 }: { src?: string; name: string; size?: n
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: 'linear-gradient(135deg, #1DB954 0%, #0a7a35 100%)',
+      background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * 0.38, fontWeight: 700, color: '#000',
-      border: '2px solid rgba(29,185,84,0.4)',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+      border: '2px solid var(--accent)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 16px var(--accent-glow)',
       flexShrink: 0,
     }}>
       {name.charAt(0).toUpperCase()}
@@ -185,7 +194,7 @@ export default function ProfilePage() {
   const [skipPenalty, setSkipPenalty] = useState(() => localStorage.getItem('koko_algo_skip_penalty') !== 'false');
 
   // Streaming Engine Settings
-  const [audioQuality, setAudioQuality] = useState(() => localStorage.getItem('koko_audio_quality') ?? '320');
+  const [audioQuality, setAudioQuality] = useState(() => localStorage.getItem('koko_audio_quality') ?? 'auto');
   const [streamingSourcePref, setStreamingSourcePref] = useState(() => localStorage.getItem('koko_streaming_source_pref') ?? 'auto');
 
   const [savedId, setSavedId] = useState(rawId);
@@ -211,10 +220,16 @@ export default function ProfilePage() {
 
   // Login / Link Existing Account State
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showConnectionsModal, setShowConnectionsModal] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+
+  // Spotify OAuth & Taste Sync State
+  const [spotifyLoading, setSpotifyLoading] = useState(false);
+  const [spotifyStatusMsg, setSpotifyStatusMsg] = useState('');
+  const [spotifyConnected, setSpotifyConnected] = useState(() => isSpotifyConnected());
 
   // Delete account state
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -327,6 +342,60 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSpotifyConnect = () => {
+    setSpotifyLoading(true);
+    setSpotifyStatusMsg('');
+    startSpotifyAuth({
+      origin: 'profile',
+      onSuccess: (payload) => {
+        setSpotifyLoading(false);
+        setSpotifyConnected(true);
+        setSavedId(payload.userId);
+        setShowCreateModal(false);
+        setShowLoginModal(false);
+        setSpotifyStatusMsg(`¡Conexión exitosa! Sincronizados ${payload.topArtists?.length || 0} artistas favoritos y tu perfil.`);
+        refetch();
+        queryClient.invalidateQueries();
+        window.dispatchEvent(new Event('storage'));
+        setTimeout(() => setSpotifyStatusMsg(''), 6000);
+      },
+      onError: (errMsg) => {
+        setSpotifyLoading(false);
+        setLoginError(errMsg);
+        setCreateError(errMsg);
+      },
+      onClose: () => {
+        setSpotifyLoading(false);
+      },
+    });
+  };
+
+  const handleReSyncSpotify = async () => {
+    const token = localStorage.getItem('koko_spotify_token');
+    if (!token) return;
+    setSpotifyLoading(true);
+    setSpotifyStatusMsg('Sincronizando gustos con Spotify...');
+    try {
+      const res = await syncSpotifyTaste(token, savedId);
+      if (res.success) {
+        setSpotifyStatusMsg(`¡Re-sincronización exitosa! ${res.count} artistas actualizados.`);
+        setTimeout(() => setSpotifyStatusMsg(''), 5000);
+      }
+    } catch (err: any) {
+      setSpotifyStatusMsg(err.message || 'Error al sincronizar con Spotify');
+      setTimeout(() => setSpotifyStatusMsg(''), 5000);
+    } finally {
+      setSpotifyLoading(false);
+    }
+  };
+
+  const handleDisconnectSpotify = () => {
+    disconnectSpotify();
+    setSpotifyConnected(false);
+    setSpotifyStatusMsg('Cuenta de Spotify desvinculada.');
+    setTimeout(() => setSpotifyStatusMsg(''), 4000);
+  };
+
   const handleToggleEvents = (val: boolean) => {
     setEventsHidden(!val);
     localStorage.setItem('hideEvents', String(!val));
@@ -403,6 +472,20 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSignOut = () => {
+    if (!window.confirm('¿Seguro que deseas cerrar sesión? Volverás al modo invitado.')) return;
+    localStorage.removeItem('koko_auth_completed');
+    localStorage.removeItem('koko_device_id');
+    localStorage.removeItem('koko_display_name');
+    localStorage.removeItem('koko_avatar_url');
+    localStorage.removeItem('koko_spotify_token');
+    localStorage.removeItem('koko_spotify_refresh');
+    localStorage.removeItem('koko_spotify_connected');
+    localStorage.setItem('koko_guest_mode', 'true');
+    window.dispatchEvent(new Event('storage'));
+    window.location.reload();
+  };
+
   return (
     <div style={{
       padding: '24px 18px 180px 18px',
@@ -411,11 +494,11 @@ export default function ProfilePage() {
       maxWidth: '100vw',
       overflowX: 'hidden',
       minHeight: '100vh',
-      background: 'linear-gradient(180deg, rgba(29,185,84,0.04) 0%, rgba(0,0,0,0) 320px)',
+      background: 'linear-gradient(180deg, var(--accent-glow) 0%, rgba(0,0,0,0) 320px)',
     }}>
       {/* ── Hero Profile Header ── */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(29,185,84,0.14) 0%, rgba(20,20,20,0.85) 100%)',
+        background: 'linear-gradient(135deg, var(--accent-glow) 0%, rgba(18, 18, 22, 0.88) 100%)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
         borderRadius: 20,
@@ -426,12 +509,12 @@ export default function ProfilePage() {
         gap: 20,
         marginBottom: 20,
         flexWrap: 'wrap',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.35), 0 0 30px var(--accent-glow)',
         boxSizing: 'border-box',
         width: '100%',
       }}>
         <Avatar src={profile?.avatar_url} name={cleanName(profile?.display_name || profile?.username || 'Kokoer')} size={80} />
-        
+
         <div style={{ flex: 1, minWidth: 220, width: '100%' }}>
           {editing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: '100%' }}>
@@ -572,29 +655,6 @@ export default function ProfilePage() {
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: 1.2,
-                  color: isUUID ? '#1DB954' : '#ffc107',
-                  background: isUUID ? 'rgba(29,185,84,0.12)' : 'rgba(255,193,7,0.12)',
-                  padding: '4px 10px',
-                  borderRadius: 20,
-                  border: isUUID ? '1px solid rgba(29,185,84,0.3)' : '1px solid rgba(255,193,7,0.3)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}>
-                  <span style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: isUUID ? '#1DB954' : '#ffc107',
-                  }} />
-                  {isUUID ? 'Cuenta Supabase' : 'Perfil Local Aislado'}
-                </span>
-              </div>
-              
               <h1 style={{ margin: '0 0 4px', fontSize: 'clamp(22px, 5vw, 30px)', fontWeight: 800, letterSpacing: -0.5 }}>
                 {displayedName}
               </h1>
@@ -608,7 +668,7 @@ export default function ProfilePage() {
                   {profile.bio}
                 </p>
               )}
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   onClick={() => setEditing(true)}
                   style={{
@@ -616,60 +676,98 @@ export default function ProfilePage() {
                     color: 'var(--text-primary)',
                     border: '1px solid rgba(255,255,255,0.14)',
                     borderRadius: 12,
-                    padding: '8px 16px',
-                    fontSize: 12,
+                    padding: '9px 18px',
+                    fontSize: 13,
                     fontWeight: 600,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 7,
+                    transition: 'all 0.15s ease',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.14)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                   Editar Perfil
                 </button>
 
                 <button
-                  onClick={() => setShowCreateModal(true)}
-                  style={{
-                    background: 'linear-gradient(135deg, #1DB954 0%, #179b45 100%)',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: 12,
-                    padding: '8px 16px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    boxShadow: '0 4px 14px rgba(29,185,84,0.3)',
-                  }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                  Crear Nueva Cuenta
-                </button>
-
-                <button
-                  onClick={() => setShowLoginModal(true)}
+                  onClick={() => setShowConnectionsModal(true)}
                   style={{
                     background: 'rgba(255,255,255,0.08)',
-                    color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid rgba(255,255,255,0.14)',
                     borderRadius: 12,
-                    padding: '8px 16px',
-                    fontSize: 12,
+                    padding: '9px 18px',
+                    fontSize: 13,
                     fontWeight: 600,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 7,
+                    transition: 'all 0.15s ease',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.14)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                  Conectar Cuenta Existente
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                  Conexiones
+                  {spotifyConnected && (
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1DB954', marginLeft: 2 }} title="Spotify Conectado" />
+                  )}
+                </button>
+
+                <button
+                  onClick={handleSignOut}
+                  style={{
+                    background: 'rgba(255, 60, 60, 0.1)',
+                    color: '#ff6b6b',
+                    border: '1px solid rgba(255, 60, 60, 0.22)',
+                    borderRadius: 12,
+                    padding: '9px 18px',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 60, 60, 0.2)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 60, 60, 0.1)'; }}
+                  title="Cerrar sesión"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  Cerrar Sesión
                 </button>
               </div>
+
+              {spotifyStatusMsg && (
+                <div style={{
+                  marginTop: 12,
+                  padding: '8px 14px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: 'rgba(29,185,84,0.15)',
+                  border: '1px solid rgba(29,185,84,0.3)',
+                  color: '#1DB954',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}>
+                  <IconSpotify size={14} />
+                  {spotifyStatusMsg}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -779,7 +877,7 @@ export default function ProfilePage() {
 
       {/* ── Content Disposal: Clean Stacked Vertical Sections ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', boxSizing: 'border-box' }}>
-        
+
         {/* SECTION: Personalización del Algoritmo (Visible when 'all' or 'algorithm') */}
         {(activeFilter === 'all' || activeFilter === 'algorithm') && (
           <Section id="sec-algorithm" title="Personalización del Algoritmo" icon={<IconSliders size={16} color="var(--accent)" />}>
@@ -1107,8 +1205,9 @@ export default function ProfilePage() {
                   maxWidth: '100%',
                 }}
               >
-                <option value="320" style={{ background: '#181818' }}>Ultra (320 kbps)</option>
-                <option value="160" style={{ background: '#181818' }}>Alta Fidelidad (160 kbps)</option>
+                <option value="auto" style={{ background: '#181818' }}>Adaptativa (Automática - Estilo Spotify)</option>
+                <option value="320" style={{ background: '#181818' }}>Alta (320 kbps)</option>
+                <option value="160" style={{ background: '#181818' }}>Normal (160 kbps)</option>
                 <option value="96" style={{ background: '#181818' }}>Ahorro Datos (96 kbps)</option>
               </select>
             </div>
@@ -1393,6 +1492,44 @@ export default function ProfilePage() {
               Registra un perfil 100% independiente con tu propio espacio, historial y recomendaciones sin interferencias.
             </p>
 
+            {/* Botón OAuth Spotify */}
+            <button
+              type="button"
+              onClick={handleSpotifyConnect}
+              disabled={spotifyLoading}
+              style={{
+                width: '100%',
+                background: '#1DB954',
+                color: '#000',
+                border: 'none',
+                borderRadius: 12,
+                padding: '12px 18px',
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                boxShadow: '0 4px 16px rgba(29,185,84,0.3)',
+                marginBottom: 16,
+                transition: 'transform 0.15s ease, opacity 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.01)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+            >
+              <IconSpotify size={18} />
+              {spotifyLoading ? 'Conectando con Spotify...' : 'Continuar con Spotify'}
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                o con tus credenciales
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+            </div>
+
             <form onSubmit={handleCreateAccount} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
@@ -1525,7 +1662,206 @@ export default function ProfilePage() {
                   Cancelar
                 </button>
               </div>
+
+              <div style={{ textAlign: 'center', marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+                ¿Ya tienes una cuenta?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateModal(false); setShowLoginModal(true); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                >
+                  Inicia sesión aquí
+                </button>
+              </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Conexiones */}
+      {showConnectionsModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 20,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowConnectionsModal(false); }}
+        >
+          <div style={{
+            background: 'linear-gradient(135deg, #18181d 0%, #0f0f13 100%)',
+            borderRadius: 24,
+            padding: '28px 24px',
+            maxWidth: 440,
+            width: '100%',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.7), 0 0 30px var(--accent-glow)',
+            boxSizing: 'border-box',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--accent-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                </div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Conexiones</h3>
+              </div>
+              <button
+                onClick={() => setShowConnectionsModal(false)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 20, padding: 4 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Tarjeta Spotify */}
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 16,
+              padding: '16px 18px',
+              marginBottom: 14,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <IconSpotify size={24} />
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>Spotify</div>
+                    <div style={{ fontSize: 12, color: spotifyConnected ? '#1DB954' : 'var(--text-muted)' }}>
+                      {spotifyConnected ? 'Conectado y sincronizado' : 'No conectado'}
+                    </div>
+                  </div>
+                </div>
+                {spotifyConnected && (
+                  <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(29,185,84,0.15)', color: '#1DB954', padding: '3px 8px', borderRadius: 10 }}>
+                    VINCULADO
+                  </span>
+                )}
+              </div>
+
+              {spotifyConnected ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handleReSyncSpotify}
+                    disabled={spotifyLoading}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(29,185,84,0.15)',
+                      color: '#1DB954',
+                      border: '1px solid rgba(29,185,84,0.3)',
+                      borderRadius: 10,
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {spotifyLoading ? 'Sincronizando...' : 'Re-sincronizar Gustos'}
+                  </button>
+                  <button
+                    onClick={handleDisconnectSpotify}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--text-muted)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 10,
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Desconectar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleSpotifyConnect}
+                  disabled={spotifyLoading}
+                  style={{
+                    width: '100%',
+                    background: '#1DB954',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '10px 14px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <IconSpotify size={16} />
+                  {spotifyLoading ? 'Conectando...' : 'Vincular con Spotify'}
+                </button>
+              )}
+            </div>
+
+            {/* Tarjeta Cuenta KokoMusic */}
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 16,
+              padding: '16px 18px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontWeight: 800, fontSize: 13 }}>
+                  K
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>Cuenta KokoMusic</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {isUUID ? (profile?.email || profile?.username || 'Usuario Registrado') : 'Perfil Local / Invitado'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => { setShowConnectionsModal(false); setShowLoginModal(true); }}
+                  style={{
+                    flex: 1,
+                    background: 'rgba(255,255,255,0.08)',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 10,
+                    padding: '8px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {isUUID ? 'Cambiar Cuenta' : 'Iniciar Sesión'}
+                </button>
+                <button
+                  onClick={() => { setShowConnectionsModal(false); setShowCreateModal(true); }}
+                  style={{
+                    flex: 1,
+                    background: 'var(--accent)',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '8px 12px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Crear Cuenta
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1557,9 +1893,47 @@ export default function ProfilePage() {
             boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
           }}>
             <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>Conectar Cuenta Existente</h2>
-            <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Ingresa tu nombre de usuario, email o ID de cuenta para vincular tu perfil en este dispositivo.
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Ingresa tu usuario, email o ID de cuenta, o inicia sesión con tu cuenta de Spotify.
             </p>
+
+            {/* Botón OAuth Spotify */}
+            <button
+              type="button"
+              onClick={handleSpotifyConnect}
+              disabled={spotifyLoading}
+              style={{
+                width: '100%',
+                background: '#1DB954',
+                color: '#000',
+                border: 'none',
+                borderRadius: 12,
+                padding: '12px 18px',
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                boxShadow: '0 4px 16px rgba(29,185,84,0.3)',
+                marginBottom: 16,
+                transition: 'transform 0.15s ease, opacity 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.01)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+            >
+              <IconSpotify size={18} />
+              {spotifyLoading ? 'Conectando con Spotify...' : 'Continuar con Spotify'}
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                o con tu cuenta Koko
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+            </div>
 
             <form onSubmit={handleLoginAccount} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
@@ -1586,7 +1960,7 @@ export default function ProfilePage() {
 
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  Contraseña (Opcional)
+                  Contraseña (Opcional si tu cuenta no tiene)
                 </label>
                 <input
                   type="password"
@@ -1645,6 +2019,17 @@ export default function ProfilePage() {
                   }}
                 >
                   Cancelar
+                </button>
+              </div>
+
+              <div style={{ textAlign: 'center', marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+                ¿No tienes cuenta?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setShowLoginModal(false); setShowCreateModal(true); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                >
+                  Crear una gratis
                 </button>
               </div>
             </form>

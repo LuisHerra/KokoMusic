@@ -52,6 +52,32 @@ function getOrCreatePlaylist(id: string, userId: string): Playlist | undefined {
   return pl;
 }
 
+/**
+ * Returns the trackIds a user has explicitly liked (Liked Songs playlist),
+ * with when each was liked. Used by tasteProfileBuilder as an explicit
+ * positive signal on top of implicit listening-based weights.
+ */
+export function getLikedTracks(userId: string): { trackId: string; likedAt: string }[] {
+  const pl = playlists.get(`liked-songs-${userId}`);
+  if (!pl) return [];
+  return pl.tracks.map((t) => ({ trackId: t.trackId, likedAt: t.addedAt }));
+}
+
+/** Helper to batch add track IDs to a user's liked-songs playlist */
+export function addTracksToLikedSongs(userId: string, trackIds: string[]) {
+  const pl = getOrCreatePlaylist('liked-songs', userId);
+  if (!pl) return;
+  for (const trackId of trackIds) {
+    if (trackId && !pl.tracks.some((t) => t.trackId === String(trackId))) {
+      pl.tracks.push({
+        trackId: String(trackId),
+        position: pl.tracks.length,
+        addedAt: new Date().toISOString(),
+      });
+    }
+  }
+}
+
 // GET /api/playlists
 router.get('/', (req: Request, res: Response) => {
   const userId = (req.headers['x-user-id'] || 'default') as string;

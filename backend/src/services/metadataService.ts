@@ -17,7 +17,8 @@ import {
   getTrackFromDB,
   type TrackRow,
 } from './supabaseService';
-import { searchYtdlp, getVideoByIdYtdlp } from './ytdlpSearchService';
+import { searchLite } from './kokoLiteService';
+import { metrics } from './metricsService';
 
 const ITUNES_BASE = 'https://itunes.apple.com';
 
@@ -86,20 +87,30 @@ import { hashStringToInteger } from './artistService';
 
 export type SearchSource = 'itunes' | 'youtube' | 'lyrics';
 
-/** Convierte un resultado de yt-search al formato interno (fuente YouTube) */
+/** Convierte un resultado de YouTube (KokoMusic-lite o yt-search) al formato interno */
 function ytResultToTrack(v: any, index = 0): TrackMetadata {
-  let authorName = v.author?.name ?? 'Artista desconocido';
+  let authorName = (typeof v.author === 'string' ? v.author : v.author?.name) ?? 'Artista desconocido';
   let trackTitle = v.title ?? 'Sin título';
 
   // Si el título tiene el formato "Artista - Canción", lo extraemos
-  // Ej: "RnBoi - ELLE VOULAIT (Clip Officiel)"
+  // Si el título viene con separador " - ", extraer artista y título
+  // Cuidado: en YouTube a menudo viene "TÍTULO - ARTISTA 1 x ARTISTA 2" o "ARTISTA - TÍTULO"
   const separatorIdx = trackTitle.indexOf(' - ');
   if (separatorIdx !== -1) {
-    const parsedArtist = trackTitle.substring(0, separatorIdx).trim();
-    const parsedTitle = trackTitle.substring(separatorIdx + 3).trim();
-    if (parsedArtist && parsedTitle) {
-      authorName = parsedArtist;
-      trackTitle = parsedTitle;
+    const partA = trackTitle.substring(0, separatorIdx).trim();
+    const partB = trackTitle.substring(separatorIdx + 3).trim();
+    if (partA && partB) {
+      const partBHasCollab = /\b(x|feat\.?|ft\.?|featuring|&|con)\b/i.test(partB);
+      const partAHasCollab = /\b(x|feat\.?|ft\.?|featuring|&|con)\b/i.test(partA);
+      if (partBHasCollab && !partAHasCollab) {
+        // TÍTULO - ARTISTA 1 x ARTISTA 2 (ej: "SE FUE - Moncho Chavea x Morad")
+        trackTitle = partA;
+        authorName = partB;
+      } else {
+        // ARTISTA - TÍTULO estándar (ej: "Morad - SE FUE")
+        authorName = partA;
+        trackTitle = partB;
+      }
     }
   }
 
@@ -108,15 +119,17 @@ function ytResultToTrack(v: any, index = 0): TrackMetadata {
 
   const { cleanTitle, cleanArtist } = cleanTrackNameAndArtist(trackTitle, authorName);
 
+  const durationSec = v.duration?.seconds ?? v.durationSeconds ?? 0;
+
   return {
-    id: v.videoId,
+    id: v.id || v.videoId,
     itunesId: 0,        // no tiene iTunesId
     artistId: hashStringToInteger(cleanArtist),
     title: cleanTitle,
     artist: cleanArtist,
     album: 'YouTube',
     cover: v.thumbnail ?? '',
-    duration: (v.duration?.seconds ?? 0) * 1000,
+    duration: durationSec * 1000,
     genre: 'Urbano / Pop',
     releaseDate: null,
     popularity: v.views || (1000 - index),
@@ -133,17 +146,32 @@ export function cleanTrackNameAndArtist(rawTitle: string, rawArtist: string): { 
 
   const sepIdx = title.indexOf(' - ');
   if (sepIdx !== -1) {
-    artist = title.substring(0, sepIdx).trim();
-    title = title.substring(sepIdx + 3).trim();
+    const partA = title.substring(0, sepIdx).trim();
+    const partB = title.substring(sepIdx + 3).trim();
+    const partBHasCollab = /\b(x|feat\.?|ft\.?|featuring|&|con)\b/i.test(partB);
+    const partAHasCollab = /\b(x|feat\.?|ft\.?|featuring|&|con)\b/i.test(partA);
+    if (partBHasCollab && !partAHasCollab) {
+      title = partA;
+      artist = partB;
+    } else {
+      artist = partA;
+      title = partB;
+    }
   }
 
   title = title
-    .replace(/\[(Official|Music|Video|Lyrics|Audio|HD|4K|Visualizer|Clip).*?\]/gi, '')
-    .replace(/\((Official|Music|Video|Lyrics|Audio|HD|4K|Visualizer|Paroles|Clip).*?\)/gi, '')
+    .replace(/\[(Official|Music|Video|Lyrics|Letra|Audio|HD|4K|Visualizer|Clip).*?\]/gi, '')
+    .replace(/\((Official|Music|Video|Lyrics|Letra|Audio|HD|4K|Visualizer|Paroles|Clip).*?\)/gi, '')
+    .replace(/\s*[\(\[](letra|lyrics|paroles|audio\s*oficial|official\s*audio|video\s*oficial|official\s*video)[\)\]]/gi, '')
     .replace(/Official\s+Video/gi, '')
     .replace(/Music\s+Video/gi, '')
     .replace(/Clip\s+Officiel/gi, '')
     .replace(/Video\s+Oficial/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  artist = artist
+    .replace(/\s*[\(\[](letra|lyrics|paroles|audio\s*oficial|official\s*audio|video\s*oficial|official\s*video)[\)\]]/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -208,6 +236,31 @@ function normalizeTrackTitle(title: string): string {
 }
 
 /**
+ * Normaliza una lista de artistas de forma independiente al orden de créditos.
+ * "Jay Wheeler, Brytiago & DJ Nelson" y "Jay Wheeler, DJ Nelson & Brytiago" son
+ * literalmente el mismo tema (mismo recording, créditos reordenados en un
+ * relanzamiento/single distinto) — antes el dedup los trataba como canciones
+ * distintas porque comparaba el string de artista completo, en orden.
+ */
+function normalizeArtistSet(artist: string): string {
+  const names = artist
+    .split(/,|&|\bfeat\.?\b|\bft\.?\b|\bx\b|\band\b|\bcon\b/i)
+    .map(n => normalizeTrackTitle(n))
+    .filter(Boolean)
+    .sort();
+  return names.join('+');
+}
+
+/** Huella título+artista (orden de colaboradores no importa) para detectar duplicados. */
+function trackFingerprint(t: { title: string; artist: string }): string {
+  let normTitle = normalizeTrackTitle(t.title);
+  let normArtist = normalizeArtistSet(t.artist);
+  if (normTitle.length < 2) normTitle = t.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (normArtist.length < 2) normArtist = t.artist.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${normTitle}-${normArtist}`;
+}
+
+/**
  * Filtra la lista de tracks manteniendo solo canciones únicas (huella de titulo+artista).
  */
 function deduplicateTracks(tracks: TrackMetadata[]): TrackMetadata[] {
@@ -215,15 +268,8 @@ function deduplicateTracks(tracks: TrackMetadata[]): TrackMetadata[] {
   const uniqueTracks: TrackMetadata[] = [];
 
   for (const t of tracks) {
-    let normTitle = normalizeTrackTitle(t.title);
-    let normArtist = normalizeTrackTitle(t.artist);
-    
-    // Fallback si la limpieza fue muy agresiva
-    if (normTitle.length < 2) normTitle = t.title.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (normArtist.length < 2) normArtist = t.artist.toLowerCase().replace(/[^a-z0-9]/g, '');
-    
-    const fingerprint = `${normTitle}-${normArtist}`;
-    
+    const fingerprint = trackFingerprint(t);
+
     if (!seen.has(fingerprint)) {
       seen.add(fingerprint);
       uniqueTracks.push(t);
@@ -316,13 +362,86 @@ export async function searchTracks(
 
     // Fallback a Deezer, Supabase DB o YouTube si iTunes no devuelve resultados
     if (tracks.length === 0) {
+      metrics.recordSearchSource('itunes', false);
       console.log(`[Metadata] iTunes sin resultados para "${query}", buscando en Deezer...`);
       const dzTracks = await searchDeezer(query, limit);
-      if (dzTracks.length > 0) return dzTracks;
+      if (dzTracks.length > 0) { metrics.recordSearchSource('deezer', true); cacheTracksById(dzTracks); return dzTracks; }
+      metrics.recordSearchSource('deezer', false);
 
       const dbTracks = await searchTracksFromDB(query, limit);
-      if (dbTracks.length > 0) return dbTracks;
+      if (dbTracks.length > 0) { metrics.recordSearchSource('db', true); cacheTracksById(dbTracks); return dbTracks; }
+      metrics.recordSearchSource('db', false);
       return searchYouTube(query, limit, cacheKey);
+    }
+    metrics.recordSearchSource('itunes', true);
+
+    // Evaluar relevancia de los resultados de iTunes con respecto a la búsqueda
+    const queryTokens = query.toLowerCase().replace(/[^a-z0-9áéíóúñ\s]/gi, '').split(/\s+/).filter(t => t.length >= 3);
+    const hasPoorRelevance = queryTokens.length >= 2 && !tracks.some(t => {
+      const fullText = `${t.title} ${t.artist}`.toLowerCase();
+      const matchCount = queryTokens.filter(tok => fullText.includes(tok)).length;
+      return matchCount >= Math.min(queryTokens.length, 2);
+    });
+
+    // Si iTunes devolvió muy pocos resultados o no coinciden con los términos principales (ej. temas exclusivos de YouTube como "SE FUE de Morad con Moncho Chavea"),
+    // consultar automáticamente YouTube para enriquecer y asegurar resultados relevantes
+    if (tracks.length < 4 || hasPoorRelevance) {
+      console.log(`[Metadata] Pocos resultados o baja relevancia en iTunes para "${query}", complementando con YouTube...`);
+
+      // Reintento con query recortada: si el usuario escribió "de lejitos jhay
+      // wheeler" (con una errata como "jhay" en vez de "jay"), ni iTunes ni
+      // YouTube devuelven NUNCA la canción real como candidata — no es un
+      // problema de ranking, el proveedor no la trae. Buscar solo con la
+      // mitad inicial de la query (normalmente el título) suele esquivar la
+      // palabra que rompió la búsqueda completa.
+      if (hasPoorRelevance && queryTokens.length >= 3) {
+        const trimmedQuery = query.trim().split(/\s+/).slice(0, Math.ceil(queryTokens.length / 2)).join(' ');
+        if (trimmedQuery.toLowerCase() !== query.trim().toLowerCase()) {
+          try {
+            const trimmedTracks = await fetchItunesRaw(trimmedQuery, limit);
+            if (trimmedTracks.length > 0) {
+              console.log(`[Metadata] Reintento con query recortada "${trimmedQuery}" encontró ${trimmedTracks.length} resultado(s) que "${query}" no traía.`);
+              const existingFp = new Set(tracks.map(trackFingerprint));
+              for (const t of trimmedTracks) {
+                const fp = trackFingerprint(t);
+                if (!existingFp.has(fp)) {
+                  existingFp.add(fp);
+                  tracks.push(t);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('[Metadata] Error en reintento con query recortada:', err);
+          }
+        }
+      }
+
+      try {
+        const ytTracks = await searchYouTube(query, limit);
+        if (ytTracks.length > 0) {
+          const existingFingerprints = new Set(tracks.map(trackFingerprint));
+          for (const yt of ytTracks) {
+            const fp = trackFingerprint(yt);
+            if (!existingFingerprints.has(fp)) {
+              existingFingerprints.add(fp);
+              tracks.push(yt);
+            }
+          }
+
+          // Reordenar por relevancia de coincidencia con los términos de búsqueda
+          if (queryTokens.length > 0) {
+            tracks.sort((a, b) => {
+              const aText = `${a.title} ${a.artist}`.toLowerCase();
+              const bText = `${b.title} ${b.artist}`.toLowerCase();
+              const aMatches = queryTokens.reduce((acc, tok) => acc + (aText.includes(tok) ? 1 : 0), 0);
+              const bMatches = queryTokens.reduce((acc, tok) => acc + (bText.includes(tok) ? 1 : 0), 0);
+              return bMatches - aMatches;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[Metadata] Error en fallback YouTube complementario:', err);
+      }
     }
 
     // Guardar en L1 (1h)
@@ -340,17 +459,39 @@ export async function searchTracks(
     const dzTracks = await searchDeezer(query, limit);
     if (dzTracks.length > 0) {
       cache.setex(cacheKey, 1800, JSON.stringify(dzTracks));
+      cacheTracksById(dzTracks);
       return dzTracks;
     }
     // 2nd Fallback: Supabase tracks_meta DB table
     const dbTracks = await searchTracksFromDB(query, limit);
     if (dbTracks.length > 0) {
       cache.setex(cacheKey, 1800, JSON.stringify(dbTracks));
+      cacheTracksById(dbTracks);
       return dbTracks;
     }
     // 3rd Fallback: YouTube
     return searchYouTube(query, limit, cacheKey);
   }
+}
+
+/**
+ * Búsqueda "cruda" en iTunes, sin fallbacks ni post-procesado — la usa tanto
+ * el flujo principal como el reintento con query recortada (ver más abajo).
+ */
+async function fetchItunesRaw(term: string, limit: number): Promise<TrackMetadata[]> {
+  const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(term)}&entity=musicTrack&limit=${limit}&media=music`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    },
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as any;
+  const results: any[] = data.results ?? [];
+  const songs = results.filter((r: any) => r.kind === 'song' && r.trackId);
+  return deduplicateTracks(songs.map((item, idx) => itunesResultToTrack(item, idx)));
 }
 
 /** Fallback search in Deezer API when iTunes API blocks or yields no results */
@@ -484,6 +625,7 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
         console.error('[Metadata] Error en UPSERT a Supabase (lyrics):', err)
       );
     }
+    cacheTracksById(tracks);
 
     return tracks;
   } catch (error) {
@@ -492,17 +634,17 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
   }
 }
 
-/** Búsqueda de YouTube vía yt-dlp */
+/** Búsqueda de YouTube vía KokoMusic-lite (InnerTube) */
 export async function searchYouTube(query: string, limit: number, cacheKey?: string): Promise<TrackMetadata[]> {
   try {
-    const videos = await searchYtdlp(query, limit);
+    const videos = await searchLite(query);
 
     // Priorizar canales oficiales (VEVO, Topic)
     const filteredVideos = videos
-      .filter(v => v.videoId && (v.duration?.seconds > 0 || v.duration?.seconds === undefined))
+      .filter(v => v.id && (v.durationSeconds > 0 || v.durationSeconds === undefined))
       .sort((a, b) => {
-        const aOfficial = /vevo$|- topic$/i.test(a.author?.name ?? '');
-        const bOfficial = /vevo$|- topic$/i.test(b.author?.name ?? '');
+        const aOfficial = /vevo$|- topic$/i.test(a.author ?? '');
+        const bOfficial = /vevo$|- topic$/i.test(b.author ?? '');
         if (aOfficial && !bOfficial) return -1;
         if (!aOfficial && bOfficial) return 1;
         return 0;
@@ -510,18 +652,38 @@ export async function searchYouTube(query: string, limit: number, cacheKey?: str
       .slice(0, limit);
 
     const rawTracks = filteredVideos.map((v, idx) => ytResultToTrack(v, idx));
-    const uniqueTracks = deduplicateTracks(rawTracks);
 
     // Cross-resolve YouTube metadata with iTunes & Last.fm to populate real genres, official artist names, release dates and album art
-    const enrichedTracks = await Promise.all(uniqueTracks.map(t => enrichTrackWithExternalAPIs(t)));
-    
-    if (enrichedTracks.length > 0) {
-      cache.setex(cacheKey, 3600, JSON.stringify(enrichedTracks));
+    const enrichedTracks = await Promise.all(rawTracks.map(t => enrichTrackWithExternalAPIs(t)));
+
+    // Deduplicar DESPUÉS de enriquecer, no antes: dos vídeos de YouTube con
+    // título/canal distintos (p. ej. "OTRO FILI (Audio)" de un canal random y
+    // "Otro Fili ft Jay Wheeler" de otro) pueden homogeneizarse al mismo track
+    // de iTunes durante el enrichment. Si deduplicamos antes, ambos pasan como
+    // "distintos" y el usuario ve la misma canción repetida en los resultados.
+    const uniqueTracks = deduplicateTracks(enrichedTracks);
+
+    if (cacheKey && uniqueTracks.length > 0) {
+      cache.setex(cacheKey, 3600, JSON.stringify(uniqueTracks));
     }
-    return enrichedTracks;
+    metrics.recordSearchSource('youtube', uniqueTracks.length > 0);
+    cacheTracksById(uniqueTracks);
+    return uniqueTracks;
   } catch (err) {
     console.error('[Metadata] Error en searchYouTube:', err);
     return [];
+  }
+}
+
+/**
+ * Cachea tracks por su `id` (L1, 24h) para que getTrackById pueda resolverlos luego.
+ * Imprescindible para tracks de Deezer/DB/YouTube: su `id` no existe en el catálogo
+ * de iTunes, así que sin esto getTrackById nunca los volvería a encontrar y
+ * /api/stream/:id terminaría en 404 aunque el track se haya mostrado en la búsqueda.
+ */
+function cacheTracksById(tracks: TrackMetadata[]): void {
+  for (const t of tracks) {
+    if (t?.id) cache.setex(`track:${t.id}`, 86400, JSON.stringify(t));
   }
 }
 
@@ -561,12 +723,13 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
 
   const id = Number(itunesId);
   if (isNaN(id) || id === 0) {
-    // Es un ID de YouTube — usar yt-dlp para obtener metadata
+    // Es un ID de YouTube — obtener metadata vía oEmbed sin yt-dlp
     try {
-      const v = await getVideoByIdYtdlp(idStr);
-      if (!v) return null;
-      
-      const authorName = v.author?.name ?? 'Artista desconocido';
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(idStr)}&format=json`);
+      if (!oembedRes.ok) return null;
+      const v = (await oembedRes.json()) as any;
+
+      const authorName = v.author_name ?? 'Artista desconocido';
       const rawTitle = v.title ?? 'Sin título';
       const { cleanTitle, cleanArtist } = cleanTrackNameAndArtist(rawTitle, authorName);
 
@@ -577,11 +740,11 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
         title: cleanTitle,
         artist: cleanArtist,
         album: 'YouTube',
-        cover: v.thumbnail ?? `https://img.youtube.com/vi/${idStr}/hqdefault.jpg`,
-        duration: (v.duration?.seconds ?? 0) * 1000,
+        cover: v.thumbnail_url ?? `https://img.youtube.com/vi/${idStr}/hqdefault.jpg`,
+        duration: 180000,
         genre: 'Urbano / Pop',
         releaseDate: null,
-        popularity: v.views || 0,
+        popularity: 50,
         preview_url: null,
       };
 
@@ -663,57 +826,116 @@ const VERSION_SUFFIX_RE = /\s*[\[(](?:karaoke|karaoké|instrumental|backing\s*tr
 // Versiones que no queremos en los top tracks (se filtran al final)
 const BAD_ARTIST_TRACK_RE = /\b(karaoke|karaoké|instrumental|backing\s*track|nightcore|sped[\s-]up|slowed)\b/i;
 
-export async function getArtistTopTracks(artistId: number, limit = 25): Promise<TrackMetadata[]> {
-  const cacheKey = `artist-tracks:${artistId}`;
+export interface ArtistTracksResult {
+  topTracks: TrackMetadata[];
+  collaborations: TrackMetadata[];
+  collaborators: { name: string; count: number; image?: string }[];
+}
+
+export async function getArtistTracksAndCollabs(artistId: number, limit = 25): Promise<ArtistTracksResult> {
+  const cacheKey = `artist-collabs-v3:${artistId}`;
 
   const cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
   try {
-    // Pedimos más resultados de los necesarios para poder filtrar versiones malas
-    const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=song&limit=${Math.min(limit * 3, 200)}`;
+    const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=song&limit=${Math.min(limit * 4, 200)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`iTunes artist lookup error: ${res.status}`);
 
     const data = (await res.json()) as any;
-    // El primer resultado es el artista, el resto son canciones
-    const uniqueTracks: TrackMetadata[] = [];
-    // Clave normalizada: sin sufijos de versión entre paréntesis/corchetes
-    const seenNormalizedTitles = new Set<string>();
+    const rawSongItems = (data.results ?? []).filter((item: any) => item.wrapperType === 'track' && item.kind === 'song');
+    const artistEntry = (data.results ?? []).find((r: any) => r.wrapperType === 'artist');
+    const targetArtistName = (artistEntry?.artistName || '').toLowerCase().trim();
 
-    for (const item of (data.results ?? [])) {
-      if (item.wrapperType !== 'track' || item.kind !== 'song') continue;
+    const nonLatinRegex = /[\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF\u0600-\u06FF]/;
+    let latinCount = 0;
+    for (const s of rawSongItems) {
+      if (!nonLatinRegex.test(s.trackName || '')) latinCount++;
+    }
+    const isDominantlyLatin = (latinCount / (rawSongItems.length || 1)) >= 0.80;
 
+    const uniqueTopTracks: TrackMetadata[] = [];
+    const seenTopTitles = new Set<string>();
+
+    const uniqueCollabTracks: TrackMetadata[] = [];
+    const seenCollabTitles = new Set<string>();
+
+    const collaboratorCounts = new Map<string, { count: number; image?: string }>();
+
+    for (const item of rawSongItems) {
       const rawTitle: string = item.trackName ?? '';
+      const rawArtist = (item.artistName || '').toLowerCase().trim();
 
-      // Ignorar versiones claramente no deseadas incluso si son la primera ocurrencia
+      if (isDominantlyLatin && nonLatinRegex.test(rawTitle)) continue;
       if (BAD_ARTIST_TRACK_RE.test(rawTitle)) continue;
 
-      // Normalizar título: quitar sufijos de versión entre () o [] para deduplicar
-      // Ej: "Blinding Lights (Karaoke Version)" → "blinding lights"
       const normalizedTitle = rawTitle
         .replace(VERSION_SUFFIX_RE, '')
         .toLowerCase()
         .trim();
 
-      if (!seenNormalizedTitles.has(normalizedTitle)) {
-        seenNormalizedTitles.add(normalizedTitle);
-        uniqueTracks.push(itunesResultToTrack(item, uniqueTracks.length));
-        if (uniqueTracks.length >= limit) break; // Ya tenemos suficientes
+      // Extraer colaboradores mencionados en el nombre del artista
+      const artistParts = (item.artistName || '')
+        .split(/\s*(?:feat\.?|ft\.?|featuring|&|\bx\b|\bwith\b|\bcon\b|,)\s*/i)
+        .map((p: string) => p.trim())
+        .filter((p: string) => p.length >= 2);
+
+      for (const part of artistParts) {
+        if (targetArtistName && part.toLowerCase() !== targetArtistName) {
+          const current = collaboratorCounts.get(part) || { count: 0 };
+          collaboratorCounts.set(part, {
+            count: current.count + 1,
+            image: current.image || (item.artworkUrl100 ? scaleArtwork(item.artworkUrl100) : undefined),
+          });
+        }
+      }
+
+      // ¿Es pista principal (Lead)?
+      const isLead = (item.artistId === artistId) && (!targetArtistName || rawArtist.startsWith(targetArtistName));
+      const hasForeignCollection = item.collectionArtistName &&
+        targetArtistName &&
+        item.collectionArtistName.toLowerCase().trim() !== targetArtistName &&
+        !item.collectionArtistName.toLowerCase().includes(targetArtistName) &&
+        !rawArtist.startsWith(targetArtistName);
+
+      if (isLead && !hasForeignCollection) {
+        if (!seenTopTitles.has(normalizedTitle)) {
+          seenTopTitles.add(normalizedTitle);
+          uniqueTopTracks.push(itunesResultToTrack(item, uniqueTopTracks.length));
+        }
+      } else {
+        // Pista de colaboración o invitado (ej. Tayc & RnBoi - MAMAN PRIE)
+        const isRelated = targetArtistName && (rawArtist.includes(targetArtistName) || rawTitle.toLowerCase().includes(targetArtistName));
+        if (isRelated && !seenCollabTitles.has(normalizedTitle)) {
+          seenCollabTitles.add(normalizedTitle);
+          uniqueCollabTracks.push(itunesResultToTrack(item, uniqueCollabTracks.length));
+        }
       }
     }
 
-    const tracks = uniqueTracks;
+    const collaborators = Array.from(collaboratorCounts.entries())
+      .map(([name, val]) => ({ name, count: val.count, image: val.image }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
 
+    const result: ArtistTracksResult = {
+      topTracks: uniqueTopTracks.slice(0, limit),
+      collaborations: uniqueCollabTracks.slice(0, limit),
+      collaborators,
+    };
 
-    cache.setex(cacheKey, 3600, JSON.stringify(tracks));
+    cache.setex(cacheKey, 3600, JSON.stringify(result));
+    upsertTracks([...uniqueTopTracks, ...uniqueCollabTracks].map(trackToRow)).catch(() => {});
 
-    // UPSERT en Supabase
-    upsertTracks(tracks.map(trackToRow)).catch(() => {});
-
-    return tracks;
+    return result;
   } catch (error) {
-    console.error('[Metadata] Error en getArtistTopTracks:', error);
-    return [];
+    console.error('[Metadata] Error en getArtistTracksAndCollabs:', error);
+    return { topTracks: [], collaborations: [], collaborators: [] };
   }
+}
+
+export async function getArtistTopTracks(artistId: number, limit = 25): Promise<TrackMetadata[]> {
+  const result = await getArtistTracksAndCollabs(artistId, limit);
+  return result.topTracks;
 }

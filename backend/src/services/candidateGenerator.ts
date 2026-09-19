@@ -22,6 +22,17 @@ import { supabase } from './supabaseService';
 import { type TasteProfile, getDecade } from './tasteProfileBuilder';
 import { readHistory } from './historyService';
 
+/**
+ * Last.fm devuelve un hash de imagen fijo como placeholder genérico cuando no
+ * tiene carátula real — se filtra aquí también (no solo al escribir el cache
+ * en backgroundJobRunner) para limpiar filas ya cacheadas sin esperar al
+ * próximo refresco de charts.
+ */
+const LASTFM_PLACEHOLDER_HASH = '2a96cbd8b46e442fc41c2b86b821562f';
+function isLastfmPlaceholderCover(url: string | null | undefined): boolean {
+  return !url || url.includes(LASTFM_PLACEHOLDER_HASH);
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const EXPLOIT_RATIO = 0.80;           // 80% from taste-aligned sources
@@ -160,6 +171,8 @@ async function fetchTasteCandidates(
     .from('tracks_meta')
     .select('itunes_id, title, artist, artist_id, cover_url, duration_ms, genre, release_date, language')
     .in('genre', topGenres)
+    .not('cover_url', 'is', null)
+    .neq('cover_url', '')
     .limit(limit * 3); // over-fetch to allow filtering
 
   if (error || !data) return [];
@@ -218,6 +231,8 @@ async function fetchFollowCandidates(
     .from('tracks_meta')
     .select('itunes_id, title, artist, artist_id, cover_url, duration_ms, genre, release_date, language')
     .in('artist_id', artistIds)
+    .not('cover_url', 'is', null)
+    .neq('cover_url', '')
     .order('release_date', { ascending: false })
     .limit(limit * 4);
 
@@ -289,21 +304,30 @@ async function fetchChartCandidates(
       const title = String(item.title || item.trackName || item.name || '');
       const artist = String(item.artist || item.artistName || item.artist_name || '');
       const genre = String(item.genre || 'Otros');
+      const releaseDate = item.releaseDate || item.release_date || null;
 
+      // Deezer expone BPM/loudness reales para bastante de su catálogo (ver
+      // backgroundJobRunner.fetchDeezerCharts) — se usan cuando están
+      // disponibles; si no (bpm=0 es habitual, Deezer no lo tiene para todo),
+      // caemos a la heurística por hash como antes.
+      const realBpm = Number(item.bpm) || 0;
+      const realEnergy = typeof item.energyFromGain === 'number' ? item.energyFromGain : null;
+
+      const rawCover = String(item.cover || item.coverUrl || item.cover_url || item.image || '');
       candidates.push({
         trackId,
         title,
         artist,
         artistId: Number(item.artistId || item.artist_id || 0),
-        cover: String(item.cover || item.coverUrl || item.cover_url || item.image || ''),
+        cover: isLastfmPlaceholderCover(rawCover) ? '' : rawCover,
         durationMs: Number(item.durationMs || item.duration_ms || 180_000),
         genre,
-        releaseDate: item.releaseDate || item.release_date || null,
-        affinityScore: computeAffinity(genre, artist, profile),
+        releaseDate,
+        affinityScore: computeAffinity(genre, artist, profile, undefined, releaseDate),
         isNewFromFollowedArtist: false,
         source: 'charts' as const,
-        bpmEstimate: estimateBpm(title, artist),
-        energyEstimate: estimateEnergy(title, artist),
+        bpmEstimate: realBpm > 0 ? realBpm : estimateBpm(title, artist),
+        energyEstimate: realEnergy !== null ? realEnergy : estimateEnergy(title, artist),
       });
 
       if (candidates.length >= limit * 3) break;
@@ -404,21 +428,24 @@ export async function getColdStartCandidates(limit = 30, _region?: string): Prom
       const title = String(item.title || item.trackName || item.name || '');
       const artist = String(item.artist || item.artistName || item.artist_name || '');
       const genre = String(item.genre || 'Otros');
+      const realBpm = Number(item.bpm) || 0;
+      const realEnergy = typeof item.energyFromGain === 'number' ? item.energyFromGain : null;
 
+      const rawCover = String(item.cover || item.coverUrl || item.cover_url || item.image || '');
       candidates.push({
         trackId,
         title,
         artist,
         artistId: Number(item.artistId || item.artist_id || 0),
-        cover: String(item.cover || item.coverUrl || item.cover_url || item.image || ''),
+        cover: isLastfmPlaceholderCover(rawCover) ? '' : rawCover,
         durationMs: Number(item.durationMs || item.duration_ms || 180_000),
         genre,
         releaseDate: item.releaseDate || item.release_date || null,
         affinityScore: 0,
         isNewFromFollowedArtist: false,
         source: 'charts' as const,
-        bpmEstimate: estimateBpm(title, artist),
-        energyEstimate: estimateEnergy(title, artist),
+        bpmEstimate: realBpm > 0 ? realBpm : estimateBpm(title, artist),
+        energyEstimate: realEnergy !== null ? realEnergy : estimateEnergy(title, artist),
       });
 
       if (candidates.length >= limit) break;

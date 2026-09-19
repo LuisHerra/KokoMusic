@@ -49,81 +49,46 @@ export function recordYtSearchSuccess(): void {
   }
 }
 
-/** Normaliza la salida de yt-dlp dump-json a formato VideoResult común */
-function parseYtdlpVideo(v: any): any | null {
-  if (!v?.id) return null;
-  return {
-    videoId: v.id,
-    title: v.title || '',
-    author: { name: v.channel || v.uploader || 'Desconocido' },
-    duration: { seconds: v.duration || 0 },
-    thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.id}/hqdefault.jpg`,
-    views: v.view_count || 0,
-  };
+import { searchVideos } from './kokoLiteClient';
+
+/**
+ * Busca videos en YouTube usando KokoMusic-lite (InnerTube) sin yt-dlp.
+ */
+export async function searchYtdlp(query: string, limit = 5): Promise<any[]> {
+  try {
+    const results = await searchVideos(query);
+    return results.slice(0, limit).map(v => ({
+      videoId: v.id,
+      title: v.title || '',
+      author: { name: v.author || 'Desconocido' },
+      duration: { seconds: v.durationSeconds || 0 },
+      thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.id}/hqdefault.jpg`,
+      views: 0,
+    }));
+  } catch (err) {
+    console.error('[ytdlpSearchService] Error delegando búsqueda a KokoMusic-lite:', err);
+    return [];
+  }
 }
 
 /**
- * Busca videos en YouTube usando yt-dlp ytsearch.
- * Más lento que Invidious API (~2-4s) pero 100% fiable con IP residencial.
+ * Obtiene metadatos de un video concreto de YouTube sin yt-dlp.
  */
-export function searchYtdlp(query: string, limit = 5): Promise<any[]> {
-  return new Promise((resolve) => {
-    const cookiesArg = getCookiesArg();
-    // Build args as an array — execFile does NOT use a shell, so no injection risk
-    const args = [
-      ...(cookiesArg ? cookiesArg.split(' ').filter(Boolean) : []),
-      '--force-ipv4',
-      `ytsearch${limit}:${query}`,
-      '--dump-json',
-      '--no-playlist',
-      '--flat-playlist',
-      '--no-warnings',
-      '--no-progress',
-    ];
-
-    execFile('yt-dlp', args, { timeout: 20000 }, (err, stdout) => {
-      if (!stdout?.trim()) return resolve([]);
-      try {
-        const videos = stdout.trim()
-          .split('\n')
-          .filter(l => l.trim().startsWith('{'))
-          .map(l => {
-            try { return parseYtdlpVideo(JSON.parse(l)); } catch { return null; }
-          })
-          .filter(Boolean);
-        resolve(videos);
-      } catch {
-        resolve([]);
-      }
-    });
-  });
+export async function getVideoByIdYtdlp(videoId: string): Promise<any | null> {
+  try {
+    const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&format=json`);
+    if (!oembedRes.ok) return null;
+    const v = (await oembedRes.json()) as any;
+    return {
+      videoId,
+      title: v.title || '',
+      author: { name: v.author_name || 'Desconocido' },
+      duration: { seconds: 180 },
+      thumbnail: v.thumbnail_url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      views: 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
-/**
- * Obtiene metadatos de un video concreto de YouTube usando yt-dlp.
- * Útil cuando el usuario busca un video directamente (no por iTunes ID).
- */
-export function getVideoByIdYtdlp(videoId: string): Promise<any | null> {
-  return new Promise((resolve) => {
-    const cookiesArg = getCookiesArg();
-    // Build args as an array — no shell expansion, no injection risk
-    const args = [
-      ...(cookiesArg ? cookiesArg.split(' ').filter(Boolean) : []),
-      '--force-ipv4',
-      `https://www.youtube.com/watch?v=${videoId}`,
-      '--dump-json',
-      '--skip-download',
-      '--no-playlist',
-      '--no-warnings',
-    ];
-
-    execFile('yt-dlp', args, { timeout: 15000 }, (err, stdout) => {
-      if (!stdout?.trim()) return resolve(null);
-      try {
-        resolve(parseYtdlpVideo(JSON.parse(stdout.trim())));
-      } catch {
-        resolve(null);
-      }
-    });
-  });
-}

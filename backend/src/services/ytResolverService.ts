@@ -14,8 +14,14 @@
 
 import yts from 'yt-search';
 import { cache } from './cacheService';
-import { getYouTubeResolution, upsertYouTubeResolution } from './supabaseService';
+import { getYouTubeResolutionFull, upsertYouTubeResolution } from './supabaseService';
 import { isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './ytdlpSearchService';
+
+export interface YoutubeResolution {
+  primary: string;
+  /** Candidatos de respaldo (otros vídeos del mismo tema) — ya puntuados por scoreVideo, descartados solo por no ser el #1. */
+  alternates: string[];
+}
 
 // ── Normalización de texto para matching exacto ─────────────────────────────
 function normalizeText(s: string): string {
@@ -51,7 +57,7 @@ function scoreVideo(
   expectedDurationSec?: number
 ): number {
   const vTitle: string = video.title ?? '';
-  const vChannel: string = video.author?.name ?? '';
+  const vChannel: string = (typeof video.author === 'string' ? video.author : video.author?.name) ?? '';
 
   // Descarte inmediato si el título contiene una versión no deseada
   if (BAD_VERSION_RE.test(vTitle)) return -Infinity;
@@ -97,36 +103,47 @@ function scoreVideo(
   }
 
   // 5. Duración cercana a la esperada
-  if (expectedDurationSec && video.duration?.seconds) {
-    const diff = Math.abs(video.duration.seconds - expectedDurationSec);
+  const vSec = video.duration?.seconds ?? video.durationSeconds;
+  if (expectedDurationSec && vSec) {
+    const diff = Math.abs(vSec - expectedDurationSec);
     if (diff / expectedDurationSec < 0.15) score += 3;
   }
 
   return score;
 }
 
+const MAX_ALTERNATES = 3;
+
 /**
- * Resuelve el YouTube ID para un artista + título dados.
+ * Resuelve el YouTube ID para un artista + título dados, junto con hasta
+ * MAX_ALTERNATES candidatos alternativos (otros vídeos del mismo tema ya
+ * puntuados por scoreVideo — audio oficial, lyric video, reupload...).
+ * Antes solo se guardaba el ganador y el resto de candidatos se tiraban; si
+ * ese único video moría (bloqueado, retirado), no había plan B guardado.
+ *
  * Prioriza canales VEVO/Topic/Official y filtra versiones karaoke/cover/instrumental.
  * @param expectedDurationSec  Duración en segundos del track de iTunes (opcional, mejora la precisión)
  */
-export async function resolveYoutubeId(
+export async function resolveYoutubeIdWithAlternates(
   itunesId: number,
   artistName: string,
   trackName: string,
   expectedDurationSec?: number
-): Promise<string | null> {
-  const cacheKey = `yt-res:${itunesId}`;
+): Promise<YoutubeResolution | null> {
+  const cacheKey = `yt-res-full:${itunesId}`;
 
   // L1: memoria
   const inMemory = cache.get(cacheKey);
-  if (inMemory) return inMemory;
+  if (inMemory) {
+    try { return JSON.parse(inMemory) as YoutubeResolution; } catch {}
+  }
 
   // L2: Supabase
-  const fromDB = await getYouTubeResolution(itunesId);
+  const fromDB = await getYouTubeResolutionFull(itunesId);
   if (fromDB) {
-    cache.setex(cacheKey, 86400 * 30, fromDB); // recalentar L1 (30 días)
-    return fromDB;
+    const resolution: YoutubeResolution = { primary: fromDB.youtube_id, alternates: fromDB.alt_youtube_ids || [] };
+    cache.setex(cacheKey, 86400 * 30, JSON.stringify(resolution)); // recalentar L1 (30 días)
+    return resolution;
   }
 
   // L3: búsqueda de YouTube
@@ -146,9 +163,9 @@ export async function resolveYoutubeId(
     }
 
     if (videos.length === 0) {
-      const { searchYtdlp } = await import('./ytdlpSearchService');
-      console.log(`[YTResolver] yt-search vacío — buscando via yt-dlp: "${query}"`);
-      videos = await searchYtdlp(query, 15);
+      const { searchLite } = await import('./kokoLiteService');
+      console.log(`[YTResolver] yt-search vacío — buscando via KokoMusic-lite: "${query}"`);
+      videos = await searchLite(query);
     }
 
     if (videos.length === 0) return null;
@@ -161,21 +178,74 @@ export async function resolveYoutubeId(
 
     // Elegir el mejor candidato; si todos fueron descartados, usar el primero sin filtrar
     const chosen = scored.length > 0 ? scored[0].video : videos[0];
-    const youtubeId = chosen.videoId;
+    const youtubeId = chosen.id || chosen.videoId;
+    const authorName = typeof chosen.author === 'string' ? chosen.author : chosen.author?.name;
 
     const reason = scored.length > 0
-      ? `score=${scored[0].score}, canal="${chosen.author?.name}"`
+      ? `score=${scored[0].score}, canal="${authorName}"`
       : 'fallback (todos filtrados)';
-    console.log(`[YTResolver] "${artistName} - ${trackName}" → ${youtubeId} (${reason})`);
+
+    // Candidatos de respaldo: siguientes mejores puntuados, sin duplicar el elegido
+    const alternates = scored
+      .slice(1)
+      .map(s => s.video.id || s.video.videoId)
+      .filter((id: string | undefined): id is string => !!id && id !== youtubeId)
+      .slice(0, MAX_ALTERNATES);
+
+    console.log(`[YTResolver] "${artistName} - ${trackName}" → ${youtubeId} (${reason}), ${alternates.length} alternativas de respaldo`);
+
+    const resolution: YoutubeResolution = { primary: youtubeId, alternates };
 
     // Persistir en L1 + L2
-    cache.setex(cacheKey, 86400 * 30, youtubeId);
-    upsertYouTubeResolution(itunesId, youtubeId).catch(() => {});
+    cache.setex(cacheKey, 86400 * 30, JSON.stringify(resolution));
+    cache.setex(`yt-res:${itunesId}`, 86400 * 30, youtubeId); // compat con lectores del string plano
+    upsertYouTubeResolution(itunesId, youtubeId, alternates).catch(() => {});
 
-    return youtubeId;
+    return resolution;
   } catch (error) {
     console.error('[YTResolver] Error resolviendo YouTube ID:', error);
     return null;
   }
+}
+
+/**
+ * Resuelve el YouTube ID para un artista + título dados.
+ * Wrapper de compatibilidad sobre resolveYoutubeIdWithAlternates para
+ * callers que solo necesitan el ID principal (sin gestión de fallback).
+ */
+export async function resolveYoutubeId(
+  itunesId: number,
+  artistName: string,
+  trackName: string,
+  expectedDurationSec?: number
+): Promise<string | null> {
+  const cacheKey = `yt-res:${itunesId}`;
+
+  // L1: memoria (atajo — evita construir/parsear el objeto completo en el camino caliente)
+  const inMemory = cache.get(cacheKey);
+  if (inMemory) return inMemory;
+
+  const resolution = await resolveYoutubeIdWithAlternates(itunesId, artistName, trackName, expectedDurationSec);
+  return resolution?.primary ?? null;
+}
+
+/**
+ * Promueve un candidato alternativo a principal tras confirmar que resuelve
+ * y reproduce correctamente, mientras el anterior falló. Así las próximas
+ * peticiones de este track van directas al que sí funciona.
+ */
+export async function promoteYoutubeCandidate(
+  itunesId: number,
+  workingYoutubeId: string,
+  remainingAlternates: string[]
+): Promise<void> {
+  cache.setex(`yt-res:${itunesId}`, 86400 * 30, workingYoutubeId);
+  cache.setex(
+    `yt-res-full:${itunesId}`,
+    86400 * 30,
+    JSON.stringify({ primary: workingYoutubeId, alternates: remainingAlternates } as YoutubeResolution)
+  );
+  await upsertYouTubeResolution(itunesId, workingYoutubeId, remainingAlternates).catch(() => {});
+  console.log(`[YTResolver] Candidato promovido a principal para itunesId=${itunesId}: ${workingYoutubeId}`);
 }
 

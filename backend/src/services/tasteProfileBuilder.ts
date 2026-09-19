@@ -14,6 +14,7 @@
 
 import { supabase } from './supabaseService';
 import { readHistory, type HistoryEntry } from './historyService';
+import { getLikedTracks } from '../routes/playlists';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,14 @@ const ARTIST_CAP_RATIO = 0.30;
 
 /** Minimum duration_ms to use for engagement denominator when track has no meta. */
 const DEFAULT_DURATION_MS = 180_000;
+
+/**
+ * Un "me gusta" explícito es una señal más fuerte que una escucha completa
+ * (que ya de por sí cuenta como peso 1 tras el ratio de engagement) — se
+ * pondera más para que el perfil de gustos reaccione a los likes del usuario
+ * aunque todavía no haya escuchado mucho ese género/artista.
+ */
+const LIKE_WEIGHT_MULTIPLIER = 3;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +69,8 @@ export interface EnrichedPlay {
   secondsListened: number;
   language?: string | null;
   releaseDate?: string | null;
+  /** True para entradas sintéticas venidas de "me gusta" — reciben LIKE_WEIGHT_MULTIPLIER. */
+  isLikedSignal?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -197,6 +208,55 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
 }
 
 /**
+ * Resuelve género/artista/idioma/fecha para los tracks que el usuario ha
+ * marcado con "me gusta" (Liked Songs) — señal explícita que hasta ahora no
+ * alimentaba el perfil de gustos, solo las escuchas implícitas de play_events.
+ * `secondsListened` se fija a la duración completa para que pase el filtro
+ * de engagement mínimo de la misma forma que una escucha completa.
+ */
+async function fetchLikedSignals(userId: string): Promise<EnrichedPlay[]> {
+  if (!supabase) return [];
+
+  const liked = getLikedTracks(userId);
+  if (liked.length === 0) return [];
+
+  const numericIds = liked
+    .map((l) => Number(l.trackId))
+    .filter((n) => !isNaN(n) && n > 0);
+  if (numericIds.length === 0) return [];
+
+  const { data: metas } = await supabase
+    .schema('kokomusic')
+    .from('tracks_meta')
+    .select('itunes_id, artist, genre, duration_ms, artist_id, language, release_date')
+    .in('itunes_id', numericIds);
+
+  if (!metas || metas.length === 0) return [];
+
+  const metaMap = new Map<string, any>(metas.map((m: any) => [String(m.itunes_id), m]));
+
+  const enriched: EnrichedPlay[] = [];
+  for (const { trackId, likedAt } of liked) {
+    const meta = metaMap.get(trackId);
+    if (!meta) continue;
+    const durationMs = meta.duration_ms || DEFAULT_DURATION_MS;
+    enriched.push({
+      trackId,
+      artist: meta.artist || '',
+      artistId: meta.artist_id || 0,
+      genre: meta.genre || 'Otros',
+      durationMs,
+      timestamp: likedAt,
+      secondsListened: durationMs / 1000, // engagement completo — es un "me gusta", no una escucha parcial
+      language: meta.language || null,
+      releaseDate: meta.release_date || null,
+      isLikedSignal: true,
+    });
+  }
+  return enriched;
+}
+
+/**
  * Apply 30% artist cap: redistributes excess weight proportionally to other artists.
  */
 export function applyArtistCap(
@@ -245,7 +305,13 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
   console.log(`[TasteProfile] Building profile for user: ${userId}`);
   const nowMs = Date.now();
 
-  const plays = await fetchEnrichedPlays(userId);
+  const [playHistory, likedSignals] = await Promise.all([
+    fetchEnrichedPlays(userId),
+    fetchLikedSignals(userId),
+  ]);
+  // Los "me gusta" se combinan con las escuchas reales — misma canción puede
+  // aportar peso por ambas vías (escuchada Y marcada), lo cual es deseable.
+  const plays = [...playHistory, ...likedSignals];
   const existing = await loadTasteProfileStale(userId);
 
   if (plays.length === 0 && !existing) {
@@ -269,8 +335,10 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
 
     // 2. Time-decay weight
     const decay = timeDecayWeight(play.timestamp, nowMs);
-    // 3. Combined weight = engagement ratio × decay (cap engagement at 1)
-    const weight = Math.min(1, er > 0 ? er : 0.5) * decay;
+    // 3. Combined weight = engagement ratio × decay (cap engagement at 1),
+    // boosted for explicit "me gusta" signals (más fuerte que una escucha).
+    let weight = Math.min(1, er > 0 ? er : 0.5) * decay;
+    if (play.isLikedSignal) weight *= LIKE_WEIGHT_MULTIPLIER;
 
     if (weight <= 0) continue;
     totalWeight += weight;

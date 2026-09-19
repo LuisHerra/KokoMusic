@@ -8,6 +8,7 @@ import {
   markNotificationsRead,
 } from '../services/followService';
 import { cache } from '../services/cacheService';
+import { getArtistInfo } from '../services/artistService';
 
 const router = Router();
 
@@ -114,10 +115,76 @@ router.post('/:id/follow', async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /api/artist/:id  (existing route, wrapped here for backwards compat) ──
-import { getArtistInfo } from '../services/artistService';
-import { cache as cacheAlias } from '../services/cacheService';
+// ── GET /api/artist/lookup?q=... ──────────────────────────────────────────────
+router.get('/lookup', async (req: Request, res: Response) => {
+  const q = (req.query.q as string) || '';
+  if (!q.trim()) {
+    return res.status(400).json({ error: 'Falta el parámetro de búsqueda "q"' });
+  }
 
+  const queryClean = q.trim();
+  const cacheKey = `artist:lookup:${queryClean.toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.json({ artist: JSON.parse(cached), source: 'cache' });
+  }
+
+  try {
+    const artist = await getArtistInfo(queryClean);
+    if (!artist) {
+      return res.status(404).json({ error: 'Artista no encontrado', query: queryClean });
+    }
+    cache.setex(cacheKey, 3600 * 2, JSON.stringify(artist));
+    return res.json({ artist, source: 'lookup' });
+  } catch (err) {
+    console.error('[Artist Route /lookup] Error:', err);
+    return res.status(500).json({ error: 'Error al resolver artista' });
+  }
+});
+
+// ── GET /api/artist/avatar?name=... ──────────────────────────────────────────
+router.get('/avatar', async (req: Request, res: Response) => {
+  const name = (req.query.name as string || '').trim();
+  if (!name) return res.status(400).json({ error: 'Falta el parámetro name' });
+
+  const cacheKey = `artist-avatar:${name.toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(JSON.parse(cached));
+
+  try {
+    // 1. Deezer
+    const dzRes = await fetch(`https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=1`);
+    if (dzRes.ok) {
+      const dzData = (await dzRes.json()) as any;
+      const match = dzData.data?.[0];
+      const image = match?.picture_medium || match?.picture_small || match?.picture;
+      if (image) {
+        const payload = { image };
+        cache.setex(cacheKey, 86400 * 7, JSON.stringify(payload));
+        return res.json(payload);
+      }
+    }
+
+    // 2. iTunes fallback
+    const itunesRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=song&limit=1`);
+    if (itunesRes.ok) {
+      const itunesData = (await itunesRes.json()) as any;
+      const track = itunesData.results?.[0];
+      if (track?.artworkUrl100) {
+        const image = track.artworkUrl100.replace(/\d+x\d+bb\.jpg$/, '300x300bb.jpg');
+        const payload = { image };
+        cache.setex(cacheKey, 86400 * 7, JSON.stringify(payload));
+        return res.json(payload);
+      }
+    }
+
+    return res.json({ image: null });
+  } catch (err) {
+    return res.json({ image: null });
+  }
+});
+
+// ── GET /api/artist/:id  (existing route, wrapped here for backwards compat) ──
 router.get('/:id', async (req: Request, res: Response) => {
   const idParam = req.params.id;
   const nameQuery = req.query.name as string | undefined;
@@ -129,8 +196,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     identifier = Number(idParam);
   }
 
-  const cacheKey = `artist:${identifier}`;
-  const cached = cacheAlias.get(cacheKey);
+  const cacheKey = `artist-v3:${identifier}`;
+  const cached = cache.get(cacheKey);
   if (cached) {
     console.log(`[Artist Route] Retornando ${identifier} desde caché L1`);
     return res.json({ artist: JSON.parse(cached), source: 'cache' });

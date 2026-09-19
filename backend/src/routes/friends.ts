@@ -211,6 +211,23 @@ router.post('/account/login', async (req, res) => {
       const { data: profile } = await query.maybeSingle();
 
       if (profile) {
+        if (password) {
+          try {
+            const { data: userData } = await supabase.auth.admin.getUserById(profile.id);
+            if (userData?.user?.email) {
+              const { error: signInErr } = await supabase.auth.signInWithPassword({
+                email: userData.user.email,
+                password,
+              });
+              if (signInErr) {
+                return err(res, 'Contraseña incorrecta', 401);
+              }
+            }
+          } catch (authValErr) {
+            console.warn('[Login] Advertencia validando password:', authValErr);
+          }
+        }
+
         return res.json({
           success: true,
           userId: profile.id,

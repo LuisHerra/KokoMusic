@@ -1,10 +1,11 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { useFollowArtist } from '../hooks/useFollowArtist';
 import { BASE } from '../lib/api';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
+import ArtistLinks from '../components/Common/ArtistLinks';
 
 function formatDuration(ms: number): string {
   const m = Math.floor(ms / 60000);
@@ -81,9 +82,16 @@ function ArtistTrackRow({
       >
       <div className="track-row-num"><span style={{ color: 'var(--text-muted)' }}>{index + 1}</span></div>
       <div className="track-row-info">
-        <img className="track-row-cover" src={track.cover} alt={track.title} style={{ width: 40, height: 40 }} />
-        <div style={{ minWidth: 0 }}>
-          <div className="track-row-name" style={{ fontSize: 14 }}>{track.title}</div>
+        <img className="track-row-cover" src={track.cover} alt={track.title} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }} />
+        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+          <div className="track-row-name" style={{ fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</div>
+          {track.artist && (
+            <ArtistLinks
+              artist={track.artist}
+              artistId={track.artistId}
+              style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            />
+          )}
         </div>
       </div>
       <div className="track-row-plays">
@@ -134,7 +142,12 @@ function ArtistTrackRow({
               <img src={track.cover} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover' }} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</h4>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</p>
+                <ArtistLinks
+                  artist={track.artist}
+                  artistId={track.artistId}
+                  onLinkClick={() => setIsActionsOpen(false)}
+                  style={{ display: 'block', margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                />
               </div>
             </div>
 
@@ -159,6 +172,284 @@ function ArtistTrackRow({
   );
 }
 
+function CollaboratorAvatar({ name, image }: { name: string; image?: string }) {
+  const [imgSrc, setImgSrc] = useState<string | null>(image || null);
+
+  useEffect(() => {
+    if (image) {
+      setImgSrc(image);
+      return;
+    }
+    // Si no vino imagen desde el backend, fetcheamos su avatar dinámico vía /api/artist/avatar
+    let active = true;
+    fetch(`${BASE}/artist/avatar?name=${encodeURIComponent(name)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data?.image) {
+          setImgSrc(data.image);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [name, image]);
+
+  return (
+    <div
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: '50%',
+        overflow: 'hidden',
+        flexShrink: 0,
+        position: 'relative',
+        background: 'rgba(255, 255, 255, 0.08)',
+        border: '1px solid rgba(255, 255, 255, 0.15)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+      }}
+    >
+      {imgSrc ? (
+        <img
+          src={imgSrc}
+          alt={name}
+          loading="lazy"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: '50%',
+            display: 'block',
+          }}
+          onError={() => setImgSrc(null)}
+        />
+      ) : (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="rgba(255, 255, 255, 0.6)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      )}
+    </div>
+  );
+}
+
+function CollaboratorsSlideshow({
+  collaborators,
+  onSelectArtist,
+}: {
+  collaborators: { name: string; count: number; image?: string }[];
+  onSelectArtist: (name: string) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const startXRef = useRef(0);
+  const scrollLeftStartRef = useRef(0);
+  const hasMovedRef = useRef(false);
+
+  const checkScroll = () => {
+    if (!scrollRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+    setCanScrollLeft(scrollLeft > 4);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 4);
+  };
+
+  useEffect(() => {
+    checkScroll();
+  }, [collaborators]);
+
+  const handleScroll = (direction: 'left' | 'right') => {
+    if (!scrollRef.current) return;
+    const scrollAmount = 280;
+    scrollRef.current.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth',
+    });
+    setTimeout(checkScroll, 350);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!scrollRef.current) return;
+    setIsDragging(true);
+    hasMovedRef.current = false;
+    startXRef.current = e.pageX - scrollRef.current.offsetLeft;
+    scrollLeftStartRef.current = scrollRef.current.scrollLeft;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !scrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollRef.current.offsetLeft;
+    const walk = (x - startXRef.current) * 1.5;
+    if (Math.abs(walk) > 4) {
+      hasMovedRef.current = true;
+    }
+    scrollRef.current.scrollLeft = scrollLeftStartRef.current - walk;
+    checkScroll();
+  };
+
+  const handleMouseUpOrLeave = () => {
+    setIsDragging(false);
+  };
+
+  if (!collaborators || collaborators.length === 0) return null;
+
+  return (
+    <div style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: '#fff' }}>Colaboradores habituales</h3>
+        </div>
+
+        {/* Slideshow Navigation Buttons */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => handleScroll('left')}
+            disabled={!canScrollLeft}
+            aria-label="Anterior colaborador"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              background: canScrollLeft ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+              color: canScrollLeft ? '#fff' : 'rgba(255, 255, 255, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: canScrollLeft ? 'pointer' : 'default',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleScroll('right')}
+            disabled={!canScrollRight}
+            aria-label="Siguiente colaborador"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              background: canScrollRight ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+              color: canScrollRight ? '#fff' : 'rgba(255, 255, 255, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: canScrollRight ? 'pointer' : 'default',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Slides track with mobile swipe + desktop mouse drag */}
+      <div
+        ref={scrollRef}
+        onScroll={checkScroll}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUpOrLeave}
+        onMouseLeave={handleMouseUpOrLeave}
+        style={{
+          display: 'flex',
+          gap: 10,
+          overflowX: 'auto',
+          paddingBottom: 6,
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          scrollSnapType: isDragging ? 'none' : 'x mandatory',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          userSelect: isDragging ? 'none' : 'auto',
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          touchAction: 'pan-x',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        {collaborators.map((c, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => {
+              if (hasMovedRef.current) return;
+              onSelectArtist(c.name);
+            }}
+            className="hover-card"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '6px 14px 6px 6px',
+              borderRadius: 28,
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              color: '#fff',
+              cursor: isDragging ? 'grabbing' : 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              scrollSnapAlign: 'start',
+              transition: 'background 0.2s, border-color 0.2s, transform 0.2s',
+            }}
+            onMouseOver={(e) => {
+              if (isDragging) return;
+              e.currentTarget.style.borderColor = 'var(--accent)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseOut={(e) => {
+              if (isDragging) return;
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            {/* Foto de perfil real del artista colaborador */}
+            <CollaboratorAvatar name={c.name} image={c.image} />
+
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>{c.name}</span>
+              <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>
+                {c.count} {c.count === 1 ? 'canción' : 'canciones'}
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Artist() {
   const params = useParams<{ id?: string; name?: string }>();
   const id = params.id || params.name; // Soporta si la ruta es /artist/:id o /artist/:name
@@ -166,7 +457,7 @@ export default function Artist() {
   const navigate = useNavigate();
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['artist', id],
+    queryKey: ['artist-v3', id],
     queryFn: async () => {
       const isNumeric = id && !isNaN(Number(id)) && id !== '0';
       const url = `${BASE}/artist/${id}${!isNumeric ? `?name=${encodeURIComponent(id || '')}` : ''}`;
@@ -193,22 +484,29 @@ export default function Artist() {
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [realPlays, setRealPlays] = useState<Record<string, number>>({});
   const [showAllTracks, setShowAllTracks] = useState(false);
+  const [showAllCollabs, setShowAllCollabs] = useState(false);
   const [albumFilter, setAlbumFilter] = useState<'All' | 'Álbum' | 'Single/EP'>('All');
   const [showAllAlbums, setShowAllAlbums] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const displayedTracks = data?.topTracks ? (showAllTracks ? data.topTracks.slice(0, 10) : data.topTracks.slice(0, 5)) : [];
+  const displayedCollabs = data?.collaborations ? (showAllCollabs ? data.collaborations.slice(0, 10) : data.collaborations.slice(0, 5)) : [];
 
-  // Use simulated play counts based on popularity score—avoids 5-10 extra network
-  // requests that were previously fired per track to fetch real YouTube view counts.
+  // Use simulated play counts based on popularity score
   useEffect(() => {
-    if (!data?.topTracks) return;
     const simulated: Record<string, number> = {};
-    data.topTracks.forEach((track: any, index: number) => {
-      simulated[track.id] = getSimulatedPlays(track, index);
-    });
+    if (data?.topTracks) {
+      data.topTracks.forEach((track: any, index: number) => {
+        simulated[track.id] = getSimulatedPlays(track, index);
+      });
+    }
+    if (data?.collaborations) {
+      data.collaborations.forEach((track: any, index: number) => {
+        simulated[track.id] = getSimulatedPlays(track, index);
+      });
+    }
     setRealPlays(simulated);
-  }, [data?.topTracks]);
+  }, [data?.topTracks, data?.collaborations]);
 
   if (isLoading) {
     return (
@@ -248,7 +546,7 @@ export default function Artist() {
   const isGlobalRanked = globalRank > 0 && globalRank <= 500;
 
   return (
-    <div style={{ paddingBottom: 120 }}>
+    <div style={{ paddingBottom: 120, maxWidth: '100%', overflowX: 'clip' }}>
       <style>{`
         .video-card:hover { transform: scale(1.02); background: rgba(255,255,255,0.1) !important; }
         .video-card:hover .video-play-overlay { opacity: 1 !important; }
@@ -394,11 +692,82 @@ export default function Artist() {
         </div>
       </div>
 
+      {/* Homonyms Switcher (cuando existen múltiples artistas con el mismo nombre) */}
+      {data.otherArtistsWithName && data.otherArtistsWithName.length > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          padding: '12px 18px',
+          borderRadius: 14,
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          marginBottom: 24,
+          fontSize: 13,
+          color: 'var(--text-secondary)',
+          backdropFilter: 'blur(12px)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <span style={{ fontWeight: 600 }}>¿Buscabas otro artista con el nombre "{data.name}"?</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {data.otherArtistsWithName.map((other: any) => (
+              <button
+                key={other.id}
+                type="button"
+                onClick={() => navigate(`/artist/${other.id}`)}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderRadius: 20,
+                  padding: '4px 14px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = 'var(--accent)';
+                  e.currentTarget.style.color = '#000';
+                  e.currentTarget.style.borderColor = 'var(--accent)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                  e.currentTarget.style.color = '#fff';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+                }}
+              >
+                <span>{other.name} ({other.genre})</span>
+                <span>→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Grid Content */}
-      <div className="artist-body-grid">
+      <div className="artist-body-grid" style={{ minWidth: 0, maxWidth: '100%' }}>
 
         {/* Left Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 40, minWidth: 0, maxWidth: '100%' }}>
+          {/* Colaboradores habituales (Slideshow) */}
+          {data?.collaborators && data.collaborators.length > 0 && (
+            <CollaboratorsSlideshow
+              collaborators={data.collaborators}
+              onSelectArtist={(name) => navigate(`/artist/${encodeURIComponent(name)}`)}
+            />
+          )}
+
           {/* Top tracks */}
           <div>
             <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Populares</h2>
@@ -490,7 +859,7 @@ export default function Artist() {
         </div>
 
         {/* Right Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 40, height: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 40, height: '100%', minWidth: 0, maxWidth: '100%' }}>
 
           {/* Selección del Artista (Artist Pick) */}
           {albums && albums.length > 0 && (
@@ -776,6 +1145,99 @@ export default function Artist() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Canciones más famosas con colaboradores (Sección baja) */}
+      {data.collaborations && data.collaborations.length > 0 && (
+        <div style={{ padding: '0 32px 48px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 34,
+                height: 34,
+                borderRadius: '50%',
+                background: 'rgba(29, 185, 84, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--accent)',
+              }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </div>
+              <div>
+                <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: '#fff' }}>
+                  Canciones más famosas con colaboradores
+                </h2>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Éxitos donde {name} colabora con otros artistas destacados
+                </div>
+              </div>
+              <span style={{
+                fontSize: 12,
+                fontWeight: 700,
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                padding: '3px 10px',
+                borderRadius: 20,
+                color: 'var(--accent)',
+                marginLeft: 4,
+              }}>
+                {data.collaborations.length} éxitos
+              </span>
+            </div>
+
+            {data.collaborations.length > 6 && (
+              <button
+                onClick={() => setShowAllCollabs(!showAllCollabs)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '6px 16px',
+                  borderRadius: 20,
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                  e.currentTarget.style.borderColor = 'var(--accent)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                }}
+              >
+                {showAllCollabs ? 'Mostrar menos' : `Ver todas (${data.collaborations.length})`}
+              </button>
+            )}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+            gap: 12,
+          }}>
+            {displayedCollabs.map((track: any, index: number) => (
+              <ArtistTrackRow
+                key={`collab-lower-${track.id}-${index}`}
+                track={track}
+                index={index}
+                displayedTracks={data.collaborations}
+                setTrack={setTrack}
+                addToQueue={addToQueue}
+                setError={setError}
+                realPlays={realPlays}
+              />
+            ))}
+          </div>
         </div>
       )}
 

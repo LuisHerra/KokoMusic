@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '../lib/backendResolver';
+import { triggerRecommendationEvent } from '../lib/api';
 
 interface UseFollowArtistResult {
   isFollowing: boolean;
@@ -70,7 +71,9 @@ export function useFollowArtist(
       });
       const data = await res.json();
       // Sync with server response
-      setIsFollowing(data.following ?? !prev);
+      const nowFollowing = data.following ?? !prev;
+      setIsFollowing(nowFollowing);
+      if (!prev && nowFollowing) triggerRecommendationEvent('artist_followed');
     } catch (err) {
       // Revert on error
       console.error('[useFollowArtist] Error toggling follow:', err);

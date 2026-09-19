@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { type Track, getTrackRadio } from '../../lib/api';
 import { usePlayerStore } from '../../store/playerStore';
+import { getAdaptiveQualityLabel } from '../../lib/adaptiveBitrate';
 
 interface SongCreditsModalProps {
   track: Track;
@@ -34,11 +35,14 @@ export default function SongCreditsModal({ track, onClose }: SongCreditsModalPro
     }
   };
 
-  const qualityLabel = localStorage.getItem('koko_audio_quality') === '96'
+  const savedQuality = localStorage.getItem('koko_audio_quality');
+  const qualityLabel = savedQuality === '96'
     ? '96 kbps (Ahorro)'
-    : localStorage.getItem('koko_audio_quality') === '160'
+    : savedQuality === '160'
     ? '160 kbps (Alta)'
-    : '320 kbps (Ultra Hi-Fi)';
+    : savedQuality === '320'
+    ? '320 kbps (Alta fidelidad)'
+    : getAdaptiveQualityLabel();
 
   return (
     <div

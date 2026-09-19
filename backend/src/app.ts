@@ -26,6 +26,8 @@ import collabRouter from './routes/collab';
 import friendsRouter from './routes/friends';
 import recommendationsRouter from './routes/recommendations';
 import { startBackgroundJobs } from './services/backgroundJobRunner';
+import { metrics } from './services/metricsService';
+import { checkHealth as checkKokoLiteHealth } from './services/kokoLiteClient';
 
 import spotifyRouter from './routes/spotify';
 import shazamRouter from './routes/shazam';
@@ -115,12 +117,15 @@ app.get('/api', (_req, res) => {
   res.redirect('/api/health');
 });
 
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
+  const kokoLite = await checkKokoLiteHealth();
   res.json({
     status: 'ok',
     version: '1.0.0',
     env: process.env.NODE_ENV ?? 'development',
     spotify: !!process.env.SPOTIFY_CLIENT_ID,
+    kokoLite,
+    metrics: metrics.snapshot(),
     timestamp: new Date().toISOString(),
   });
 });
@@ -164,22 +169,19 @@ app.use((_req, res) => {
 startReleaseChecker();
 startBackgroundJobs(); // Starts charts pre-fetcher + recommendation pipeline scheduler
 
-import { updateYtDlp } from './services/ytdlpService';
-updateYtDlp(); // Run yt-dlp updater asynchronously on startup
+import { checkLiteHealth } from './services/kokoLiteService';
+// yt-dlp desactivado: resolución gestionada por KokoMusic-lite
+checkLiteHealth().then(h => {
+  if (h.ok) console.log(`   KokoMusic-lite: ✅ Conectado (${process.env.KOKO_LITE_URL || 'https://backendkokomusic.onrender.com'})`);
+  else console.warn(`   KokoMusic-lite: ⚠️ No disponible: ${h.error}`);
+}).catch(() => {});
 
 import { backfillLocalHistoryToCloud, hydrateLocalHistoryFromCloud } from './services/historyService';
 
 app.listen(PORT, () => {
   console.log(`\n🎵 KokoMusic Backend corriendo en http://localhost:${PORT}`);
   console.log(`   Spotify API: ${process.env.SPOTIFY_CLIENT_ID ? '✅ Configurada' : '⚠️  No configurada (.env)'}`);
-
-  if (isCDNEnabled()) {
-    const stats = getCDNUsageStats();
-    console.log(`   CDN (R2):   ✅ Activo — Storage: ~${stats.estimatedStorageMB.toFixed(0)} MB | Requests este mes: ${stats.requestsThisMonth.toLocaleString()}`);
-  } else {
-    console.log(`   CDN (R2):   ⚠️  No configurado — rellena CF_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY en .env`);
-  }
-
+  console.log(`   Streaming:   ⚡ KokoMusic-lite (InnerTube)`);
   console.log(`   Docs: GET http://localhost:${PORT}/api/health\n`);
 
   // 1. Hydrate local JSON from cloud user_history (runs after every git checkout / restart)

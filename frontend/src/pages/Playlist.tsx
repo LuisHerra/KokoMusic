@@ -15,6 +15,7 @@ function formatDuration(ms: number) {
 
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import { isTrackOffline, saveTrackOffline, deleteOfflineTrack, getAllOfflineTracks } from '../lib/offlineAudio';
+import ArtistLinks from '../components/Common/ArtistLinks';
 
 function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
   trackId: string; prevTrackId?: string; index: number;
@@ -184,7 +185,7 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
         <img className="track-row-cover" src={track.cover} alt={track.title} loading="lazy" />
         <div style={{ minWidth: 0 }}>
           <div className="track-row-name" style={isActive ? { color: 'var(--accent)' } : {}}>{track.title}</div>
-          <div className="track-row-artist">{track.artist}</div>
+          <ArtistLinks artist={track.artist} artistId={track.artistId} className="track-row-artist" />
         </div>
       </div>
       <div className="track-row-album">{track.album}</div>
@@ -320,7 +321,12 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
               <img src={track.cover} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover' }} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</h4>
-                <p style={{ margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</p>
+                <ArtistLinks
+                  artist={track.artist}
+                  artistId={track.artistId}
+                  onLinkClick={() => setIsActionsOpen(false)}
+                  style={{ display: 'block', margin: '4px 0 0 0', fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                />
               </div>
             </div>
 
@@ -1916,7 +1922,7 @@ export default function Playlist() {
                         <img className="track-row-cover" src={track.cover} alt={track.title} loading="lazy" />
                         <div>
                           <div className="track-row-name">{track.title}</div>
-                          <div className="track-row-artist">{track.artist}</div>
+                          <ArtistLinks artist={track.artist} artistId={track.artistId} className="track-row-artist" />
                         </div>
                       </div>
                       <div className="track-row-album">{track.album}</div>

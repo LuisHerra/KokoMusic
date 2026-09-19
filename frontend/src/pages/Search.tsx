@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { searchTracks, addToJamQueue, getRecommendations, getTrackRadio } from '../lib/api';
-import type { Track } from '../lib/api';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { searchTracks, addToJamQueue, getRecommendations, getTrackRadio, BASE } from '../lib/api';
+import type { Track, InferredArtist } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
+import ArtistLinks from '../components/Common/ArtistLinks';
 
 function formatDuration(ms: number): string {
   const m = Math.floor(ms / 60000);
@@ -105,18 +106,7 @@ function SearchTrackRow({
             <div className="track-row-name" style={isActive ? { color: 'var(--accent)' } : {}}>
               {track.title}
             </div>
-            {track.artistId ? (
-              <Link
-                to={(track.artistId !== 0) ? `/artist/${track.artistId}` : `/artist/${encodeURIComponent(track.artist)}`}
-                className="track-row-artist"
-                style={{ textDecoration: 'none' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {track.artist}
-              </Link>
-            ) : (
-              <div className="track-row-artist">{track.artist}</div>
-            )}
+            <ArtistLinks artist={track.artist} artistId={track.artistId} className="track-row-artist" />
           </div>
         </div>
 
@@ -264,6 +254,8 @@ import ShazamModal from '../components/Player/ShazamModal';
 
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const mood = searchParams.get('mood');
   const [input, setInput] = useState(searchParams.get('q') ?? '');
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
@@ -289,17 +281,37 @@ export default function Search() {
     }
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<{ tracks: Track[]; source: string; artist?: InferredArtist | null }>({
     queryKey: ['search', query, source, mood],
     queryFn: () => {
       if (mood && !query) {
-        return getRecommendations(50, mood).then(tracks => ({ tracks, source: 'youtube' }));
+        return getRecommendations(50, mood).then(tracks => ({ tracks, source: 'youtube', artist: null }));
       }
       return searchTracks(query, 50, source as any);
     },
     enabled: query.trim().length > 0 || (!!mood && !query),
     staleTime: 10 * 60 * 1000,
   });
+
+  // Precarga inmediata del perfil de artista inferido en background (0ms latency al hacer click)
+  useEffect(() => {
+    if (data?.artist) {
+      const artist = data.artist;
+      const targetId = String(artist.id && artist.id !== 0 ? artist.id : artist.name);
+      queryClient.prefetchQuery({
+        queryKey: ['artist', targetId],
+        queryFn: async () => {
+          const isNumeric = targetId && !isNaN(Number(targetId)) && targetId !== '0';
+          const url = `${BASE}/artist/${targetId}${!isNumeric ? `?name=${encodeURIComponent(targetId || '')}` : ''}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('Error al cargar el artista');
+          const json = await res.json();
+          return json.artist;
+        },
+        staleTime: 10 * 60 * 1000,
+      });
+    }
+  }, [data?.artist, queryClient]);
 
   // Sync URL
   useEffect(() => {
@@ -708,6 +720,120 @@ export default function Search() {
       )}
 
 
+
+      {/* Top Result / Inferred Artist Card */}
+      {!isLoading && data?.artist && (
+        <div className="search-top-artist-section" style={{ marginBottom: 24, animation: 'fadeIn 0.25s ease-out' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+              Resultado principal
+            </h2>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-glow)', padding: '3px 10px', borderRadius: 12, border: '1px solid rgba(var(--accent-rgb, 29, 185, 84), 0.2)' }}>
+              Artista verificado
+            </span>
+          </div>
+          <div
+            className="search-top-artist-card"
+            onClick={() => {
+              const target = data.artist!.id && data.artist!.id !== 0 ? data.artist!.id : encodeURIComponent(data.artist!.name);
+              navigate(`/artist/${target}`);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 20,
+              padding: '18px 22px',
+              borderRadius: 18,
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+              border: '1px solid rgba(255,255,255,0.09)',
+              backdropFilter: 'blur(16px)',
+              cursor: 'pointer',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Ambient subtle glow based on accent */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '-50%',
+                left: '-20%',
+                width: '140%',
+                height: '200%',
+                background: 'radial-gradient(circle at 20% 50%, var(--accent-glow) 0%, transparent 60%)',
+                opacity: 0.15,
+                pointerEvents: 'none',
+              }}
+            />
+
+            {/* Artist Avatar */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <img
+                src={data.artist.image || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&auto=format&fit=crop&q=80'}
+                alt={data.artist.name}
+                style={{
+                  width: 82,
+                  height: 82,
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                  border: '2px solid rgba(255,255,255,0.12)',
+                }}
+              />
+            </div>
+
+            {/* Artist Details */}
+            <div style={{ flex: 1, minWidth: 0, zIndex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-secondary)' }}>
+                  Artista
+                </span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                </svg>
+              </div>
+              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 4px 0', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {data.artist.name}
+              </h3>
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+                {data.artist.genre || 'Música'} • Ver perfil completo →
+              </p>
+            </div>
+
+            {/* Quick Play Top Track */}
+            {tracks.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePlay(tracks[0]);
+                }}
+                className="artist-hero-play-btn"
+                title={`Reproducir ${data.artist.name}`}
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  background: 'var(--accent)',
+                  color: '#000',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 16px rgba(0,0,0,0.3)',
+                  zIndex: 2,
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Table headers */}
       {!isLoading && tracks.length > 0 && (
