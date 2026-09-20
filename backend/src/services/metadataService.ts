@@ -45,6 +45,27 @@ function normalizeStr(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * ¿El título de iTunes se parece lo bastante al título original como para
+ * fiarnos de su match? iTunes /search con limit=1 devuelve su "mejor"
+ * resultado según SU propia relevancia, que no siempre coincide con lo que
+ * buscamos — para queries de nicho (temas no muy indexados) puede devolver
+ * OTRA canción del mismo artista como top result. Sin este check,
+ * enrichTrackWithExternalAPIs sobrescribía título/artista/portada con ese
+ * match equivocado sin ninguna validación (p. ej. buscar "Jay Wheeler De
+ * Lejitos" devolvía "Otro Fili" como si fuera la misma canción).
+ */
+function titleLooksRelated(original: string, candidate: string): boolean {
+  const words = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+  const originalWords = words(original);
+  if (originalWords.length === 0) return true;
+  const candidateWords = new Set(words(candidate));
+  const matched = originalWords.filter(w => candidateWords.has(w)).length;
+  return matched / originalWords.length >= 0.5;
+}
+
 /** Escala la URL de artwork de iTunes a 600x600 */
 function scaleArtwork(url: string | undefined): string {
   if (!url) return '';
@@ -197,7 +218,7 @@ export async function enrichTrackWithExternalAPIs(track: TrackMetadata): Promise
     if (res.ok) {
       const data = await res.json() as any;
       const match = data.results?.[0];
-      if (match) {
+      if (match && titleLooksRelated(cleanTitle, match.trackName || '')) {
         const enriched = {
           title: match.trackName || cleanTitle,
           artist: match.artistName || cleanArtist,
@@ -648,12 +669,22 @@ export async function searchYouTube(query: string, limit: number, cacheKey?: str
   try {
     const videos = await searchYoutubeVideos(query, limit);
 
-    // Priorizar canales oficiales (VEVO, Topic)
+    // Priorizar canales oficiales (VEVO, Topic). Shape-agnostic a propósito:
+    // yt-search devuelve {videoId, author: {name}, duration: {seconds}},
+    // KokoMusic-lite devuelve {id, author: string, durationSeconds} — este
+    // filtro solo miraba el segundo, así que desde que searchYoutubeVideos
+    // prueba yt-search primero, tiraba TODOS los resultados (v.id siempre
+    // undefined en objetos de yt-search) y la búsqueda de YouTube quedaba
+    // siempre vacía aunque yt-search sí encontrara la canción.
+    const authorName = (v: any): string => (typeof v.author === 'string' ? v.author : v.author?.name) ?? '';
+    const videoId = (v: any): string | undefined => v.id || v.videoId;
+    const durationSecs = (v: any): number | undefined => v.duration?.seconds ?? v.durationSeconds;
+
     const filteredVideos = videos
-      .filter(v => v.id && (v.durationSeconds > 0 || v.durationSeconds === undefined))
+      .filter(v => videoId(v) && (durationSecs(v) === undefined || durationSecs(v)! > 0))
       .sort((a, b) => {
-        const aOfficial = /vevo$|- topic$/i.test(a.author ?? '');
-        const bOfficial = /vevo$|- topic$/i.test(b.author ?? '');
+        const aOfficial = /vevo$|- topic$/i.test(authorName(a));
+        const bOfficial = /vevo$|- topic$/i.test(authorName(b));
         if (aOfficial && !bOfficial) return -1;
         if (!aOfficial && bOfficial) return 1;
         return 0;
