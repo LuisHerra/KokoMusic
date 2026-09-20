@@ -15,7 +15,7 @@ import { useVideoSync } from '../../hooks/useVideoSync';
 import SongCreditsModal from './SongCreditsModal';
 import {
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
-  IconLyrics, IconVoice, IconRadio, IconVideo, IconChevronDown, IconInstrumental,
+  IconLyrics, IconVoice, IconRadio, IconVideo, IconChevronDown,
   IconCheck, IconLoadingSpinner, IconCloudDownload, IconUser, IconQueue,
 } from './PlayerIcons';
 
@@ -38,7 +38,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     isShuffle, toggleShuffle,
     repeatMode, cycleRepeat,
     dominantColor,
-    isLyricsOpen,
+    isLyricsOpen, toggleLyrics,
     isEmbedMode, embedYoutubeId,
     manualVideoId, setManualVideo,
     queue, queueIndex, removeFromQueue, jumpToQueueIndex,
@@ -49,7 +49,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
   // Navigation layout state — en móvil no hay otra forma de ver la cola (el
   // botón de cola de escritorio vive en .player-right, oculto en pantallas
   // pequeñas), así que aquí también hace de sustituto de QueuePanel.
-  const [playerView, setPlayerView] = useState<'cover' | 'lyrics' | 'video' | 'artist' | 'queue'>('cover');
+  const [playerView, setPlayerView] = useState<'cover' | 'video' | 'artist' | 'queue'>('cover');
 
   // Buscador de vídeo de YouTube para la canción (pestaña "Vídeo"): el usuario
   // elige manualmente qué vídeo de YouTube asociar, no subimos nada a un CDN.
@@ -60,7 +60,6 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
   const [dragProgress, setDragProgress] = useState(0);
   const progressRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
   // Vídeo de fondo: al tocar la portada, se sustituye por el vídeo musical de
   // YouTube (silenciado, el audio sigue viniendo del stream normal) — igual
@@ -248,13 +247,6 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     return idx;
   }, [parsedLines, progress]);
 
-  // Auto-scroll lyrics to active line
-  useEffect(() => {
-    if (playerView !== 'lyrics' || !lyricsContainerRef.current) return;
-    const el = lyricsContainerRef.current.querySelector('.mfp-lyric.active');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activeIndex, playerView]);
-
   // Progress bar drag handlers
   const handleProgressMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -385,52 +377,21 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         </div>
         <button
           className="mfp-header-btn"
-          onClick={() => setPlayerView(prev => prev === 'lyrics' ? 'cover' : 'lyrics')}
-          style={{ color: playerView === 'lyrics' ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
+          onClick={() => toggleLyrics()}
+          style={{ color: isLyricsOpen ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
           title="Letras"
         >
           <IconLyrics />
         </button>
       </div>
 
-      {/* Main content — flips between cover, lyrics, and visualizer */}
+      {/* Main content — flips between cover, video picker, artist and queue.
+          Letras usa el mismo overlay inmersivo que escritorio (ImmersiveLyrics,
+          montado globalmente en App.tsx) en vez de una vista propia — así el
+          control de color/efectos, antes solo accesible en escritorio porque
+          vivía en .player-right (oculto en móvil), funciona igual en ambos. */}
       <div className="mfp-body" ref={containerRef}>
-        {playerView === 'lyrics' ? (
-          /* ── Lyrics view ── */
-          <div className="mfp-lyrics-wrap" ref={lyricsContainerRef}>
-            {!lyrics ? (
-              <div className="mfp-lyrics-empty">
-                <div className="spinner" style={{ width: 32, height: 32 }} />
-                <span>Buscando letras…</span>
-              </div>
-            ) : lyrics.instrumental ? (
-              <div className="mfp-lyrics-empty">
-                <IconInstrumental />
-                <span>Tema instrumental</span>
-              </div>
-            ) : parsedLines.length > 0 ? (
-              <div className="mfp-lyrics-lines">
-                {parsedLines.map((line, idx) => {
-                  const isActive = idx === activeIndex;
-                  const isPast = idx < activeIndex;
-                  return (
-                    <div
-                      key={idx}
-                      className={`mfp-lyric${isActive ? ' active' : ''}${isPast ? ' past' : ''}`}
-                      onClick={() => seekAudio(line.time)}
-                    >
-                      {line.text || ' '}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : lyrics.plainLyrics ? (
-              <div className="mfp-lyrics-plain">{lyrics.plainLyrics}</div>
-            ) : (
-              <div className="mfp-lyrics-empty">Letras no disponibles</div>
-            )}
-          </div>
-        ) : playerView === 'video' ? (
+        {playerView === 'video' ? (
           /* ── Vídeo view: elegir manualmente un vídeo de YouTube para la canción ── */
           <div className="mfp-video-picker">
             {manualVideoId && (
@@ -778,8 +739,8 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
         <button
           className="mfp-extra-btn"
-          onClick={() => setPlayerView(prev => prev === 'lyrics' ? 'cover' : 'lyrics')}
-          style={{ color: playerView === 'lyrics' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+          onClick={() => toggleLyrics()}
+          style={{ color: isLyricsOpen ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconLyrics />
           <span>Letras</span>

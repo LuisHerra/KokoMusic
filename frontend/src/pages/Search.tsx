@@ -75,9 +75,12 @@ function SearchTrackRow({
             opacity: Math.min(1, swipeOffset / 80),
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '8px' }}>
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginRight: '8px' }}>
+            <line x1="3" y1="6" x2="15" y2="6" />
+            <line x1="3" y1="12" x2="15" y2="12" />
+            <line x1="3" y1="18" x2="11" y2="18" />
+            <line x1="18" y1="14" x2="18" y2="20" />
+            <line x1="15" y1="17" x2="21" y2="17" />
           </svg>
           {swipeOffset > 80 ? 'Soltar para encolar' : 'Arrastra para encolar'}
         </div>
@@ -137,9 +140,12 @@ function SearchTrackRow({
               flexShrink: 0
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <line x1="3" y1="6" x2="15" y2="6" />
+              <line x1="3" y1="12" x2="15" y2="12" />
+              <line x1="3" y1="18" x2="11" y2="18" />
+              <line x1="18" y1="14" x2="18" y2="20" />
+              <line x1="15" y1="17" x2="21" y2="17" />
             </svg>
             <span>Cola</span>
           </button>
@@ -221,7 +227,7 @@ function SearchTrackRow({
               </button>
               
               <button className="track-action-sheet-btn" onClick={() => { setIsActionsOpen(false); addToQueue(track); setError(`Añadido a la cola: ${track.title}`); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="15" y2="6" /><line x1="3" y1="12" x2="15" y2="12" /><line x1="3" y1="18" x2="11" y2="18" /><line x1="18" y1="14" x2="18" y2="20" /><line x1="15" y1="17" x2="21" y2="17" /></svg>
                 <span>Añadir a la cola</span>
               </button>
 
@@ -651,9 +657,12 @@ export default function Search() {
                           }}
                           title="Añadir a la cola"
                         >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <line x1="3" y1="6" x2="15" y2="6"></line>
+                            <line x1="3" y1="12" x2="15" y2="12"></line>
+                            <line x1="3" y1="18" x2="11" y2="18"></line>
+                            <line x1="18" y1="14" x2="18" y2="20"></line>
+                            <line x1="15" y1="17" x2="21" y2="17"></line>
                           </svg>
                         </button>
                       )}
@@ -720,120 +729,6 @@ export default function Search() {
       )}
 
 
-
-      {/* Top Result / Inferred Artist Card */}
-      {!isLoading && data?.artist && (
-        <div className="search-top-artist-section" style={{ marginBottom: 24, animation: 'fadeIn 0.25s ease-out' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-              Resultado principal
-            </h2>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-glow)', padding: '3px 10px', borderRadius: 12, border: '1px solid rgba(var(--accent-rgb, 29, 185, 84), 0.2)' }}>
-              Artista verificado
-            </span>
-          </div>
-          <div
-            className="search-top-artist-card"
-            onClick={() => {
-              const target = data.artist!.id && data.artist!.id !== 0 ? data.artist!.id : encodeURIComponent(data.artist!.name);
-              navigate(`/artist/${target}`);
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 20,
-              padding: '18px 22px',
-              borderRadius: 18,
-              background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
-              border: '1px solid rgba(255,255,255,0.09)',
-              backdropFilter: 'blur(16px)',
-              cursor: 'pointer',
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Ambient subtle glow based on accent */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '-50%',
-                left: '-20%',
-                width: '140%',
-                height: '200%',
-                background: 'radial-gradient(circle at 20% 50%, var(--accent-glow) 0%, transparent 60%)',
-                opacity: 0.15,
-                pointerEvents: 'none',
-              }}
-            />
-
-            {/* Artist Avatar */}
-            <div style={{ position: 'relative', flexShrink: 0 }}>
-              <img
-                src={data.artist.image || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&auto=format&fit=crop&q=80'}
-                alt={data.artist.name}
-                style={{
-                  width: 82,
-                  height: 82,
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                  border: '2px solid rgba(255,255,255,0.12)',
-                }}
-              />
-            </div>
-
-            {/* Artist Details */}
-            <div style={{ flex: 1, minWidth: 0, zIndex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-secondary)' }}>
-                  Artista
-                </span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                </svg>
-              </div>
-              <h3 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 4px 0', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {data.artist.name}
-              </h3>
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-                {data.artist.genre || 'Música'} • Ver perfil completo →
-              </p>
-            </div>
-
-            {/* Quick Play Top Track */}
-            {tracks.length > 0 && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePlay(tracks[0]);
-                }}
-                className="artist-hero-play-btn"
-                title={`Reproducir ${data.artist.name}`}
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  background: 'var(--accent)',
-                  color: '#000',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  boxShadow: '0 6px 16px rgba(0,0,0,0.3)',
-                  zIndex: 2,
-                  flexShrink: 0,
-                }}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Table headers */}
       {!isLoading && tracks.length > 0 && (

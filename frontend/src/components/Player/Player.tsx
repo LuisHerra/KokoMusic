@@ -4,7 +4,6 @@ import { usePlayerStore } from '../../store/playerStore';
 import HeartButton from '../Common/HeartButton';
 import ParticleBurst from '../Common/ParticleBurst';
 import ArtistLinks from '../Common/ArtistLinks';
-import DebugStreamModal from './DebugStreamModal';
 import {
   IconCloudDownload, IconCheck, IconLoadingSpinner,
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
@@ -77,7 +76,6 @@ export default function Player() {
   }, [currentTrack, progress, nextTrack]);
 
   const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
-  const [showDebugModal, setShowDebugModal] = useState(false);
 
   // Verificar estado de caché/descarga al cambiar de track (single fetch, doble propósito)
   useEffect(() => {
@@ -568,13 +566,6 @@ export default function Player() {
                 <span>Radio de la Canción & Créditos</span>
               </button>
 
-              <button
-                onClick={() => { setShowDebugModal(true); setShowMobileMenu(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-              >
-                <span style={{ fontSize: 18 }}>🛠️</span>
-                <span>Diagnóstico de Red & Logs</span>
-              </button>
             </div>
           </div>
         </div>
@@ -583,8 +574,6 @@ export default function Player() {
       {showCreditsModal && currentTrack && (
         <SongCreditsModal track={currentTrack} onClose={() => setShowCreditsModal(false)} />
       )}
-
-      <DebugStreamModal isOpen={showDebugModal} onClose={() => setShowDebugModal(false)} />
     </div>
   );
 }

@@ -14,9 +14,7 @@ import {
   addTrackToPlaylist,
   addTrackToCollabPlaylist,
   getPlaylistTrackCount,
-  getAvailableCDNTracks,
-  apiFetch,
-  type Track 
+  type Track
 } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
@@ -41,8 +39,6 @@ function LibraryTrackRow({
   setError,
   setSelectedTrackForPlaylist,
   deleteCustomMutation,
-  isCDNTab = false,
-  isAdmin = false,
 }: {
   track: Track;
   setTrack: (t: Track, list: Track[]) => void;
@@ -51,8 +47,6 @@ function LibraryTrackRow({
   setError: (msg: string) => void;
   setSelectedTrackForPlaylist: (t: Track | null) => void;
   deleteCustomMutation?: any;
-  isCDNTab?: boolean;
-  isAdmin?: boolean;
 }) {
   const { swipeStyle, touchHandlers, swipeOffset } = useSwipeToQueue(
     track,
@@ -84,8 +78,11 @@ function LibraryTrackRow({
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '8px' }}>
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
+            <line x1="3" y1="6" x2="15" y2="6" />
+            <line x1="3" y1="12" x2="15" y2="12" />
+            <line x1="3" y1="18" x2="11" y2="18" />
+            <line x1="18" y1="14" x2="18" y2="20" />
+            <line x1="15" y1="17" x2="21" y2="17" />
           </svg>
           {swipeOffset > 80 ? 'Soltar para encolar' : 'Arrastra para encolar'}
         </div>
@@ -153,14 +150,7 @@ function LibraryTrackRow({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
           {/* Source Tag */}
-          {isCDNTab ? (
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#1db954', background: 'rgba(29,185,84,0.14)', padding: '3px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
-              CDN Instante
-            </span>
-          ) : (track as any).sourceType === 'upload' ? (
+          {(track as any).sourceType === 'upload' ? (
             <span style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', padding: '3px 10px', borderRadius: 12 }}>
               Archivo
             </span>
@@ -181,9 +171,12 @@ function LibraryTrackRow({
             }}
             title="Añadir a la cola"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="3" y1="6" x2="15" y2="6" />
+              <line x1="3" y1="12" x2="15" y2="12" />
+              <line x1="3" y1="18" x2="11" y2="18" />
+              <line x1="18" y1="14" x2="18" y2="20" />
+              <line x1="15" y1="17" x2="21" y2="17" />
             </svg>
           </button>
 
@@ -201,8 +194,8 @@ function LibraryTrackRow({
             </svg>
           </button>
 
-          {/* Delete button: Hidden on CDN tab unless logged in as admin */}
-          {(!isCDNTab || isAdmin) && deleteCustomMutation && (
+          {/* Delete button */}
+          {deleteCustomMutation && (
             <button
               className="ctrl-btn"
               style={{ padding: 6, opacity: 0.7 }}
@@ -272,8 +265,11 @@ function LibraryOfflineTrackRow({
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '8px' }}>
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
+            <line x1="3" y1="6" x2="15" y2="6" />
+            <line x1="3" y1="12" x2="15" y2="12" />
+            <line x1="3" y1="18" x2="11" y2="18" />
+            <line x1="18" y1="14" x2="18" y2="20" />
+            <line x1="15" y1="17" x2="21" y2="17" />
           </svg>
           {swipeOffset > 80 ? 'Soltar para encolar' : 'Arrastra para encolar'}
         </div>
@@ -326,9 +322,12 @@ function LibraryOfflineTrackRow({
             }}
             title="Añadir a la cola"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="3" y1="6" x2="15" y2="6" />
+              <line x1="3" y1="12" x2="15" y2="12" />
+              <line x1="3" y1="18" x2="11" y2="18" />
+              <line x1="18" y1="14" x2="18" y2="20" />
+              <line x1="15" y1="17" x2="21" y2="17" />
             </svg>
           </button>
 
@@ -374,7 +373,7 @@ export default function Library() {
   const displayName = getDisplayName();
   const { setTrack, addToQueue, setError } = usePlayerStore();
 
-  const [activeTab, setActiveTab] = useState<'playlists' | 'cdn' | 'custom' | 'offline'>('playlists');
+  const [activeTab, setActiveTab] = useState<'playlists' | 'custom' | 'offline'>('playlists');
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [offlineTracksCount, setOfflineTracksCount] = useState(0);
@@ -468,42 +467,6 @@ export default function Library() {
     queryFn: getCustomTracks,
     staleTime: 5 * 60 * 1000,
   });
-
-  const [cdnPage, setCdnPage] = useState(1);
-  const isAdmin = displayName.toLowerCase().includes('koko') ||
-                  (localStorage.getItem('koko_username') || '').toLowerCase().includes('koko') ||
-                  (localStorage.getItem('koko_display_name') || '').toLowerCase().includes('koko');
-
-  const { data: cdnTracksData, isLoading: cdnLoading } = useQuery({
-    queryKey: ['availableCDNTracks', cdnPage],
-    queryFn: () => getAvailableCDNTracks(cdnPage, 30),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const cdnTracks = cdnTracksData?.tracks ?? [];
-  const cdnTotalCount = cdnTracksData?.totalCount ?? cdnTracks.length;
-  const cdnTotalPages = cdnTracksData?.totalPages ?? 1;
-
-  const deleteCDNTrackMutation = useMutation({
-    mutationFn: (id: string) => apiFetch<{ success: boolean }>(`/tracks/cdn/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availableCDNTracks'] });
-      setError('Canción eliminada del CDN correctamente');
-    },
-    onError: () => {
-      setError('Error al eliminar la canción del CDN');
-    }
-  });
-
-  const handleShufflePlayCDN = () => {
-    if (!cdnTracks || cdnTracks.length === 0) return;
-    const shuffled = [...cdnTracks].sort(() => Math.random() - 0.5);
-    setTrack(shuffled[0], shuffled);
-    const store = usePlayerStore.getState();
-    if (!store.isShuffle) {
-      store.toggleShuffle();
-    }
-  };
 
   const isLoading = localLoading || collabLoading;
 
@@ -693,28 +656,6 @@ export default function Library() {
           Playlists
         </button>
         <button
-          onClick={() => setActiveTab('cdn')}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: activeTab === 'cdn' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            fontSize: 15,
-            fontWeight: 700,
-            padding: '12px 4px',
-            cursor: 'pointer',
-            borderBottom: activeTab === 'cdn' ? '2px solid var(--accent)' : '2px solid transparent',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6
-          }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="#1db954">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-          </svg>
-          Disponibles al Instante ({cdnTotalCount})
-        </button>
-        <button
           onClick={() => setActiveTab('offline')}
           style={{
             background: 'none',
@@ -747,117 +688,6 @@ export default function Library() {
           Archivos y Alias YouTube
         </button>
       </div>
-
-      {/* CDN Available Tab */}
-      {activeTab === 'cdn' && (
-        <div style={{ animation: 'fadeIn 0.2s ease-out' }}>
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(29, 185, 84, 0.15) 0%, rgba(24, 24, 32, 0.95) 100%)',
-            borderRadius: '16px',
-            padding: '20px',
-            marginBottom: 24,
-            border: '1px solid rgba(29, 185, 84, 0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 12
-          }}>
-            <div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: 18, fontWeight: 800, color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="#1db954">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                </svg>
-                Audio Pre-calentado en CDN
-              </h3>
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-                {cdnTotalCount} canciones listas para escuchar sin esperas. Cero latencia (reproducción instantánea en &lt;100ms).
-              </p>
-            </div>
-            {cdnTracks.length > 0 && (
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button
-                  className="btn"
-                  onClick={handleShufflePlayCDN}
-                  style={{ fontSize: 13, padding: '8px 16px', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
-                  </svg>
-                  Modo Aleatorio
-                </button>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={() => setTrack(cdnTracks[0], cdnTracks)}
-                  style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
-                  Reproducir Todo ({cdnTotalCount})
-                </button>
-              </div>
-            )}
-          </div>
-
-          {cdnLoading ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' }}>
-              Cargando canciones pre-calentadas en CDN...
-            </div>
-          ) : cdnTracks.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' }}>
-              No hay canciones pre-calentadas en CDN por ahora.
-            </div>
-          ) : (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {cdnTracks.map((track) => (
-                  <LibraryTrackRow
-                    key={track.id}
-                    track={track}
-                    setTrack={setTrack}
-                    customTracks={cdnTracks}
-                    addToQueue={addToQueue}
-                    setError={setError}
-                    setSelectedTrackForPlaylist={setSelectedTrackForPlaylist}
-                    deleteCustomMutation={deleteCDNTrackMutation}
-                    isCDNTab={true}
-                    isAdmin={isAdmin}
-                  />
-                ))}
-              </div>
-
-              {/* Pagination Controls */}
-              {cdnTotalPages > 1 && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 24, padding: '16px 0' }}>
-                  <button
-                    className="btn"
-                    disabled={cdnPage <= 1}
-                    onClick={() => setCdnPage((p) => Math.max(1, p - 1))}
-                    style={{ opacity: cdnPage <= 1 ? 0.4 : 1, padding: '8px 16px', fontSize: 13 }}
-                  >
-                    ← Anterior
-                  </button>
-
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    Página {cdnPage} de {cdnTotalPages}
-                  </span>
-
-                  <button
-                    className="btn"
-                    disabled={cdnPage >= cdnTotalPages}
-                    onClick={() => setCdnPage((p) => Math.min(cdnTotalPages, p + 1))}
-                    style={{ opacity: cdnPage >= cdnTotalPages ? 0.4 : 1, padding: '8px 16px', fontSize: 13 }}
-                  >
-                    Siguiente →
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
 
       {/* Playlists Tab */}
       {activeTab === 'playlists' && (

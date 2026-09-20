@@ -977,6 +977,23 @@ export function useAudioPlayer() {
               }, fiStepTime);
             }
           }
+        } else if (rule && !prevAudio.paused) {
+          // BUG: cuando existía una regla de transición DJ entre la pista anterior
+          // y esta, el pause() síncrono de arriba se salta a propósito (para poder
+          // hacer el fundido dentro de esta misma función) — pero ese fundido solo
+          // se dispara dentro del `if (shouldPlay)` de arriba. Si el reproductor
+          // está en pausa justo en este cambio de pista (recarga de página con
+          // isPlaying=false, o navegación mientras estaba pausado), shouldPlay es
+          // false y nextAudio.play() nunca se llama — pero tampoco se pausaba
+          // nunca prevAudio, así que la pista anterior seguía sonando indefinidamente
+          // en segundo plano, sin relación con lo que mostraba la UI.
+          try {
+            prevAudio.pause();
+            prevAudio.currentTime = 0;
+            prevAudio.removeAttribute('src');
+          } catch (e) {
+            /* ignore */
+          }
         }
         nextAudio.removeEventListener('canplay', playWhenReady);
       };
