@@ -22,6 +22,7 @@ import { diagnoseLiteStream } from '../services/kokoLiteService';
 import { metrics } from '../services/metricsService';
 import { findTrackInCDN, isCDNEnabled, getCDNUsageStats } from '../services/cdnService';
 import { cacheStreamInBackground } from '../services/cdnAutoCacheService';
+import { getStreamRelayUrl } from '../services/kokoLiteService';
 
 const router = Router();
 
@@ -317,41 +318,44 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
     const youtubeId = resolved.youtubeId;
     let resolvedStream = resolved.resolvedStream;
 
+    // La URL cruda de KokoMusic-lite viene firmada con la IP exacta del proxy
+    // residencial que la pidió (`ip=` dentro de la propia URL) — confirmado
+    // con un test aislado: 403 desde cualquier otra IP, 206 desde esa misma.
+    // Ni el navegador/APK del usuario final ni nuestro propio backend
+    // comparten esa IP, así que ya no podemos usar resolvedStream.url
+    // directamente en ningún lado (ni redirect ni proxy ni caché a R2) —
+    // todo pasa por este endpoint de KokoMusic-lite, que reenvía los bytes
+    // él mismo a través de su proxy activo.
+    const relayUrl = getStreamRelayUrl(youtubeId);
+
     // La primera vez que resolvemos un track con éxito, lo cacheamos en R2 en
     // segundo plano — las próximas reproducciones lo encontrarán en el paso 2
-    // de arriba y nunca volverán a depender de Google.
-    cacheStreamInBackground(itunesId, resolvedStream.url);
+    // de arriba y nunca volverán a depender de Google ni de proxies.
+    cacheStreamInBackground(itunesId, relayUrl);
 
-    // 5. Camino principal (reproducción normal en <audio>): 302 directo a la
-    // URL de googlevideo. El navegador la pide con la IP real del usuario
-    // (residencial/móvil), no con la IP de datacenter de nuestro backend —
-    // que es precisamente la que más 403 recibe del CDN de Google. Este es
-    // el diseño que KokoMusic-lite documenta como el correcto; proxyar todo
-    // por nuestro backend era la causa principal del "Format error".
+    // 5. Camino principal (reproducción normal en <audio>): 302 al endpoint
+    // de KokoMusic-lite (no a la URL cruda de googlevideo). Funciona igual de
+    // bien en móvil/APK que un 302 directo — el reproductor nativo sigue la
+    // redirección igual — pero mantiene la descarga en la misma IP que la
+    // resolvió.
     if (!forceStream) {
       res.setHeader('Cache-Control', 'public, max-age=1800');
-      return res.redirect(302, resolvedStream.url);
+      return res.redirect(302, relayUrl);
     }
 
     // 6. Proxy del stream (solo para forceStream=true — descarga offline).
-    let proxied = await proxyAudioStream(req, res, resolvedStream.url, resolvedStream.mimeType);
+    let proxied = await proxyAudioStream(req, res, relayUrl, resolvedStream.mimeType);
 
-    // Googlevideo firma la URL con la IP del servidor que la resolvió (KokoMusic-lite).
-    // Si nuestro proxy tiene otra IP, el edge de Google a veces responde con un 302
-    // "ipbypass" que sí funciona, pero a veces directamente corta con 403 — es
-    // aleatorio según qué edge de su CDN atienda la petición. Cada resolución fresca
-    // vuelve a tirar los dados con un edge potencialmente distinto, así que
-    // reintentamos un par de veces más antes de rendirnos (el cliente igualmente
+    // KokoMusic-lite ya reintenta internamente con resolución fresca si su
+    // primer intento de reenvío falla (proxy rotado, URL cacheada vieja) —
+    // aun así, un par de reintentos más aquí cubre fallos transitorios de
+    // red entre nuestro backend y KokoMusic-lite (el cliente igualmente
     // tiene su propio fallback a YouTube Embed si todo esto falla).
     let attempts = 1;
     while (!proxied && !res.headersSent && attempts < 3) {
       attempts++;
-      console.warn(`[Stream] Stream caducado o rechazado para ${youtubeId}, purgando caché y reintentando resolución fresca (intento ${attempts}/3)...`);
-      await purgeStreamCache(youtubeId);
-      resolvedStream = await resolveAudioStream(youtubeId, { artist, title, itunesId, quality });
-      if (resolvedStream?.url) {
-        proxied = await proxyAudioStream(req, res, resolvedStream.url, resolvedStream.mimeType);
-      }
+      console.warn(`[Stream] Reenvío falló para ${youtubeId}, reintentando (intento ${attempts}/3)...`);
+      proxied = await proxyAudioStream(req, res, relayUrl, resolvedStream.mimeType);
     }
 
     if (!proxied && !res.headersSent) {

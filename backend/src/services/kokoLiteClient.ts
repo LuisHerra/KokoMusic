@@ -89,6 +89,19 @@ function appendKey(url: string): string {
 }
 
 /**
+ * URL del endpoint de KokoMusic-lite que reenvía los bytes de audio (ya no
+ * un 302 a la URL cruda de googlevideo). Google firma esa URL con la IP
+ * exacta del proxy que la pidió y su CDN rechaza con 403 cualquier IP
+ * distinta — confirmado con un test aislado. Como el usuario final (navegador
+ * o app móvil) nunca comparte IP con el pool de proxies residenciales de
+ * KokoMusic-lite, redirigir al usuario a ESTE endpoint (en vez de a la URL
+ * cruda) es lo que mantiene resolución y descarga en la misma IP.
+ */
+export function getStreamRelayUrl(videoId: string): string {
+  return appendKey(`${BASE_URL}/api/stream/${encodeURIComponent(videoId)}`);
+}
+
+/**
  * Resuelve el stream de audio vía KokoMusic-lite.
  * Utiliza caché L1 en memoria calculando el TTL real a partir de `expiresAt`.
  */
