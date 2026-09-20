@@ -27,8 +27,17 @@ const HF_BASE = HF_URL.replace(/\/api$/, '');
 let resolvedBase: string | null = null;   // URL base resuelta (sin /api)
 let resolving: Promise<string> | null = null;
 
-/** Hace un health check con timeout. Retorna true si responde OK. */
-async function probe(base: string): Promise<boolean> {
+/**
+ * Hace un health check con timeout. Retorna true si responde OK.
+ *
+ * `requireKokoSignature`: además de un 200, exige que el body tenga la forma
+ * del /api/health de KokoMusic (campo `kokoLite`). Necesario para el check
+ * de "origen actual" (paso 2) — cuando el frontend vive embebido en un dominio
+ * ajeno (kokoworks.es/kokoMusic dentro de KokoPortfolio), ese mismo dominio
+ * puede tener su PROPIO /api/health (de otro proyecto) que también devuelve
+ * 200, haciendo que el resolver confunda ese origen con el backend real.
+ */
+async function probe(base: string, requireKokoSignature = false): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -37,7 +46,10 @@ async function probe(base: string): Promise<boolean> {
       cache: 'no-store',
     });
     clearTimeout(timer);
-    return res.ok;
+    if (!res.ok) return false;
+    if (!requireKokoSignature) return true;
+    const data = await res.json();
+    return typeof data === 'object' && data !== null && 'kokoLite' in data;
   } catch {
     return false;
   }
@@ -62,7 +74,7 @@ async function resolveBackend(): Promise<string> {
     const originBase = window.location.origin;
     const isViteDev = originBase.includes(':5173') || originBase.includes(':3000'); // Puertos típicos de dev
     if (!isViteDev) {
-      const ok = await probe(originBase);
+      const ok = await probe(originBase, true);
       if (ok) {
         console.info(`[BackendResolver] ✅ Origen actual es backend: ${originBase}`);
         return originBase;
