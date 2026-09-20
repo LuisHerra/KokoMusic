@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { searchTracks, getTrackById, type SearchSource, type TrackMetadata } from '../services/metadataService';
+import { searchTracks, getTrackById, searchYouTube, type SearchSource, type TrackMetadata } from '../services/metadataService';
 import { getHistoryForUser, type HistoryEntry } from '../services/historyService';
 import { boostSearchResults, splitArtistNames, tokenizeQuery } from '../services/trendingService';
 import { hashStringToInteger } from '../services/artistService';
@@ -302,7 +302,68 @@ async function personalizeTracks(
     }
   }
 
-  return boostSearchResults(tracks, query, artistScores, region, listenedTrackKeys, genreScores);
+  // Paso 2: canciones NUEVAS (nunca escuchadas) de un artista que sí sigues
+  // habitualmente. La inyección de historial de arriba solo rescata lo que
+  // ya escuchaste — esto cubre lo contrario: ninguno de los resultados de
+  // iTunes es de un artista de tu artistScores (ni sus colaboradores), así
+  // que puede que la canción real esté enterrada entre homónimos de otros
+  // artistas (mismo caso que "de lejitos") y ni siquiera la hayas escuchado
+  // todavía. Solo aplica a la pestaña iTunes — la de YouTube ya busca en
+  // InnerTube directamente.
+  const affinityInjectedIds = new Set<string>();
+
+  if (searchSource === 'itunes' && userId && Object.keys(artistScores).length > 0) {
+    const matchesKnownArtist = (artist: string): boolean =>
+      Boolean(artistScores[artist.toLowerCase().trim()]) ||
+      splitArtistNames(artist).some(name => artistScores[name]);
+
+    if (!tracks.some(t => matchesKnownArtist(t.artist))) {
+      const suppCacheKey = `supp-affinity:${userId}:${query.toLowerCase().trim()}`;
+      const cachedSupp = cache.get(suppCacheKey);
+      let suppTracks: TrackMetadata[];
+
+      if (cachedSupp !== null) {
+        suppTracks = JSON.parse(cachedSupp);
+      } else {
+        try {
+          const ytTracks = await searchYouTube(query, 15);
+          suppTracks = ytTracks.filter(t => matchesKnownArtist(t.artist));
+        } catch (err) {
+          console.warn('[Search] Error buscando afinidad de artista en YouTube:', err);
+          suppTracks = [];
+        }
+        // TTL corto si no encontró nada (puede ser transitorio), más largo
+        // si sí — mismo criterio que otras cachés negativas del proyecto.
+        cache.setex(suppCacheKey, suppTracks.length > 0 ? 3600 : 600, JSON.stringify(suppTracks));
+      }
+
+      if (suppTracks.length > 0) {
+        const existingIds = new Set(tracks.map(t => String(t.id)));
+        tracks = [...tracks];
+        for (const t of suppTracks) {
+          if (!existingIds.has(String(t.id))) {
+            tracks.push(t);
+            existingIds.add(String(t.id));
+            affinityInjectedIds.add(String(t.id));
+          }
+        }
+        console.log(`[Search] Afinidad de artista: "${query}" no traía ningún artista conocido de ${userId}, complementado con ${suppTracks.length} de YouTube.`);
+      }
+    }
+  }
+
+  const boosted = await boostSearchResults(tracks, query, artistScores, region, listenedTrackKeys, genreScores);
+  if (affinityInjectedIds.size === 0) return boosted;
+
+  // boostSearchResults pondera sobre todo relevancia textual (hasta 300pts) —
+  // con 50 homónimos "De Lejitos" con el mismo título exacto, el boost de
+  // artista conocido (+200/+120) no basta para que el candidato inyectado
+  // suba a los primeros puestos, así que se antepone explícitamente. No hay
+  // solapamiento posible con los inyectados por historial (paso 1): ese
+  // bloque corre antes y, si encuentra algo, este paso ni se ejecuta.
+  const promoted = boosted.filter(t => affinityInjectedIds.has(String(t.id)));
+  const rest = boosted.filter(t => !affinityInjectedIds.has(String(t.id)));
+  return [...promoted, ...rest];
 }
 
 // GET /api/search?q=bad+bunny&limit=20&source=itunes
