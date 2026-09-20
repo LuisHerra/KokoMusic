@@ -138,6 +138,39 @@ function scoreVideo(
 const MAX_ALTERNATES = 3;
 
 /**
+ * Busca vídeos de YouTube para un query dado: yt-search primero (scraping
+ * directo de la página de resultados, corre desde la IP residencial de este
+ * backend — sin el bloqueo que sufre el endpoint /youtubei/v1/search de
+ * InnerTube en KokoMusic-lite, confirmado con un 403 incluso adjuntando
+ * PoToken), cayendo a KokoMusic-lite solo si yt-search no devuelve nada.
+ * Reutilizada tanto por la resolución de un track concreto como por la
+ * búsqueda general "YouTube" de la app — antes esta última iba directa a
+ * KokoMusic-lite y por eso fallaba siempre, mientras que resolver un track
+ * puntual (vía perfil de artista) sí funcionaba al pasar primero por aquí.
+ */
+export async function searchYoutubeVideos(query: string, limit = 15): Promise<any[]> {
+  let videos: any[] = [];
+
+  if (!isYtSearchDisabled()) {
+    try {
+      const result = await yts(query);
+      videos = result.videos.slice(0, limit);
+      recordYtSearchSuccess();
+    } catch {
+      recordYtSearchFailure();
+    }
+  }
+
+  if (videos.length === 0) {
+    const { searchLite } = await import('./kokoLiteService');
+    console.log(`[YTResolver] yt-search vacío — buscando via KokoMusic-lite: "${query}"`);
+    videos = await searchLite(query);
+  }
+
+  return videos;
+}
+
+/**
  * Resuelve el YouTube ID para un artista + título dados, junto con hasta
  * MAX_ALTERNATES candidatos alternativos (otros vídeos del mismo tema ya
  * puntuados por scoreVideo — audio oficial, lyric video, reupload...).
@@ -173,23 +206,7 @@ export async function resolveYoutubeIdWithAlternates(
   try {
     // Usamos "official audio" para sesgar los resultados de YouTube hacia contenido oficial
     const query = `${artistName} ${trackName} official audio`;
-    let videos: any[] = [];
-
-    if (!isYtSearchDisabled()) {
-      try {
-        const result = await yts(query);
-        videos = result.videos.slice(0, 15); // más candidatos → mejor selección
-        recordYtSearchSuccess();
-      } catch {
-        recordYtSearchFailure();
-      }
-    }
-
-    if (videos.length === 0) {
-      const { searchLite } = await import('./kokoLiteService');
-      console.log(`[YTResolver] yt-search vacío — buscando via KokoMusic-lite: "${query}"`);
-      videos = await searchLite(query);
-    }
+    const videos = await searchYoutubeVideos(query, 15);
 
     if (videos.length === 0) return null;
 

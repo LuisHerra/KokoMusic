@@ -17,7 +17,7 @@ import {
   getTrackFromDB,
   type TrackRow,
 } from './supabaseService';
-import { searchLite } from './kokoLiteService';
+import { searchYoutubeVideos } from './ytResolverService';
 import { metrics } from './metricsService';
 
 const ITUNES_BASE = 'https://itunes.apple.com';
@@ -637,10 +637,16 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
   }
 }
 
-/** Búsqueda de YouTube vía KokoMusic-lite (InnerTube) */
+/**
+ * Búsqueda de YouTube: yt-search primero (IP residencial de este backend),
+ * KokoMusic-lite como respaldo. El endpoint /youtubei/v1/search de InnerTube
+ * devuelve 403 desde el pool de proxies de KokoMusic-lite incluso con
+ * PoToken adjunto — a diferencia del endpoint de player, que sí funciona
+ * (ver ytResolverService.searchYoutubeVideos para el detalle).
+ */
 export async function searchYouTube(query: string, limit: number, cacheKey?: string): Promise<TrackMetadata[]> {
   try {
-    const videos = await searchLite(query);
+    const videos = await searchYoutubeVideos(query, limit);
 
     // Priorizar canales oficiales (VEVO, Topic)
     const filteredVideos = videos

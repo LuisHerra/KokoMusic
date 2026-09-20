@@ -256,10 +256,16 @@ router.get('/', async (req: Request, res: Response) => {
     // Inferir si la búsqueda corresponde a un artista
     const inferredArtist = await inferArtistFromSearch(q.trim(), tracks);
 
-    // Write-through to L1 + L2 (non-blocking)
-    const payload = { tracks, artist: inferredArtist };
-    cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify(payload));
-    setSearchCache(searchSource, normalizedQ, tracks).catch(() => {});
+    // Write-through a L1 + L2 (non-blocking) — solo si hay resultados. Un []
+    // vacío suele ser un fallo transitorio (rate-limit, timeout, endpoint
+    // caído) más que "esta query no tiene resultados de verdad" — cachearlo
+    // igual que un hit real dejaba la búsqueda envenenada durante todo el TTL
+    // (6h en Supabase) aunque el problema de fondo ya estuviera resuelto.
+    if (tracks.length > 0) {
+      const payload = { tracks, artist: inferredArtist };
+      cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify(payload));
+      setSearchCache(searchSource, normalizedQ, tracks).catch(() => {});
+    }
 
     // Precalentar en segundo plano el stream de los primeros resultados para
     // que el play sea casi instantáneo en el caso común (no bloquea la respuesta).
