@@ -51,8 +51,11 @@ jobs:
       - name: Commit and push to KokoPortfolio
         working-directory: KokoPortfolio
         run: |
-          git config user.name "KokoMusic CI"
-          git config user.email "ci@kokomusic.app"
+          # Debe coincidir con la cuenta de GitHub conectada al proyecto en Vercel
+          # (Hobby plan bloquea el deploy si el autor del commit no tiene acceso
+          # de colaborador — ver commit e098c31 en KokoPortfolio).
+          git config user.name "LuisHerra"
+          git config user.email "limit.koko.business@gmail.com"
           git add .
           if git diff --staged --quiet; then
             echo "No changes to commit."
