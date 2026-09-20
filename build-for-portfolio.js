@@ -10,8 +10,9 @@
  * Qué hace:
  *   1. Compila el frontend de KokoMusic con `npm run build` (base: /kokoMusic/)
  *   2. Copia dist/ → KokoPortfolio/public/kokoMusic/
- *   3. Lee el index.html generado para extraer los nombres de assets con hash
- *   4. Actualiza src/pages/kokoMusic.astro con los nombres correctos
+ *   3. Lee el <head>/<body> reales del index.html generado por Vite (ya con
+ *      manifest, iconos, theme-color y paths con hash correctos)
+ *   4. Actualiza src/pages/kokoMusic.astro con ese head/body real
  */
 
 import { execSync } from 'child_process';
