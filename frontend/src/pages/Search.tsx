@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchTracks, addToJamQueue, getRecommendations, getTrackRadio, BASE } from '../lib/api';
 import type { Track, InferredArtist } from '../lib/api';
@@ -260,7 +260,6 @@ import ShazamModal from '../components/Player/ShazamModal';
 
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const mood = searchParams.get('mood');
   const [input, setInput] = useState(searchParams.get('q') ?? '');

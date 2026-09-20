@@ -5,8 +5,6 @@ import { getTrackVideo, getLyrics, type VideoData, type Lyrics, formatYoutubeEmb
 import { useVideoSync } from '../../hooks/useVideoSync';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
 import PlaylistModal from './PlaylistModal';
-import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
-import { getApiUrl } from '../../lib/backendResolver';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { useResizableRightPanel } from '../../hooks/useResizable';
 import ArtistLinks from '../Common/ArtistLinks';
@@ -24,59 +22,6 @@ export default function VideoPanel() {
   // MobileFullPlayer.tsx cubre el móvil por completo (portada, vídeo de fondo,
   // letras, artista, embed) — este panel solo se renderiza en escritorio.
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-
-  const [downloadStatus, setDownloadStatus] = useState<'none' | 'downloading' | 'downloaded'>('none');
-
-  // Verificar y hacer polling al estado de descarga cuando cambie currentTrack.id o status
-  useEffect(() => {
-    if (!currentTrack) return;
-
-    let isMounted = true;
-    let pollInterval: any = null;
-
-    const checkStatus = async () => {
-      try {
-        // Primero verificar IndexedDB local
-        const isOffline = await isTrackOffline(currentTrack.id);
-        if (isOffline) {
-          if (isMounted) setDownloadStatus('downloaded');
-          if (pollInterval) clearInterval(pollInterval);
-          return;
-        }
-
-        const API_BASE = await getApiUrl();
-        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!isMounted) return;
-
-        if (data.downloaded) {
-          setDownloadStatus('downloaded');
-          if (pollInterval) clearInterval(pollInterval);
-        } else if (data.status === 'downloading') {
-          setDownloadStatus('downloading');
-          if (!pollInterval) {
-            pollInterval = setInterval(checkStatus, 3000);
-          }
-        } else {
-          setDownloadStatus('none');
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-          }
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    checkStatus();
-
-    return () => {
-      isMounted = false;
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [currentTrack?.id]);
 
   const [videoFormat, setVideoFormat] = useState<'vertical' | 'rectangular'>(() => {
     return (localStorage.getItem('koko_video_format') as 'vertical' | 'rectangular') || 'vertical';
@@ -161,27 +106,6 @@ export default function VideoPanel() {
       if (interval) clearInterval(interval);
     };
   }, [isEmbedMode, iframeEl]);
-
-  const handleDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!currentTrack || downloadStatus !== 'none') return;
-
-    setDownloadStatus('downloading');
-
-    try {
-      // Intentar guardar offline localmente en IndexedDB
-      await saveTrackOffline(currentTrack.id, {
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        cover: currentTrack.cover || '',
-        duration: currentTrack.duration
-      });
-      setDownloadStatus('downloaded');
-    } catch (offlineErr: any) {
-      console.error('[VideoPanel] Error al descargar y guardar offline localmente:', offlineErr);
-      setDownloadStatus('none');
-    }
-  };
 
   // Cargar letras de la canción actual
   const { data: lyrics } = useQuery<Lyrics>({

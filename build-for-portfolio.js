@@ -77,45 +77,41 @@ function copyRecursive(src, dest) {
 copyRecursive(DIST_DIR, PORTFOLIO_PUBLIC);
 console.log('   ✅ Files copied\n');
 
-// ── 3. Update kokoMusic.astro with correct hashed asset names ─────────────────
-console.log('✏️  Step 3/3: Updating kokoMusic.astro with new asset hashes...');
+// ── 3. Update kokoMusic.astro from the REAL generated index.html ──────────────
+// Antes esto reconstruía el <head> a mano (solo script/style + un favicon
+// inline) — cualquier tag nuevo añadido a frontend/index.html (manifest,
+// theme-color, apple-touch-icon, más iconos...) nunca llegaba aquí, así que
+// la versión embebida en el portfolio jamás tenía <link rel="manifest">
+// (bloqueando instalación como PWA/TWA) ni registraba el service worker con
+// éxito (sw.js SÍ se pedía desde el JS, pero sin el link de manifest el
+// registro quedaba huérfano de metadata). Ahora se copia el <head> REAL
+// generado por Vite (ya con paths /kokoMusic/... correctos por el `base`),
+// así que cualquier tag futuro se propaga solo.
+console.log('✏️  Step 3/3: Updating kokoMusic.astro from generated index.html...');
 
 const generatedHtml = fs.readFileSync(path.join(PORTFOLIO_PUBLIC, 'index.html'), 'utf-8');
 
-const scriptMatch = generatedHtml.match(/src="(\/kokoMusic\/assets\/[^"]+\.js)"/);
-const styleMatch = generatedHtml.match(/href="(\/kokoMusic\/assets\/[^"]+\.css)"/);
+const headMatch = generatedHtml.match(/<head>([\s\S]*?)<\/head>/);
+const bodyMatch = generatedHtml.match(/<body>([\s\S]*?)<\/body>/);
 
-if (!scriptMatch || !styleMatch) {
-  console.error('   ❌ Could not extract asset paths from generated index.html');
+if (!headMatch || !bodyMatch) {
+  console.error('   ❌ Could not extract <head>/<body> from generated index.html');
   process.exit(1);
 }
 
-const jsPath = scriptMatch[1];
-const cssPath = styleMatch[1];
-
-console.log(`   JS  → ${jsPath}`);
-console.log(`   CSS → ${cssPath}`);
+console.log('   ✅ Extracted real <head> (manifest, icons, theme-color, script/style tags included)');
 
 const astroContent = `---
 // KokoMusic — Reproductor de música integrado en KokoPortfolio
 // Accesible en: /kokoMusic
-// ⚠️  Este archivo es autogenerado por build-for-portfolio.js
-//    No edites los paths de assets manualmente — ejecuta el script para regenerar.
+// ⚠️  Este archivo es autogenerado por build-for-portfolio.js a partir del
+//    index.html real que genera Vite — no lo edites a mano, ejecuta el
+//    script para regenerarlo.
 ---
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231DB954'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z'/></svg>" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="KokoMusic — Reproductor de música con Spotify API, streaming de audio, letras sincronizadas, modo DJ y más." />
-    <title>KokoMusic</title>
-    <script type="module" crossorigin src="${jsPath}"></script>
-    <link rel="stylesheet" crossorigin href="${cssPath}" />
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+  <head>${headMatch[1]}</head>
+  <body>${bodyMatch[1]}</body>
 </html>
 `;
 
