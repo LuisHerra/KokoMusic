@@ -1000,7 +1000,7 @@ function cleanMetadataForLyrics(title: string, author: string) {
   return { artist, title: trackName };
 }
 
-import { searchInvidious } from '../services/invidiousService';
+import { searchLite } from '../services/kokoLiteService';
 
 function stringToSafeIntegerHash(str: string): number {
   let hash = 5381;
@@ -1045,22 +1045,25 @@ router.get('/:id/video', async (req: Request, res: Response) => {
       youtubeId = await resolveYoutubeId(trackMeta.itunesId, trackMeta.artist, trackMeta.title);
     }
 
-    // Buscar videos musicales relacionados via Invidious
+    // Buscar videos musicales relacionados vía KokoMusic-lite (InnerTube).
+    // Antes usaba Invidious con FALLBACK_INSTANCES vacío a propósito (ver
+    // invidiousService.ts) — siempre devolvía [] y logueaba un error en cada
+    // llamada. KokoMusic-lite ya resuelve búsquedas de verdad (mismo proxy +
+    // PoToken que el streaming), así que esto ahora sí encuentra resultados.
     let relatedVideos: any[] = [];
     try {
       const query = `${trackMeta.artist} ${trackMeta.title}`;
-      const results = await searchInvidious(query, 10);
+      const results = await searchLite(query);
       relatedVideos = results
-        .filter((v: any) => v.videoId && v.videoId !== youtubeId)
+        .filter((v) => v.id && v.id !== youtubeId)
         .slice(0, 6)
-        .map((v: any) => ({
-          id: v.videoId,
+        .map((v) => ({
+          id: v.id,
           title: v.title,
-          artist: v.author?.name || trackMeta.artist,
+          artist: v.author || trackMeta.artist,
           thumbnail: v.thumbnail,
-          views: v.views,
-          duration: v.duration?.seconds
-            ? `${Math.floor(v.duration.seconds / 60)}:${String(v.duration.seconds % 60).padStart(2, '0')}`
+          duration: v.durationSeconds
+            ? `${Math.floor(v.durationSeconds / 60)}:${String(v.durationSeconds % 60).padStart(2, '0')}`
             : ''
         }));
     } catch (err) {

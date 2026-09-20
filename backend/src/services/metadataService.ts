@@ -813,9 +813,16 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
 
     const track = itunesResultToTrack(item);
 
-    // Persistir en L1 + L2
+    // Persistir en L1 + L2. upsertTracks() se espera (no fire-and-forget):
+    // ytResolverService llama a upsertYouTubeResolution justo después de que
+    // esta función retorna, y esa tabla tiene FK contra tracks_meta.itunes_id
+    // — sin esperar aquí, la carrera entre ambos upserts hacía fallar el de
+    // youtube_resolutions con "violates foreign key constraint" cuando el
+    // segundo llegaba a Supabase antes que el primero (upsertTracks ya
+    // atrapa su propio error internamente, así que esto no añade un nuevo
+    // camino de fallo, solo garantiza el orden).
     cache.setex(cacheKey, 86400, JSON.stringify(track));
-    upsertTracks([trackToRow(track)]).catch(() => {});
+    await upsertTracks([trackToRow(track)]);
 
     return track;
   } catch (error) {
