@@ -268,7 +268,7 @@ export async function getTrendingGenres(region = 'spain'): Promise<string[]> {
 // nada lo corregía, porque ningún boost de personalización/trending es lo
 // bastante grande para remontar esa base. Ahora la relevancia textual es el
 // factor dominante y el orden de iTunes pasa a ser solo un desempate menor.
-function tokenizeQuery(query: string): string[] {
+export function tokenizeQuery(query: string): string[] {
   return query
     .toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')

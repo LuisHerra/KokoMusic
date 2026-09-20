@@ -1,10 +1,55 @@
 import { Router, Request, Response } from 'express';
-import { searchTracks, type SearchSource } from '../services/metadataService';
-import { getHistoryForUser } from '../services/historyService';
-import { boostSearchResults, splitArtistNames } from '../services/trendingService';
+import { searchTracks, getTrackById, type SearchSource, type TrackMetadata } from '../services/metadataService';
+import { getHistoryForUser, type HistoryEntry } from '../services/historyService';
+import { boostSearchResults, splitArtistNames, tokenizeQuery } from '../services/trendingService';
+import { hashStringToInteger } from '../services/artistService';
 import { cache } from '../services/cacheService';
 import { getSearchCache, setSearchCache } from '../services/searchCacheService';
 import { prewarmTopTracks } from '../services/streamResolverService';
+
+/**
+ * ¿El título de este track del historial contiene TODAS las palabras de la
+ * query buscada? Comparación por palabra completa (no substring) para evitar
+ * falsos positivos con tokens cortos como "de".
+ */
+function historyTitleMatchesQuery(entryTitle: string, queryTokens: string[]): boolean {
+  if (queryTokens.length === 0) return false;
+  const titleWords = new Set(
+    entryTitle.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+  );
+  return queryTokens.every(tok => titleWords.has(tok));
+}
+
+/**
+ * Convierte una entrada del historial en un TrackMetadata listo para
+ * insertar en resultados de búsqueda. Si el trackId es un iTunesId numérico,
+ * recupera la metadata completa (probablemente ya en caché L1/L2 — este
+ * track ya se buscó una vez para poder haberse reproducido). Si es un ID de
+ * YouTube (u otro no numérico), construye el track directo desde el propio
+ * historial, sin volver a golpear ninguna API externa.
+ */
+async function historyEntryToTrack(entry: HistoryEntry): Promise<TrackMetadata | null> {
+  const numericId = Number(entry.trackId);
+  if (!isNaN(numericId) && numericId > 0) {
+    const full = await getTrackById(numericId);
+    if (full) return full;
+  }
+  return {
+    id: entry.trackId,
+    itunesId: 0,
+    artistId: hashStringToInteger(entry.artist),
+    title: entry.title,
+    artist: entry.artist,
+    album: 'YouTube',
+    cover: entry.cover || '',
+    duration: 0,
+    genre: entry.genre || 'Urbano / Pop',
+    releaseDate: null,
+    popularity: entry.playCount,
+    preview_url: null,
+  };
+}
 
 const router = Router();
 
@@ -160,6 +205,106 @@ async function inferArtistFromSearch(query: string, tracks: any[]): Promise<Infe
   return result;
 }
 
+/**
+ * Aplica personalización a un set de resultados YA obtenidos (de caché o
+ * en vivo, da igual) — nunca se cachea el resultado de esta función, solo
+ * los tracks "crudos" que recibe. Antes esto corría únicamente en el
+ * camino de caché-miss y su salida SÍ se guardaba en caché, así que el
+ * primer usuario en buscar una query "horneaba" su propio historial en el
+ * orden (y ahora también en qué tracks aparecen) para TODOS los usuarios
+ * que buscaran lo mismo después, hasta que expirase el TTL — un problema
+ * de privacidad/corrección real, no solo cosmético, que la inyección de
+ * historial (más abajo) habría hecho mucho más visible al meter canciones
+ * de un usuario en los resultados de otro.
+ */
+async function personalizeTracks(
+  rawTracks: TrackMetadata[],
+  query: string,
+  userId: string | undefined,
+  searchSource: SearchSource,
+  region: string
+): Promise<TrackMetadata[]> {
+  let tracks = rawTracks;
+  let artistScores: Record<string, number> = {};
+  let genreScores: Record<string, number> = {};
+  let listenedTrackKeys = new Set<string>();
+  let history: HistoryEntry[] = [];
+
+  if (userId) {
+    try {
+      history = await getHistoryForUser(userId);
+      if (history && history.length > 0) {
+        for (const entry of history) {
+          if (entry.artist) {
+            const artistNorm = entry.artist.toLowerCase().trim();
+            artistScores[artistNorm] = (artistScores[artistNorm] || 0) + (entry.playCount || 1);
+            // También sumar cada colaborador por separado — si el usuario
+            // escuchó "J Balvin & Bad Bunny", eso cuenta como afinidad con
+            // Bad Bunny también, no solo con la colaboración exacta.
+            const collaborators = splitArtistNames(entry.artist);
+            if (collaborators.length > 1) {
+              for (const name of collaborators) {
+                artistScores[name] = (artistScores[name] || 0) + (entry.playCount || 1);
+              }
+            }
+          }
+          // Género que el usuario escucha regularmente — sube resultados de
+          // ese género aunque no reconozca al artista concreto.
+          if (entry.genre) {
+            const genreNorm = entry.genre.toLowerCase().trim();
+            genreScores[genreNorm] = (genreScores[genreNorm] || 0) + (entry.playCount || 1);
+          }
+          if (entry.title && entry.artist) {
+            const cleanTitle = entry.title.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            const cleanArtist = entry.artist.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            listenedTrackKeys.add(`${cleanTitle}${cleanArtist}`);
+            listenedTrackKeys.add(`${cleanArtist}${cleanTitle}`);
+          }
+          if (entry.trackId) {
+            listenedTrackKeys.add(entry.trackId.toLowerCase());
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Search] Error loading user history for boosting:', err);
+    }
+  }
+
+  // Inyectar canciones que ya escuchaste antes y coinciden con la query,
+  // aunque la fuente principal no las haya traído esta vez — caso real:
+  // buscar "de lejitos" en iTunes trae 50 canciones de 50 artistas
+  // distintos con ese mismo título, ninguna es la que ya escuchaste. Como
+  // esta SÍ está en tu historial (con su itunesId o youtubeId ya resuelto),
+  // no hace falta adivinar nada — se sabe con certeza que es la que
+  // buscás. boostSearchResults ya sube +500 a tracks en listenedTrackKeys,
+  // así que solo hace falta meterla en el pool para que gane el orden.
+  if (searchSource !== 'lyrics' && history.length > 0) {
+    const queryTokens = tokenizeQuery(query);
+    const existingIds = new Set(tracks.map(t => String(t.id)));
+    const historyMatches = history
+      .filter(h => h.title && !existingIds.has(h.trackId) && historyTitleMatchesQuery(h.title, queryTokens))
+      .sort((a, b) => b.playCount - a.playCount)
+      .slice(0, 3);
+
+    if (historyMatches.length > 0) {
+      tracks = [...tracks];
+      for (const h of historyMatches) {
+        try {
+          const track = await historyEntryToTrack(h);
+          if (track && !existingIds.has(String(track.id))) {
+            tracks.push(track);
+            existingIds.add(String(track.id));
+          }
+        } catch (err) {
+          console.warn('[Search] Error convirtiendo entrada de historial a track:', err);
+        }
+      }
+    }
+  }
+
+  return boostSearchResults(tracks, query, artistScores, region, listenedTrackKeys, genreScores);
+}
+
 // GET /api/search?q=bad+bunny&limit=20&source=itunes
 router.get('/', async (req: Request, res: Response) => {
   const { q, limit, source } = req.query as { q?: string; limit?: string; source?: string };
@@ -179,16 +324,26 @@ router.get('/', async (req: Request, res: Response) => {
   const normalizedQ = q.trim().toLowerCase();
   const l1Key = `search:${searchSource}:${normalizedQ}`;
 
+  const userRegion = (req.headers['x-user-region'] as string) || 'spain';
+
   try {
     // ── L1: In-memory cache ──────────────────────────────────────────────────
+    // Se cachea siempre el resultado CRUDO (sin personalizar) — nunca el ya
+    // personalizado. Antes se guardaba el resultado de boostSearchResults ya
+    // reordenado con el historial del PRIMER usuario que buscara esa query,
+    // y todo el mundo que buscara lo mismo después heredaba ese orden hasta
+    // que expirase el TTL. Con la inyección de historial esto sería aún peor
+    // (aparecerían canciones del historial de otro usuario). La
+    // personalización corre en cada request, sobre el mismo crudo cacheado.
     const l1Hit = cache.get(l1Key);
     if (l1Hit) {
       console.log(`[Search] L1 hit: "${normalizedQ}" (${searchSource})`);
       const parsed = JSON.parse(l1Hit);
-      if (Array.isArray(parsed)) {
-        return res.json({ tracks: parsed, source: searchSource, cached: true });
-      }
-      return res.json({ tracks: parsed.tracks, artist: parsed.artist, source: searchSource, cached: true });
+      const rawTracks: TrackMetadata[] = Array.isArray(parsed) ? parsed : parsed.tracks;
+      const cachedArtist = Array.isArray(parsed) ? null : parsed.artist;
+      const tracks = await personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion);
+      prewarmTopTracks(tracks);
+      return res.json({ tracks, artist: cachedArtist, source: searchSource, cached: true });
     }
 
     // ── L2: Supabase persistent cache ────────────────────────────────────────
@@ -196,76 +351,31 @@ router.get('/', async (req: Request, res: Response) => {
     if (l2Hit) {
       console.log(`[Search] L2 hit: "${normalizedQ}" (${searchSource})`);
       const inferredArtist = await inferArtistFromSearch(q.trim(), l2Hit);
-      const payload = { tracks: l2Hit, artist: inferredArtist };
-      cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify(payload));
-      return res.json({ tracks: l2Hit, artist: inferredArtist, source: searchSource, cached: true });
+      cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify({ tracks: l2Hit, artist: inferredArtist }));
+      const tracks = await personalizeTracks(l2Hit, q.trim(), userId, searchSource, userRegion);
+      prewarmTopTracks(tracks);
+      return res.json({ tracks, artist: inferredArtist, source: searchSource, cached: true });
     }
 
     // ── L3: Live API (iTunes / YouTube / Lyrics) ─────────────────────────────
     console.log(`[Search] Cache miss — fetching live: "${normalizedQ}" (${searchSource})`);
-    let tracks = await searchTracks(q.trim(), Number(limit) || 20, searchSource);
+    const rawTracks = await searchTracks(q.trim(), Number(limit) || 20, searchSource);
 
-    // Personalisation boost — user history + trending
-    let artistScores: Record<string, number> = {};
-    let genreScores: Record<string, number> = {};
-    let listenedTrackKeys = new Set<string>();
-
-    if (userId && tracks.length > 0) {
-      try {
-        const history = await getHistoryForUser(userId);
-        if (history && history.length > 0) {
-          for (const entry of history) {
-            if (entry.artist) {
-              const artistNorm = entry.artist.toLowerCase().trim();
-              artistScores[artistNorm] = (artistScores[artistNorm] || 0) + (entry.playCount || 1);
-              // También sumar cada colaborador por separado — si el usuario
-              // escuchó "J Balvin & Bad Bunny", eso cuenta como afinidad con
-              // Bad Bunny también, no solo con la colaboración exacta.
-              const collaborators = splitArtistNames(entry.artist);
-              if (collaborators.length > 1) {
-                for (const name of collaborators) {
-                  artistScores[name] = (artistScores[name] || 0) + (entry.playCount || 1);
-                }
-              }
-            }
-            // Género que el usuario escucha regularmente — sube resultados de
-            // ese género aunque no reconozca al artista concreto.
-            if (entry.genre) {
-              const genreNorm = entry.genre.toLowerCase().trim();
-              genreScores[genreNorm] = (genreScores[genreNorm] || 0) + (entry.playCount || 1);
-            }
-            if (entry.title && entry.artist) {
-              const cleanTitle = entry.title.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-              const cleanArtist = entry.artist.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-              listenedTrackKeys.add(`${cleanTitle}${cleanArtist}`);
-              listenedTrackKeys.add(`${cleanArtist}${cleanTitle}`);
-            }
-            if (entry.trackId) {
-              listenedTrackKeys.add(entry.trackId.toLowerCase());
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[Search] Error loading user history for boosting:', err);
-      }
-    }
-
-    const userRegion = (req.headers['x-user-region'] as string) || 'spain';
-    tracks = await boostSearchResults(tracks, q.trim(), artistScores, userRegion, listenedTrackKeys, genreScores);
-
-    // Inferir si la búsqueda corresponde a un artista
-    const inferredArtist = await inferArtistFromSearch(q.trim(), tracks);
+    // Inferir si la búsqueda corresponde a un artista — sobre el crudo, no
+    // depende del usuario, así que se puede cachear junto a los tracks.
+    const inferredArtist = await inferArtistFromSearch(q.trim(), rawTracks);
 
     // Write-through a L1 + L2 (non-blocking) — solo si hay resultados. Un []
     // vacío suele ser un fallo transitorio (rate-limit, timeout, endpoint
     // caído) más que "esta query no tiene resultados de verdad" — cachearlo
     // igual que un hit real dejaba la búsqueda envenenada durante todo el TTL
     // (6h en Supabase) aunque el problema de fondo ya estuviera resuelto.
-    if (tracks.length > 0) {
-      const payload = { tracks, artist: inferredArtist };
-      cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify(payload));
-      setSearchCache(searchSource, normalizedQ, tracks).catch(() => {});
+    if (rawTracks.length > 0) {
+      cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify({ tracks: rawTracks, artist: inferredArtist }));
+      setSearchCache(searchSource, normalizedQ, rawTracks).catch(() => {});
     }
+
+    const tracks = await personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion);
 
     // Precalentar en segundo plano el stream de los primeros resultados para
     // que el play sea casi instantáneo en el caso común (no bloquea la respuesta).
