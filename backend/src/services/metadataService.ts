@@ -193,7 +193,7 @@ export async function enrichTrackWithExternalAPIs(track: TrackMetadata): Promise
 
   try {
     const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(cleanArtist + ' ' + cleanTitle)}&media=music&entity=musicTrack&limit=1`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (res.ok) {
       const data = await res.json() as any;
       const match = data.results?.[0];
@@ -343,13 +343,13 @@ export async function searchTracks(
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
     };
-    let res = await fetch(url, { headers: defaultHeaders });
-    
+    let res = await fetch(url, { headers: defaultHeaders, signal: AbortSignal.timeout(8000) });
+
     // If rate-limited (429), retry once after a short 350ms backoff
     if (res.status === 429) {
       console.warn(`[Metadata] iTunes API 429 rate limit reached for "${query}". Retrying after 350ms...`);
       await new Promise(resolve => setTimeout(resolve, 350));
-      res = await fetch(url, { headers: defaultHeaders });
+      res = await fetch(url, { headers: defaultHeaders, signal: AbortSignal.timeout(8000) });
     }
 
     if (!res.ok) throw new Error(`iTunes API error: ${res.status}`);
@@ -486,6 +486,7 @@ async function fetchItunesRaw(term: string, limit: number): Promise<TrackMetadat
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
     },
+    signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) return [];
   const data = (await res.json()) as any;
@@ -502,7 +503,8 @@ export async function searchDeezer(query: string, limit = 10): Promise<TrackMeta
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'application/json',
-      }
+      },
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return [];
     const data = await res.json() as any;
@@ -566,7 +568,8 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
     const res = await fetch(lrcUrl, {
       headers: {
         'User-Agent': 'KokoMusic/1.0 (https://github.com/lherraa/KokoMusic)'
-      }
+      },
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`LRCLIB API error: ${res.status}`);
     const results = await res.json() as any[];
@@ -582,7 +585,7 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
     for (const item of uniqueMatches) {
       try {
         const itunesUrl = `${ITUNES_BASE}/search?term=${encodeURIComponent(item.artistName + ' ' + item.trackName)}&entity=musicTrack&limit=1&media=music`;
-        const itunesRes = await fetch(itunesUrl);
+        const itunesRes = await fetch(itunesUrl, { signal: AbortSignal.timeout(8000) });
         if (itunesRes.ok) {
           const itunesData = await itunesRes.json() as any;
           if (itunesData.results && itunesData.results.length > 0) {
@@ -725,7 +728,14 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
   if (isNaN(id) || id === 0) {
     // Es un ID de YouTube — obtener metadata vía oEmbed sin yt-dlp
     try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(idStr)}&format=json`);
+      // Sin timeout, un oEmbed lento/colgado bloqueaba TODA la petición de
+      // stream indefinidamente (el try/catch no ayuda contra una promesa que
+      // nunca se resuelve, solo contra un rechazo) — sin dar ningún error
+      // visible en cliente. Con AbortSignal.timeout, si no responde a
+      // tiempo, la promesa rechaza y cae al catch de abajo normalmente.
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(idStr)}&format=json`, {
+        signal: AbortSignal.timeout(8000),
+      });
       if (!oembedRes.ok) return null;
       const v = (await oembedRes.json()) as any;
 
@@ -785,7 +795,7 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
   // L3: iTunes API
   try {
     const url = `${ITUNES_BASE}/lookup?id=${id}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
 
     // 400 = ID no existe en el catálogo de iTunes — no es un error recuperable, retornar null silenciosamente
     if (res.status === 400 || res.status === 404) {
@@ -840,7 +850,7 @@ export async function getArtistTracksAndCollabs(artistId: number, limit = 25): P
 
   try {
     const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=song&limit=${Math.min(limit * 4, 200)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`iTunes artist lookup error: ${res.status}`);
 
     const data = (await res.json()) as any;

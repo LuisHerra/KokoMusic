@@ -30,6 +30,7 @@ import {
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import fs from 'fs';
 import path from 'path';
 
@@ -75,6 +76,15 @@ function getR2Client(): S3Client {
       region: 'auto',
       endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
       credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
+      // Sin esto, el SDK v3 no impone timeout propio y una petición a R2 que
+      // se quede colgada (endpoint mal configurado, red, etc.) bloquea
+      // indefinidamente CUALQUIER stream — findTrackInCDN() se llama al
+      // principio de cada reproducción, así que un cuelgue aquí tumba toda
+      // la app sin ningún error visible en cliente.
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 1500,
+        requestTimeout: 2000,
+      }),
     });
   }
   return r2;
@@ -231,19 +241,18 @@ export async function listObjectsInCDN(): Promise<string[]> {
 export async function findTrackInCDN(trackId: string): Promise<string | null> {
   if (!isCDNEnabled()) return null;
 
-  // 1. Comprobar prefijo permanente
-  try {
-    incrementRequests(1);
-    await getR2Client().send(new HeadObjectCommand({ Bucket: BUCKET(), Key: permanentKey(trackId) }));
-    return permanentUrl(trackId);
-  } catch { /* no existe */ }
+  // Los dos prefijos se comprueban en PARALELO, no en secuencia — si R2 está
+  // lento/inalcanzable, pagar el timeout dos veces seguidas (hasta ~26s con
+  // los valores por defecto) delante de CADA reproducción es peor que
+  // simplemente tratar ese track como "no cacheado" un poco más rápido.
+  incrementRequests(2);
+  const [permanent, large] = await Promise.allSettled([
+    getR2Client().send(new HeadObjectCommand({ Bucket: BUCKET(), Key: permanentKey(trackId) })),
+    getR2Client().send(new HeadObjectCommand({ Bucket: BUCKET(), Key: largeKey(trackId) })),
+  ]);
 
-  // 2. Comprobar prefijo grande (temporal)
-  try {
-    incrementRequests(1);
-    await getR2Client().send(new HeadObjectCommand({ Bucket: BUCKET(), Key: largeKey(trackId) }));
-    return largeUrl(trackId);
-  } catch { /* no existe */ }
+  if (permanent.status === 'fulfilled') return permanentUrl(trackId);
+  if (large.status === 'fulfilled') return largeUrl(trackId);
 
   return null;
 }

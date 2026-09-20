@@ -13,9 +13,32 @@
  */
 
 import yts from 'yt-search';
+import http from 'http';
+import https from 'https';
+import { HttpProxyAgent } from 'http-proxy-agent';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { cache } from './cacheService';
 import { getYouTubeResolutionFull, upsertYouTubeResolution } from './supabaseService';
 import { isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from './ytdlpSearchService';
+
+/**
+ * yt-search (vía su dependencia `dasu`) usa el http/https clásico de Node,
+ * no fetch/undici — así que necesita un mecanismo de proxy distinto al de
+ * kokomusic-lite (que sí usa undici y su setGlobalDispatcher). Aquí se
+ * parchea el agente GLOBAL de http/https, que es donde dasu (y cualquier
+ * otra librería que use el http/https clásico) obtiene su conexión por
+ * defecto cuando no especifica un agente propio.
+ *
+ * Mismo motivo que en kokomusic-lite: YouTube penaliza las IPs de
+ * datacenter, y yt-search scrapea resultados de búsqueda de YouTube
+ * directamente — sujeto al mismo tipo de bloqueo.
+ */
+const ytProxyUrl = process.env.PROXY_URL;
+if (ytProxyUrl) {
+  http.globalAgent = new HttpProxyAgent(ytProxyUrl);
+  https.globalAgent = new HttpsProxyAgent(ytProxyUrl);
+  console.log('[YTResolver] yt-search enrutado a través de proxy configurado (PROXY_URL).');
+}
 
 export interface YoutubeResolution {
   primary: string;
