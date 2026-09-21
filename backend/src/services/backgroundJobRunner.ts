@@ -17,6 +17,7 @@ import { buildAndPersistTasteProfile, loadTasteProfileStale } from './tasteProfi
 import { generateCandidates } from './candidateGenerator';
 import { setCachedPlaylist, scheduleBackgroundRecompute } from './recommendationCache';
 import { supabase } from './supabaseService';
+import { isLastfmPlaceholderCover, lookupItunesCoverAndGenre } from './lastfmCoverUtils';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -258,52 +259,6 @@ async function fetchDeezerCharts(): Promise<ChartTrackNormalised[]> {
   }
 }
 
-/**
- * Last.fm devuelve esta misma imagen (hash fijo) como placeholder genérico
- * cuando no tiene carátula real para un track — mejor no tener cover que
- * mostrar su icono de "sin imagen" como si fuera arte real.
- */
-const LASTFM_PLACEHOLDER_HASH = '2a96cbd8b46e442fc41c2b86b821562f';
-export function isLastfmPlaceholderCover(url: string | null | undefined): boolean {
-  return !url || url.includes(LASTFM_PLACEHOLDER_HASH);
-}
-
-/**
- * Last.fm dejó de servir imágenes reales hace años — casi todo lo que
- * devuelve es el placeholder genérico. Para tracks populares (que sí están
- * en iTunes) resolvemos ahí la carátula real y el género, en vez de dejar
- * caer la tarjeta al avatar de letra. Cache 7 días por "artista-título" para
- * no repetir la búsqueda entre regiones/ciclos (mismos tracks se repiten).
- */
-const itunesCoverCache = new Map<string, { cover: string; genre: string; ts: number }>();
-const ITUNES_COVER_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
-
-async function lookupItunesCoverAndGenre(artist: string, title: string): Promise<{ cover: string; genre: string }> {
-  const cacheKey = `${artist.toLowerCase().trim()}::${title.toLowerCase().trim()}`;
-  const cached = itunesCoverCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < ITUNES_COVER_CACHE_TTL) return cached;
-
-  let cover = '';
-  let genre = 'Otros';
-  try {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`)}&media=music&entity=musicTrack&limit=1`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = (await res.json()) as any;
-      const match = data?.results?.[0];
-      if (match) {
-        cover = (match.artworkUrl100 as string || '').replace(/\d+x\d+bb\.jpg$/, '600x600bb.jpg');
-        genre = match.primaryGenreName || 'Otros';
-      }
-    }
-  } catch (err) {
-    console.error(`[Charts] iTunes cover lookup error for "${artist} - ${title}":`, err);
-  }
-
-  const result = { cover, genre };
-  itunesCoverCache.set(cacheKey, { ...result, ts: Date.now() });
-  return result;
-}
 
 async function fetchLastFmGeoTopTracks(region = LFM_GEO_REGION): Promise<ChartTrackNormalised[]> {
   if (!LFM_KEY) return [];

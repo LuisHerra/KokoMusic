@@ -13,6 +13,7 @@
 import { supabase } from './supabaseService';
 import type { TrackMetadata } from './metadataService';
 import { normalizeRegionName } from './regionService';
+import { isLastfmPlaceholderCover } from './lastfmCoverUtils';
 
 // ── In-Memory Cache (Regionalized) ───────────────────────────────────────────
 const cachedTrendingTracksByRegion = new Map<string, TrackMetadata[]>();
@@ -35,12 +36,6 @@ const DEFAULT_TRENDING_GENRES = [
 // Helper to normalize strings for comparison
 function normalizeStr(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-}
-
-/** Last.fm devuelve este hash fijo como placeholder cuando no tiene carátula real. */
-const LASTFM_PLACEHOLDER_HASH = '2a96cbd8b46e442fc41c2b86b821562f';
-function isLastfmPlaceholderCover(url: string | null | undefined): boolean {
-  return !url || url.includes(LASTFM_PLACEHOLDER_HASH);
 }
 
 /**

@@ -21,17 +21,7 @@
 import { supabase } from './supabaseService';
 import { type TasteProfile, getDecade } from './tasteProfileBuilder';
 import { readHistory } from './historyService';
-
-/**
- * Last.fm devuelve un hash de imagen fijo como placeholder genérico cuando no
- * tiene carátula real — se filtra aquí también (no solo al escribir el cache
- * en backgroundJobRunner) para limpiar filas ya cacheadas sin esperar al
- * próximo refresco de charts.
- */
-const LASTFM_PLACEHOLDER_HASH = '2a96cbd8b46e442fc41c2b86b821562f';
-function isLastfmPlaceholderCover(url: string | null | undefined): boolean {
-  return !url || url.includes(LASTFM_PLACEHOLDER_HASH);
-}
+import { isLastfmPlaceholderCover } from './lastfmCoverUtils';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
