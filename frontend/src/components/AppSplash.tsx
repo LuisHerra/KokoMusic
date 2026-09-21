@@ -74,7 +74,7 @@ export default function AppSplash({ onReady }: Props) {
         animation: 'pulse 2s ease-in-out infinite',
       }}>
         <img
-          src="/icons/icon-192.png"
+          src={`${import.meta.env.BASE_URL}icons/icon-192.png`}
           alt="KokoMusic"
           width="64"
           height="64"

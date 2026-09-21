@@ -74,7 +74,7 @@ export function updateFaviconWithHue(hueDiff: number) {
     try {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.src = '/icons/icon-192.png';
+      img.src = `${import.meta.env.BASE_URL}icons/icon-192.png`;
       img.onload = () => {
         const canvas = document.createElement('canvas');
         canvas.width = 64;

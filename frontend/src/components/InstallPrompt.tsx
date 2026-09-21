@@ -79,7 +79,7 @@ export default function InstallPrompt() {
         border: '1px solid rgba(255, 255, 255, 0.12)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <img src="/icons/icon-192.png" alt="KokoMusic" width="34" height="34" className="app-logo-accent" style={{ objectFit: 'contain' }} />
+        <img src={`${import.meta.env.BASE_URL}icons/icon-192.png`} alt="KokoMusic" width="34" height="34" className="app-logo-accent" style={{ objectFit: 'contain' }} />
       </div>
 
       {/* Texto */}
