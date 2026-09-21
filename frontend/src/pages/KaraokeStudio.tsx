@@ -410,7 +410,7 @@ export default function KaraokeStudioPage() {
       position: 'fixed',
       inset: 0,
       zIndex: 9000,
-      backgroundColor: '#05040a',
+      backgroundColor: 'var(--bg-base)',
       color: '#fff',
       display: 'flex',
       flexDirection: 'column',
@@ -502,7 +502,7 @@ export default function KaraokeStudioPage() {
               onClick={startStudioRecording}
               disabled={!currentTrack}
               style={{
-                background: currentTrack ? 'linear-gradient(135deg, #1DB954 0%, #179b45 100%)' : 'rgba(255,255,255,0.1)',
+                background: currentTrack ? 'linear-gradient(135deg, var(--accent-bright) 0%, var(--accent-dim) 100%)' : 'rgba(255,255,255,0.1)',
                 color: currentTrack ? '#000' : 'rgba(255,255,255,0.4)',
                 border: 'none',
                 borderRadius: 24,

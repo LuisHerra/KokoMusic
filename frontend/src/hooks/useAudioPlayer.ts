@@ -231,6 +231,7 @@ audio2.setAttribute('playsinline', '');
 let activeIdx = 0;
 let globalLastLoadedTrackId: string | null = null;
 const CROSSFADE_DURATION = 3000; // ms
+const DJ_PRELOAD_LEAD_SECONDS = 12; // cuánto antes del punto de transición se calienta el buffer del siguiente track
 
 
 export function getActiveAudio() {
@@ -421,6 +422,7 @@ export function useAudioPlayer() {
   }, [isPlaying]);
 
   const cdnPreloadTriggered = useRef<string | null>(null);
+  const djBufferPreloaded = useRef<string | null>(null);
 
   useEffect(() => {
     const onTimeUpdate = (e: Event) => {
@@ -463,6 +465,33 @@ export function useAudioPlayer() {
 
         if (currentT && nextT) {
           const rule = state.transitions[`${currentT.id}-${nextT.id}`];
+
+          // Precarga real del buffer de audio para transiciones DJ: sin esto, el
+          // elemento <audio> del track entrante no empieza a cargar bytes hasta
+          // el instante exacto del crossfade (nextTrack() -> loadTrack effect),
+          // a diferencia del preview (startCrossfadePreview) que arranca ambos
+          // audios de golpe. En redes lentas eso se nota como un corte/carga
+          // justo en medio de la mezcla. Calentamos el elemento inactivo unos
+          // segundos antes del punto de transición para que ya tenga bytes en
+          // buffer cuando de verdad haga falta reproducirlo.
+          const pairKeyStr = `${currentT.id}-${nextT.id}`;
+          if (rule) {
+            const timeUntilTransition = rule.fromTime - audio.currentTime;
+            if (
+              timeUntilTransition > 0 &&
+              timeUntilTransition <= DJ_PRELOAD_LEAD_SECONDS &&
+              djBufferPreloaded.current !== pairKeyStr
+            ) {
+              djBufferPreloaded.current = pairKeyStr;
+              const inactiveAudio = getInactiveAudio();
+              if (inactiveAudio.paused) {
+                logToServer('INFO', `[useAudioPlayer] DJ preload: calentando buffer del siguiente track (${nextT.id}) ${timeUntilTransition.toFixed(1)}s antes de la transición`);
+                inactiveAudio.src = getStreamUrl(nextT.id, { forceStream: isCrossOriginArmed() });
+                inactiveAudio.load();
+              }
+            }
+          }
+
           if (rule && audio.currentTime >= rule.fromTime) {
             shouldCrossfade = true;
           }

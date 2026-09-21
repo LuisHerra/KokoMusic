@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { usePlayerStore, type CrossfadeCurve } from '../../store/playerStore';
 import { useRef } from 'react';
-import { getLyrics, getStreamUrl, type Track } from '../../lib/api';
+import { getLyrics, type Track } from '../../lib/api';
 import { parseSyncedLyrics, detectLyricSections, type LyricSection, type LyricsLine } from '../../lib/lyricsParser';
+import { startCrossfadePreview, type CrossfadePreviewHandle } from '../../lib/djTransition';
 
 interface DjMixerModalProps {
   fromTrack: Track;
@@ -30,18 +31,11 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
   const [fadeInDuration, setFadeInDuration] = useState<number>(existingRule?.fadeInDuration ?? 2);
 
   const [isPreviewing, setIsPreviewing] = useState(false);
-  const previewRef = useRef<{ audio1: HTMLAudioElement, audio2: HTMLAudioElement, timeout: any, interval: any } | null>(null);
+  const previewRef = useRef<CrossfadePreviewHandle | null>(null);
 
   const stopPreview = () => {
-    if (previewRef.current) {
-        previewRef.current.audio1.pause();
-        previewRef.current.audio2.pause();
-        clearTimeout(previewRef.current.timeout);
-        clearInterval(previewRef.current.interval);
-        previewRef.current.audio1.src = '';
-        previewRef.current.audio2.src = '';
-        previewRef.current = null;
-    }
+    previewRef.current?.stop();
+    previewRef.current = null;
     setIsPreviewing(false);
   };
 
@@ -49,77 +43,20 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
     return () => stopPreview();
   }, []);
 
-  function getFadeRatio(ratio: number, c: CrossfadeCurve) {
-    switch (c) {
-      case 'exponential': return Math.pow(ratio, 2);
-      case 'logarithmic': return Math.log10(1 + 9 * ratio);
-      case 's-curve': return ratio * ratio * (3 - 2 * ratio);
-      case 'linear':
-      default: return ratio;
-    }
-  }
-
   const playPreview = () => {
     if (isPreviewing) {
-        stopPreview();
-        return;
+      stopPreview();
+      return;
     }
-    
+
     // Pause main player if it was playing to avoid cacophony
     usePlayerStore.getState().setIsPlaying(false);
-    
-    const a1 = new Audio(getStreamUrl(fromTrack.id));
-    const a2 = new Audio(getStreamUrl(toTrack.id));
-    
-    const preRoll = 3;
-    const startA1 = Math.max(0, fromTime - preRoll);
-    a1.currentTime = startA1;
-    a1.volume = 1;
-    a2.currentTime = toTime;
-    a2.volume = 0;
-    
+
     setIsPreviewing(true);
-    
-    const onCanPlay = () => {
-       a1.play().catch(e => { console.error(e); stopPreview(); });
-       const actualPreRoll = fromTime - startA1;
-       
-       const timeout = setTimeout(() => {
-           a2.play().catch(console.error);
-           let step = 0;
-           const steps = 20;
-           const stepTime = (duration * 1000) / steps;
-           
-           const interval = setInterval(() => {
-               step++;
-               const ratioIn = getFadeRatio(step / steps, curve);
-               a1.volume = Math.max(0, 1 - ratioIn);
-               a2.volume = Math.min(1, ratioIn);
-               
-               if (step >= steps) {
-                   clearInterval(interval);
-                   a1.pause();
-                   setTimeout(() => stopPreview(), 3000);
-               }
-           }, stepTime);
-           
-           if (previewRef.current) previewRef.current.interval = interval;
-       }, actualPreRoll * 1000);
-       
-       if (previewRef.current) previewRef.current.timeout = timeout;
-    };
-
-    let canplayFired = false;
-    const canPlayWrapper = () => {
-       if (canplayFired) return;
-       canplayFired = true;
-       onCanPlay();
-    };
-
-    a1.addEventListener('canplay', canPlayWrapper, { once: true });
-    if (a1.readyState >= 3) canPlayWrapper();
-    
-    previewRef.current = { audio1: a1, audio2: a2, timeout: null, interval: null };
+    previewRef.current = startCrossfadePreview(fromTrack, toTrack, { fromTime, toTime, curve, duration }, () => {
+      previewRef.current = null;
+      setIsPreviewing(false);
+    });
   };
 
   useEffect(() => {
@@ -189,7 +126,7 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
 
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 100000, position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 12px', overflowY: 'auto' }}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: '#121212', borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', padding: '24px 20px', width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Mezcla de DJ (Transición)</h2>
           <button 
@@ -203,7 +140,7 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
                setCurve('s-curve');
                setDuration(8);
             }}
-            style={{ padding: '8px 16px', borderRadius: 20, background: 'linear-gradient(135deg, #8b5cf6, #d946ef)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)' }}
+            style={{ padding: '8px 16px', borderRadius: 'var(--radius-full)', background: 'linear-gradient(135deg, var(--accent), var(--accent-bright))', color: '#000', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(29, 185, 84, 0.3)' }}
             title="Ajustar tiempos automáticamente basándose en las secciones detectadas"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">

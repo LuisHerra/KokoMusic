@@ -18,7 +18,6 @@ import PlaylistModal from './PlaylistModal';
 import JamModal from './JamModal';
 import EqualizerPanel from './EqualizerPanel';
 import ShareTrackModal from '../ShareTrackModal';
-import KaraokeStudioModal from './KaraokeStudioModal';
 import SongCreditsModal from './SongCreditsModal';
 
 function formatTime(secs: number): string {
@@ -53,7 +52,6 @@ export default function Player() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showEq, setShowEq] = useState(false);
-  const [showKaraokeStudio, setShowKaraokeStudio] = useState(false);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
 
   const userId = localStorage.getItem('koko_device_id') || localStorage.getItem('koko_user_id') || '00000000-0000-0000-0000-000000000001';
@@ -470,7 +468,6 @@ export default function Player() {
       <JamModal isOpen={showJamModal} onClose={() => setShowShareModal(false)} />
       <ShareTrackModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} track={currentTrack} userId={userId} />
       {showEq && <EqualizerPanel onClose={() => setShowEq(false)} />}
-      <KaraokeStudioModal isOpen={showKaraokeStudio} onClose={() => setShowKaraokeStudio(false)} track={currentTrack} />
 
       {showMobileMenu && currentTrack && (
         <div

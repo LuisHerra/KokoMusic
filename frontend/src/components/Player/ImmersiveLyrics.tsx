@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePlayerStore } from '../../store/playerStore';
 import { seekAudio } from '../../hooks/useAudioPlayer';
@@ -304,83 +304,89 @@ export default function ImmersiveLyrics() {
       {showSettings && (
         <div className="immersive-lyrics-settings-popover">
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Apariencia de Letras</h3>
-          
+
           {/* Tamaño */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Tamaño</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.1)', borderRadius: 20, padding: '4px 12px' }}>
-              <button onClick={() => setBaseSize(p => Math.max(16, p - 4))} style={{ padding: 4, background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>A-</button>
+          <div className="immersive-lyrics-setting-row">
+            <span className="immersive-lyrics-setting-label">Tamaño</span>
+            <div className="immersive-lyrics-pill-group">
+              <button className="immersive-lyrics-pill-btn" onClick={() => setBaseSize(p => Math.max(16, p - 4))}>A-</button>
               <span style={{ fontSize: 13, width: 28, textAlign: 'center' }}>{baseSize}</span>
-              <button onClick={() => setBaseSize(p => Math.min(72, p + 4))} style={{ padding: 4, background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>A+</button>
+              <button className="immersive-lyrics-pill-btn" onClick={() => setBaseSize(p => Math.min(72, p + 4))}>A+</button>
             </div>
           </div>
 
           {/* Estilo / Tipografía */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Tipografía</span>
-            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.1)', borderRadius: 20, padding: 4 }}>
-              <button onClick={() => setLayoutStyle('standard')} style={{ padding: '4px 12px', color: '#fff', fontSize: 13, background: layoutStyle === 'standard' ? 'rgba(255,255,255,0.2)' : 'transparent', borderRadius: 16, border: 'none', cursor: 'pointer' }}>Normal</button>
-              <button onClick={() => setLayoutStyle('impact')} style={{ padding: '4px 12px', color: '#fff', fontSize: 13, background: layoutStyle === 'impact' ? 'rgba(255,255,255,0.2)' : 'transparent', borderRadius: 16, border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>IMPACTO</button>
+          <div className="immersive-lyrics-setting-row">
+            <span className="immersive-lyrics-setting-label">Tipografía</span>
+            <div className="immersive-lyrics-pill-group">
+              <button className={`immersive-lyrics-pill-btn ${layoutStyle === 'standard' ? 'active' : ''}`} onClick={() => setLayoutStyle('standard')}>Normal</button>
+              <button className={`immersive-lyrics-pill-btn ${layoutStyle === 'impact' ? 'active' : ''}`} onClick={() => setLayoutStyle('impact')} style={{ fontWeight: 'bold' }}>IMPACTO</button>
             </div>
           </div>
 
           {/* Alineación */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Alineación</span>
-            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.1)', borderRadius: 20, padding: 4 }}>
-              <button onClick={() => setAlignment('left')} style={{ padding: '4px 12px', color: '#fff', fontSize: 13, background: alignment === 'left' ? 'rgba(255,255,255,0.2)' : 'transparent', borderRadius: 16, border: 'none', cursor: 'pointer' }}>Izq</button>
-              <button onClick={() => setAlignment('center')} style={{ padding: '4px 12px', color: '#fff', fontSize: 13, background: alignment === 'center' ? 'rgba(255,255,255,0.2)' : 'transparent', borderRadius: 16, border: 'none', cursor: 'pointer' }}>Cen</button>
-              <button onClick={() => setAlignment('right')} style={{ padding: '4px 12px', color: '#fff', fontSize: 13, background: alignment === 'right' ? 'rgba(255,255,255,0.2)' : 'transparent', borderRadius: 16, border: 'none', cursor: 'pointer' }}>Der</button>
+          <div className="immersive-lyrics-setting-row">
+            <span className="immersive-lyrics-setting-label">Alineación</span>
+            <div className="immersive-lyrics-pill-group">
+              <button className={`immersive-lyrics-pill-btn ${alignment === 'left' ? 'active' : ''}`} onClick={() => setAlignment('left')}>Izq</button>
+              <button className={`immersive-lyrics-pill-btn ${alignment === 'center' ? 'active' : ''}`} onClick={() => setAlignment('center')}>Cen</button>
+              <button className={`immersive-lyrics-pill-btn ${alignment === 'right' ? 'active' : ''}`} onClick={() => setAlignment('right')}>Der</button>
             </div>
           </div>
 
           {/* Animación */}
           <div>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)', display: 'block', marginBottom: 8 }}>Efecto de Animación</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <span className="immersive-lyrics-setting-label" style={{ display: 'block', marginBottom: 8 }}>Efecto de Animación</span>
+            <div className="immersive-lyrics-grid-group" style={{ gridTemplateColumns: '1fr 1fr' }}>
               {['scale', 'slide', 'blur', 'kinetic'].map(anim => (
-                <button key={anim} onClick={() => setAnimation(anim as any)} style={{
-                  padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                  background: animation === anim ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)',
-                  color: '#fff', fontSize: 13, textTransform: 'capitalize'
-                }}>{anim === 'kinetic' ? 'Kinetic 3D' : anim}</button>
+                <button
+                  key={anim}
+                  className={`immersive-lyrics-grid-btn ${animation === anim ? 'active' : ''}`}
+                  onClick={() => setAnimation(anim as any)}
+                >
+                  {anim === 'kinetic' ? 'Kinetic 3D' : anim}
+                </button>
               ))}
             </div>
           </div>
 
           {/* Color del texto */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Color Activo</span>
+          <div className="immersive-lyrics-setting-row">
+            <span className="immersive-lyrics-setting-label">Color Activo</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => setColorMode(prev => prev === 'cover' ? 'gradient' : prev === 'gradient' ? 'white' : prev === 'white' ? 'custom' : 'cover')} style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 20, padding: '4px 12px', color: '#fff', fontSize: 13, border: 'none', cursor: 'pointer' }}>
+              <button
+                className="immersive-lyrics-pill-btn"
+                style={{ background: 'rgba(255,255,255,0.1)' }}
+                onClick={() => setColorMode(prev => prev === 'cover' ? 'gradient' : prev === 'gradient' ? 'white' : prev === 'white' ? 'custom' : 'cover')}
+              >
                 {colorMode === 'cover' ? 'Auto Sólido' : colorMode === 'gradient' ? 'Auto Gradiente' : colorMode === 'white' ? 'Blanco' : 'Manual'}
               </button>
               {colorMode === 'custom' && (
-                <input type="color" value={customColor} onChange={e => setCustomColor(e.target.value)} style={{ width: 24, height: 24, border: 'none', borderRadius: '50%', cursor: 'pointer', padding: 0, backgroundColor: 'transparent' }} />
+                <input type="color" className="immersive-lyrics-color-swatch" value={customColor} onChange={e => setCustomColor(e.target.value)} />
               )}
             </div>
           </div>
 
           {/* Sombra y Trazo */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={{ fontSize: 14, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <div className="immersive-lyrics-setting-row">
+              <label className="immersive-lyrics-setting-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={shadowEnabled} onChange={e => setShadowEnabled(e.target.checked)} />
                 Resplandor (Sombra)
               </label>
               {shadowEnabled && (
-                <input type="color" value={shadowColor} onChange={e => setShadowColor(e.target.value)} style={{ width: 24, height: 24, border: 'none', borderRadius: '50%', cursor: 'pointer', padding: 0, backgroundColor: 'transparent' }} />
+                <input type="color" className="immersive-lyrics-color-swatch" value={shadowColor} onChange={e => setShadowColor(e.target.value)} />
               )}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={{ fontSize: 14, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <div className="immersive-lyrics-setting-row">
+              <label className="immersive-lyrics-setting-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={strokeEnabled} onChange={e => setStrokeEnabled(e.target.checked)} />
                 Trazo de Texto
               </label>
               {strokeEnabled && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input type="range" min="0.5" max="5" step="0.5" value={strokeWidth} onChange={e => setStrokeWidth(Number(e.target.value))} style={{ width: 60, cursor: 'pointer' }} title="Grosor del trazo" />
-                  <input type="color" value={strokeColor} onChange={e => setStrokeColor(e.target.value)} style={{ width: 24, height: 24, border: 'none', borderRadius: '50%', cursor: 'pointer', padding: 0, backgroundColor: 'transparent' }} />
+                  <input type="color" className="immersive-lyrics-color-swatch" value={strokeColor} onChange={e => setStrokeColor(e.target.value)} />
                 </div>
               )}
             </div>
@@ -388,21 +394,23 @@ export default function ImmersiveLyrics() {
 
           {/* Traducción */}
           <div>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)', display: 'block', marginBottom: 8 }}>Traducción de Letras</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <span className="immersive-lyrics-setting-label" style={{ display: 'block', marginBottom: 8 }}>Traducción de Letras</span>
+            <div className="immersive-lyrics-grid-group" style={{ gridTemplateColumns: '1fr 1fr 1fr', marginBottom: 8 }}>
               {['none', 'both', 'replace'].map(mode => (
-                <button key={mode} onClick={() => setTranslationMode(mode as any)} style={{
-                  padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                  background: translationMode === mode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)',
-                  color: '#fff', fontSize: 13, textTransform: 'capitalize'
-                }}>{mode === 'none' ? 'Apagado' : mode === 'both' ? 'Ambos' : 'Reemplazar'}</button>
+                <button
+                  key={mode}
+                  className={`immersive-lyrics-grid-btn ${translationMode === mode ? 'active' : ''}`}
+                  onClick={() => setTranslationMode(mode as any)}
+                >
+                  {mode === 'none' ? 'Apagado' : mode === 'both' ? 'Ambos' : 'Reemplazar'}
+                </button>
               ))}
             </div>
             {translationMode !== 'none' && (
-              <select 
-                value={translationLang} 
+              <select
+                value={translationLang}
                 onChange={e => setTranslationLang(e.target.value)}
-                style={{ width: '100%', padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', outline: 'none', cursor: 'pointer' }}
+                style={{ width: '100%', padding: '8px', borderRadius: 'var(--radius-md)', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', outline: 'none', cursor: 'pointer' }}
               >
                 <option value="es" style={{ color: '#000' }}>Español</option>
                 <option value="en" style={{ color: '#000' }}>Inglés</option>
@@ -431,7 +439,10 @@ export default function ImmersiveLyrics() {
 
       {/* Sidebar de Secciones */}
       {sections.length > 1 && (
-        <div className="il-sections-sidebar">
+        <div
+          className="il-sections-sidebar"
+          style={{ '--il-active-color': colorMode === 'cover' ? extractedColor : colorMode === 'white' ? '#ffffff' : customColor } as CSSProperties}
+        >
           {sections.map((sec, idx) => {
             const isSecActive = idx === activeSectionIndex;
             const isSecPast = idx < activeSectionIndex;
@@ -449,81 +460,6 @@ export default function ImmersiveLyrics() {
           })}
         </div>
       )}
-
-      <style>{`
-        .il-sections-sidebar {
-          position: absolute;
-          left: 40px;
-          top: 50%;
-          transform: translateY(-50%);
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          z-index: 10;
-        }
-
-        .il-section-item {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          cursor: pointer;
-          opacity: 0.3;
-          transition: all 0.3s ease;
-        }
-
-        .il-section-item:hover {
-          opacity: 0.8;
-        }
-
-        .il-section-item.active {
-          opacity: 1;
-        }
-
-        .il-section-item.past {
-          opacity: 0.6;
-        }
-
-        .il-section-dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background-color: #fff;
-          transition: all 0.3s ease;
-        }
-
-        .il-section-item.active .il-section-dot {
-          width: 8px;
-          height: 24px;
-          border-radius: 4px;
-          background-color: ${colorMode === 'cover' ? extractedColor : colorMode === 'white' ? '#ffffff' : customColor};
-          box-shadow: 0 0 10px ${colorMode === 'cover' ? extractedColor : colorMode === 'white' ? '#ffffff' : customColor};
-        }
-
-        .il-section-label {
-          font-size: 13px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 1.5px;
-          color: #fff;
-          opacity: 0;
-          transform: translateX(-10px);
-          transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-          pointer-events: none;
-        }
-
-        .il-sections-sidebar:hover .il-section-label,
-        .il-section-item.active .il-section-label {
-          opacity: 1;
-          transform: translateX(0);
-        }
-
-        /* En móvil ocultamos la barra lateral para evitar ocupar espacio vital */
-        @media (max-width: 768px) {
-          .il-sections-sidebar {
-            display: none;
-          }
-        }
-      `}</style>
 
       {/* Contenido de letras */}
       <div className="immersive-lyrics-content" ref={containerRef}>
