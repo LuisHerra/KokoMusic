@@ -19,7 +19,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [identifier, setIdentifier] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spotifyLoading, setSpotifyLoading] = useState(false);
@@ -99,7 +98,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           localStorage.setItem('koko_device_id', res.userId);
           localStorage.setItem('koko_display_name', res.profile.display_name || displayName.trim());
           localStorage.setItem('koko_auth_completed', 'true');
-          localStorage.removeItem('koko_guest_mode');
           window.dispatchEvent(new Event('storage'));
           if (onSuccess) onSuccess();
           onClose();
@@ -124,7 +122,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             localStorage.setItem('koko_avatar_url', res.profile.avatar_url);
           }
           localStorage.setItem('koko_auth_completed', 'true');
-          localStorage.removeItem('koko_guest_mode');
           window.dispatchEvent(new Event('storage'));
           if (onSuccess) onSuccess();
           onClose();
@@ -147,7 +144,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       onSuccess: () => {
         setSpotifyLoading(false);
         localStorage.setItem('koko_auth_completed', 'true');
-        localStorage.removeItem('koko_guest_mode');
         window.dispatchEvent(new Event('storage'));
         if (onSuccess) onSuccess();
         onClose();
@@ -183,11 +179,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     }
   };
 
-  const handleGuestContinue = () => {
-    localStorage.setItem('koko_guest_mode', 'true');
-    onClose();
-  };
-
   return (
     <div
       style={{
@@ -206,9 +197,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         perspective: '1200px', // Habilita el espacio 3D
         fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleGuestContinue();
-      }}
     >
       {/* Halo ambiental suave del acento detrás del card */}
       <div
@@ -223,43 +211,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           transform: 'translateZ(-50px)',
         }}
       />
-
-      {/* Botón sutil de cerrar en la esquina superior derecha */}
-      <button
-        type="button"
-        onClick={handleGuestContinue}
-        style={{
-          position: 'absolute',
-          top: 24,
-          right: 24,
-          background: 'rgba(255, 255, 255, 0.08)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          borderRadius: '50%',
-          width: 38,
-          height: 38,
-          color: 'rgba(255, 255, 255, 0.75)',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'all 0.2s ease',
-          zIndex: 10,
-        }}
-        title="Continuar como invitado"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)';
-          e.currentTarget.style.color = '#fff';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-          e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)';
-        }}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
 
       {/* Glassmorphism Card con 3D Tilt interactivo (Idéntico a la referencia) */}
       <div
@@ -402,10 +353,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             </span>
             <input
               type="password"
-              required={isRegister}
+              required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={isRegister ? 'Contraseña (mínimo 6 caracteres)' : 'Password'}
+              placeholder={isRegister ? 'Contraseña (mínimo 6 caracteres)' : 'Contraseña'}
               style={{
                 width: '100%',
                 background: 'transparent',
@@ -423,45 +374,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               onFocus={(e) => { e.currentTarget.style.borderBottomColor = activeAccent; }}
               onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'rgba(255, 255, 255, 0.4)'; }}
             />
-          </div>
-
-          {/* Fila Remember me & Forgot Password */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: 11,
-              color: 'rgba(255, 255, 255, 0.7)',
-              margin: '2px 0 4px',
-            }}
-          >
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                style={{ accentColor: activeAccent, width: 14, height: 14, cursor: 'pointer' }}
-              />
-              <span>Remember me</span>
-            </label>
-
-            <button
-              type="button"
-              onClick={() => setIsRegister(!isRegister)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'rgba(255, 255, 255, 0.7)',
-                fontSize: 11,
-                fontStyle: 'italic',
-                cursor: 'pointer',
-                padding: 0,
-                fontFamily: 'inherit',
-              }}
-            >
-              {isRegister ? '¿Ya tienes cuenta?' : 'Forgot Password?'}
-            </button>
           </div>
 
           {error && (
@@ -611,7 +523,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           </button>
         </div>
 
-        {/* Footer: Alternar entre Iniciar Sesión / Registro y Continuar como invitado */}
+        {/* Footer: Alternar entre Iniciar Sesión / Registro */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, transform: 'translateZ(15px)' }}>
           <button
             type="button"
@@ -628,25 +540,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             {isRegister ? (
               <span>¿Ya tienes cuenta? <b style={{ color: activeAccent }}>Inicia sesión</b></span>
             ) : (
-              <span>¿No tienes cuenta? <b style={{ color: activeAccent }}>Regístrate gratis</b></span>
+              <span>¿No tienes cuenta? <b style={{ color: activeAccent }}>Regístrate</b></span>
             )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleGuestContinue}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255, 255, 255, 0.45)',
-              cursor: 'pointer',
-              fontSize: 11,
-              marginTop: 2,
-              textDecoration: 'underline',
-              fontFamily: 'inherit',
-            }}
-          >
-            Continuar como invitado sin iniciar sesión
           </button>
         </div>
       </div>

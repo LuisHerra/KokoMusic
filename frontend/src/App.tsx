@@ -18,6 +18,7 @@ import Following from './pages/Following';
 import Friends from './pages/Friends';
 import FriendProfile from './pages/FriendProfile';
 import Profile from './pages/Profile';
+import ArtistStudio from './pages/ArtistStudio';
 import DjMode from './pages/DjMode';
 import KaraokeStudioPage from './pages/KaraokeStudio';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
@@ -241,11 +242,10 @@ function AppShell() {
   const joinJamCode = searchParams.get('join_jam');
   const [hasAutoJoined, setHasAutoJoined] = useState(false);
 
-  // Primera vez: modal de login inicial si el usuario nunca se ha autenticado ni es invitado
+  // App privada, sin modo invitado: se exige autenticación real siempre que
+  // no haya una sesión completada.
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(() => {
-    const hasAuth = localStorage.getItem('koko_auth_completed');
-    const isGuest = localStorage.getItem('koko_guest_mode');
-    return !hasAuth && !isGuest;
+    return !localStorage.getItem('koko_auth_completed');
   });
 
   useEffect(() => {
@@ -308,6 +308,13 @@ function AppShell() {
   };
 
   const isRightPanelOpen = isQueueOpen || isVideoOpen;
+
+  // App privada, sin modo invitado: mientras no haya sesión completada, el
+  // modal de auth es lo ÚNICO que se renderiza — antes era un overlay sobre
+  // una app ya completamente montada y funcional por detrás.
+  if (isAuthModalOpen) {
+    return <AuthModal isOpen onClose={() => {}} onSuccess={() => setIsAuthModalOpen(false)} />;
+  }
 
   return (
     <div className={`app-shell ${isRightPanelOpen ? 'with-right-panel' : ''} ${isLyricsOpen ? 'lyrics-mode' : ''} ${currentTrack ? 'has-track' : ''}`}>
@@ -525,6 +532,7 @@ function AppShell() {
             <Route path="/friends" element={<Friends />} />
             <Route path="/friends/profile/:userId" element={<FriendProfile />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/artist-studio" element={<ArtistStudio />} />
             <Route path="/events" element={<Events />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/dj" element={<DjMode />} />
@@ -546,7 +554,6 @@ function AppShell() {
       />
 
       <ThemeModal />
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 }

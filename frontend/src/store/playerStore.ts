@@ -80,6 +80,14 @@ interface PlayerState {
   setDjFx: (partial: Partial<PlayerState['djFx']>) => void;
   resetDjFx: () => void;
 
+  // true mientras la página de Modo DJ está montada — fuera de ahí, las
+  // transiciones guardadas NO se aplican solas salvo que el usuario lo
+  // permita explícitamente (ver autoApplySavedTransitions).
+  isDjModeActive: boolean;
+  setIsDjModeActive: (active: boolean) => void;
+  autoApplySavedTransitions: boolean;
+  setAutoApplySavedTransitions: (enabled: boolean) => void;
+
   // Sinfonía Sync
   isSinfoniaSyncEnabled: boolean;
   setSinfoniaSyncEnabled: (enabled: boolean) => void;
@@ -289,6 +297,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   transitions: savedTransitions,
   cuesByTrack: savedCues,
   djFx: { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 },
+  isDjModeActive: false,
+  autoApplySavedTransitions: localStorage.getItem('koko_algo_auto_apply_dj_transitions') === 'true',
 
   isEmbedMode: false,
   embedYoutubeId: null,
@@ -675,6 +685,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setDjFx: (partial) => set((state) => ({ djFx: { ...state.djFx, ...partial } })),
   resetDjFx: () => set({ djFx: { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 } }),
+
+  setIsDjModeActive: (active) => set({ isDjModeActive: active }),
+  setAutoApplySavedTransitions: (enabled) => {
+    localStorage.setItem('koko_algo_auto_apply_dj_transitions', String(enabled));
+    set({ autoApplySavedTransitions: enabled });
+  },
 
   isSinfoniaSyncEnabled: localStorage.getItem('koko_sinfonia_sync') !== 'false',
   setSinfoniaSyncEnabled: (enabled) => {

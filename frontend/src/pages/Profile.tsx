@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, syncSpotifyTaste, type KokoProfile } from '../lib/api';
+import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, syncSpotifyTaste, becomeArtist, type KokoProfile } from '../lib/api';
 import { startSpotifyAuth, isSpotifyConnected, disconnectSpotify } from '../lib/spotifyAuth';
 import { usePlayerStore } from '../store/playerStore';
 
@@ -164,8 +165,9 @@ function Section({ id, title, icon, children }: { id?: string; title: string; ic
 }
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isGamerMode, toggleGamerMode } = usePlayerStore();
+  const { isGamerMode, toggleGamerMode, autoApplySavedTransitions, setAutoApplySavedTransitions } = usePlayerStore();
   const rawId = localStorage.getItem('koko_device_id') ?? '';
   const isUUID = UUID_RE.test(rawId);
 
@@ -200,6 +202,9 @@ export default function ProfilePage() {
 
   const [savedId, setSavedId] = useState(rawId);
   const [copiedId, setCopiedId] = useState(false);
+
+  // Subida rápida de avatar (icono "+" directo sobre la foto, sin entrar en modo edición)
+  const [quickAvatarUploading, setQuickAvatarUploading] = useState(false);
 
   // Profile editing
   const [editing, setEditing] = useState(false);
@@ -237,11 +242,47 @@ export default function ProfilePage() {
   const [deleteAceptarText, setDeleteAceptarText] = useState('');
   const [deleteError, setDeleteError] = useState('');
 
+  // Convertirse en artista (el panel completo vive en /artist-studio)
+  const [becomingArtist, setBecomingArtist] = useState(false);
+
   const { data: profileData, refetch } = useQuery({
     queryKey: ['my-profile', savedId],
     queryFn: () => getMyProfile(savedId),
     enabled: !!savedId,
   });
+
+  const handleQuickAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite volver a elegir el mismo archivo más tarde
+    if (!file || !savedId) return;
+    setQuickAvatarUploading(true);
+    try {
+      const { avatarUrl: uploadedUrl } = await uploadAvatar(file);
+      await updateProfile(savedId, { avatar_url: uploadedUrl });
+      setAvatarUrl(uploadedUrl);
+      await refetch();
+    } catch (err: any) {
+      alert(err.message || 'Error al subir la imagen');
+    } finally {
+      setQuickAvatarUploading(false);
+    }
+  };
+
+  const handleBecomeArtist = async () => {
+    if (!savedId) return;
+    setBecomingArtist(true);
+    try {
+      await becomeArtist(savedId);
+      localStorage.setItem('koko_is_artist', 'true');
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ['my-profile', savedId] });
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {
+      console.error('Error al convertirse en artista:', e);
+    } finally {
+      setBecomingArtist(false);
+    }
+  };
 
   const profile: KokoProfile | undefined = profileData?.profile;
 
@@ -474,7 +515,7 @@ export default function ProfilePage() {
   };
 
   const handleSignOut = () => {
-    if (!window.confirm('¿Seguro que deseas cerrar sesión? Volverás al modo invitado.')) return;
+    if (!window.confirm('¿Seguro que deseas cerrar sesión? Tendrás que volver a iniciar sesión para usar la app.')) return;
     localStorage.removeItem('koko_auth_completed');
     localStorage.removeItem('koko_device_id');
     localStorage.removeItem('koko_display_name');
@@ -482,7 +523,6 @@ export default function ProfilePage() {
     localStorage.removeItem('koko_spotify_token');
     localStorage.removeItem('koko_spotify_refresh');
     localStorage.removeItem('koko_spotify_connected');
-    localStorage.setItem('koko_guest_mode', 'true');
     window.dispatchEvent(new Event('storage'));
     window.location.reload();
   };
@@ -514,7 +554,43 @@ export default function ProfilePage() {
         boxSizing: 'border-box',
         width: '100%',
       }}>
-        <Avatar src={profile?.avatar_url} name={cleanName(profile?.display_name || profile?.username || 'Kokoer')} size={80} />
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <Avatar src={profile?.avatar_url} name={cleanName(profile?.display_name || profile?.username || 'Kokoer')} size={80} />
+          <label
+            title="Cambiar foto de perfil"
+            style={{
+              position: 'absolute',
+              bottom: -2,
+              right: -2,
+              width: 30,
+              height: 30,
+              borderRadius: '50%',
+              background: quickAvatarUploading ? 'rgba(255,255,255,0.3)' : 'var(--accent)',
+              color: '#000',
+              border: '3px solid var(--bg-elevated)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: quickAvatarUploading ? 'wait' : 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            }}
+          >
+            {quickAvatarUploading ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ animation: 'spin 0.8s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              disabled={quickAvatarUploading}
+              onChange={handleQuickAvatarChange}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
 
         <div style={{ flex: 1, minWidth: 220, width: '100%' }}>
           {editing ? (
@@ -1167,6 +1243,13 @@ export default function ProfilePage() {
                 localStorage.setItem('koko_algo_avoid_repeat_recs', String(val));
               }}
             />
+
+            <ToggleRow
+              label="Aplicar Transiciones DJ Guardadas Fuera de Modo DJ"
+              description="Si dos canciones que ya mezclaste en Modo DJ se reproducen seguidas en cualquier cola normal, usa esa misma transición guardada en vez del cambio de pista habitual. Dentro de Modo DJ siempre se aplican, esto es solo para el resto de la app."
+              checked={autoApplySavedTransitions}
+              onChange={setAutoApplySavedTransitions}
+            />
           </Section>
         )}
 
@@ -1377,8 +1460,49 @@ export default function ProfilePage() {
                 refetch();
               }}
             />
+
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 0', gap: 12, flexWrap: 'wrap',
+            }}>
+              <div style={{ paddingRight: 8, flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Modo Artista</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                  {profile?.is_artist
+                    ? 'Ya eres artista — sube canciones y gestiona tu catálogo en tu panel.'
+                    : 'Sube tus propias canciones al catálogo — podrán sonar en recomendaciones de otros usuarios.'}
+                </div>
+              </div>
+              {profile?.is_artist ? (
+                <button
+                  onClick={() => navigate('/artist-studio')}
+                  style={{
+                    background: 'var(--accent)', color: '#000', border: 'none',
+                    borderRadius: 'var(--radius-full)', padding: '8px 16px',
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Ir a tu panel →
+                </button>
+              ) : (
+                <button
+                  onClick={handleBecomeArtist}
+                  disabled={becomingArtist || !isUUID}
+                  title={!isUUID ? 'Necesitas una cuenta creada (no invitado) para ser artista' : undefined}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff',
+                    borderRadius: 'var(--radius-full)', padding: '8px 16px', fontSize: 12, fontWeight: 700,
+                    cursor: becomingArtist || !isUUID ? 'not-allowed' : 'pointer',
+                    opacity: becomingArtist || !isUUID ? 0.5 : 1, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {becomingArtist ? 'Activando…' : 'Convertirme en Artista'}
+                </button>
+              )}
+            </div>
           </Section>
         )}
+
 
         {/* SECTION: Zona de Peligro (Always accessible at bottom of stack) */}
         {(activeFilter === 'all' || activeFilter === 'profile') && (

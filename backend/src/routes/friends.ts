@@ -12,6 +12,8 @@ import path from 'path';
 import fs from 'fs';
 import { getUserStatsFromCloud } from '../services/historyService';
 import { getTrackById } from '../services/metadataService';
+import { hashStringToInteger } from '../services/artistService';
+import { getArtistFromDB, upsertArtist } from '../services/supabaseService';
 
 const router = Router();
 
@@ -42,6 +44,21 @@ function requireSupabase(res: any): boolean {
   return true;
 }
 
+/** Verifica una contraseña contra Supabase Auth para un koko_profiles.id dado. */
+async function verifyPassword(userId: string, password: string): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { data: userData } = await supabase.auth.admin.getUserById(userId);
+    const email = userData?.user?.email;
+    if (!email) return false; // sin email real no hay forma de verificar — nunca dejar pasar
+    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+    return !signInErr;
+  } catch (e) {
+    console.warn('[Login] Error verificando contraseña:', e);
+    return false;
+  }
+}
+
 // ── GET /api/friends/accounts ──────────────────────────────────────────────────
 // Deprecated for security & account isolation (prevents accessing/switching to other accounts)
 router.get('/accounts', async (req, res) => {
@@ -57,10 +74,34 @@ router.post('/account/create', async (req, res) => {
     return err(res, 'El nombre visible o nombre de usuario es obligatorio', 400);
   }
 
+  // App privada, sin modo invitado: email y contraseña reales son
+  // obligatorios (antes se fabricaba un email falso y una contraseña
+  // aleatoria que el usuario nunca llegaba a conocer).
+  const userEmail = (email || '').trim().toLowerCase();
+  if (!userEmail.includes('@')) {
+    return err(res, 'Necesitas un email válido para registrarte', 400);
+  }
+  if (!password || password.length < 6) {
+    return err(res, 'La contraseña debe tener al menos 6 caracteres', 400);
+  }
+  const userPassword = password;
+
   const cleanUsername = (username || nameToUse).toLowerCase().replace(/[^a-z0-9_]/g, '');
 
   if (supabase) {
     try {
+      // App privada: solo se puede registrar un email autorizado previamente
+      const { data: allowed } = await supabase
+        .schema('kokomusic')
+        .from('access_allowlist')
+        .select('email')
+        .eq('email', userEmail)
+        .maybeSingle();
+
+      if (!allowed) {
+        return err(res, 'Este email no está autorizado para registrarse. Contacta al administrador.', 403);
+      }
+
       // Check if username is already taken
       if (cleanUsername.length >= 3) {
         const { data: existing } = await supabase
@@ -74,12 +115,6 @@ router.post('/account/create', async (req, res) => {
           return err(res, 'El nombre de usuario ya está en uso. Por favor elige otro.', 400);
         }
       }
-
-      const userEmail = email && email.includes('@')
-        ? email.trim()
-        : `${cleanUsername}_${Date.now()}@kokomusic.app`;
-
-      const userPassword = password && password.length >= 6 ? password : uuidv4();
 
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: userEmail,
@@ -161,13 +196,19 @@ router.post('/account/login', async (req, res) => {
   if (!targetIdOrUser) {
     return err(res, 'Ingresa tu nombre de usuario, email o ID de cuenta', 400);
   }
+  // App privada: la contraseña es obligatoria en todos los caminos de login
+  // (antes, faltar la contraseña simplemente saltaba la verificación por
+  // completo en los paths de username/ID/nombre difuso).
+  if (!password) {
+    return err(res, 'La contraseña es obligatoria', 401);
+  }
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetIdOrUser);
 
   if (supabase) {
     try {
-      // 1. Try Supabase auth if password is provided and identifier has '@'
-      if (password && targetIdOrUser.includes('@')) {
+      // 1. Try Supabase auth if identifier has '@'
+      if (targetIdOrUser.includes('@')) {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: targetIdOrUser,
           password: password,
@@ -211,22 +252,8 @@ router.post('/account/login', async (req, res) => {
       const { data: profile } = await query.maybeSingle();
 
       if (profile) {
-        if (password) {
-          try {
-            const { data: userData } = await supabase.auth.admin.getUserById(profile.id);
-            if (userData?.user?.email) {
-              const { error: signInErr } = await supabase.auth.signInWithPassword({
-                email: userData.user.email,
-                password,
-              });
-              if (signInErr) {
-                return err(res, 'Contraseña incorrecta', 401);
-              }
-            }
-          } catch (authValErr) {
-            console.warn('[Login] Advertencia validando password:', authValErr);
-          }
-        }
+        const ok = await verifyPassword(profile.id, password);
+        if (!ok) return err(res, 'Contraseña incorrecta', 401);
 
         return res.json({
           success: true,
@@ -244,6 +271,9 @@ router.post('/account/login', async (req, res) => {
         .limit(1);
 
       if (fuzzyProfiles && fuzzyProfiles.length > 0) {
+        const ok = await verifyPassword(fuzzyProfiles[0].id, password);
+        if (!ok) return err(res, 'Contraseña incorrecta', 401);
+
         return res.json({
           success: true,
           userId: fuzzyProfiles[0].id,
@@ -304,7 +334,7 @@ router.get('/profile/:userId', async (req, res) => {
     const { data } = await supabase!
       .schema('kokomusic')
       .from('koko_profiles')
-      .select('id, username, display_name, avatar_url, bio, is_public, created_at')
+      .select('id, username, display_name, avatar_url, bio, is_public, created_at, is_artist, artist_id')
       .eq('id', userId)
       .single();
     profile = data;
@@ -811,7 +841,7 @@ router.post('/profile/avatar', upload.single('avatar'), (req, res) => {
 // Update own profile (display_name, avatar_url, bio)
 router.patch('/profile', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const { userId, display_name, avatar_url, bio, username, is_public } = req.body;
+  const { userId, display_name, avatar_url, bio, username, is_public, become_artist } = req.body;
   if (!userId) return err(res, 'userId requerido', 400);
 
   const update: any = { updated_at: new Date().toISOString() };
@@ -830,6 +860,49 @@ router.patch('/profile', async (req, res) => {
     }
   } catch (e) {
     // Not an auth user
+  }
+
+  if (become_artist) {
+    if (!isAuthUser) {
+      return err(res, 'Necesitas una cuenta creada (no invitado) para ser artista', 400);
+    }
+    const { data: existing } = await supabase!
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .select('artist_id, display_name, avatar_url, username')
+      .eq('id', userId)
+      .maybeSingle();
+
+    let artistId = (existing as any)?.artist_id as number | undefined;
+    if (!artistId) {
+      // Hash namespaced por userId — con reintento de colisión (contra artists_meta
+      // real y contra otro artist_id de koko_profiles ya en uso), muy improbable
+      // a esta escala pero barato de cubrir.
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        const candidate = hashStringToInteger(`koko-artist:${userId}${attempt > 1 ? `:${attempt}` : ''}`);
+        const [existingArtist, existingProfile] = await Promise.all([
+          getArtistFromDB(candidate),
+          supabase!.schema('kokomusic').from('koko_profiles').select('id').eq('artist_id', candidate).maybeSingle(),
+        ]);
+        if (!existingArtist && !existingProfile.data) {
+          artistId = candidate;
+          break;
+        }
+      }
+      if (!artistId) return err(res, 'No se pudo generar un artist_id único, inténtalo de nuevo', 500);
+    }
+
+    update.is_artist = true;
+    update.artist_id = artistId;
+
+    await upsertArtist({
+      itunes_artist_id: artistId,
+      name: display_name || (existing as any)?.display_name || (existing as any)?.username || 'Artista Koko',
+      genre: null,
+      bio: bio ?? null,
+      image_url: avatar_url ?? (existing as any)?.avatar_url ?? null,
+      updated_at: new Date().toISOString(),
+    });
   }
 
   if (isAuthUser) {

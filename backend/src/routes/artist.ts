@@ -1,4 +1,8 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import fs from 'fs';
 import {
   getFollowStatus,
   followArtist,
@@ -8,9 +12,36 @@ import {
   markNotificationsRead,
 } from '../services/followService';
 import { cache } from '../services/cacheService';
-import { getArtistInfo } from '../services/artistService';
+import { getArtistInfo, hashStringToInteger } from '../services/artistService';
+import { supabase, upsertTracks } from '../services/supabaseService';
+import { compressAudio } from '../services/audioCompressionService';
+import { uploadToCDN, deleteFromCDN } from '../services/cdnService';
 
 const router = Router();
+
+const uploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.resolve('data/uploads');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `artist_${uuidv4()}${path.extname(file.originalname)}`);
+  },
+});
+const uploadTrack = multer({ storage: uploadStorage });
+
+/** Devuelve el artist_id ya asignado a este usuario, o null si no es artista. */
+async function getUserArtistId(userId: string): Promise<number | null> {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .schema('kokomusic')
+    .from('koko_profiles')
+    .select('artist_id')
+    .eq('id', userId)
+    .maybeSingle();
+  return (data as any)?.artist_id ?? null;
+}
 
 // ── GET /api/artist/notifications  (no :id, must come before /:id) ────────────
 router.get('/notifications', async (req: Request, res: Response) => {
@@ -181,6 +212,119 @@ router.get('/avatar', async (req: Request, res: Response) => {
     return res.json({ image: null });
   } catch (err) {
     return res.json({ image: null });
+  }
+});
+
+// ── POST /api/artist/tracks/upload — sube una canción propia al catálogo ──────
+router.post('/tracks/upload', uploadTrack.fields([{ name: 'audio', maxCount: 1 }, { name: 'cover', maxCount: 1 }]), async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] || req.body.userId) as string;
+  if (!userId) return res.status(400).json({ error: 'x-user-id header requerido' });
+
+  const artistId = await getUserArtistId(userId);
+  if (!artistId) return res.status(403).json({ error: 'Solo los artistas pueden subir canciones' });
+
+  const files = req.files as { audio?: Express.Multer.File[]; cover?: Express.Multer.File[] } | undefined;
+  const audioFile = files?.audio?.[0];
+  if (!audioFile) return res.status(400).json({ error: 'Falta el archivo de audio' });
+
+  const { title, album, genre, durationMs } = req.body as { title?: string; album?: string; genre?: string; durationMs?: string };
+  if (!title?.trim()) {
+    fs.unlink(audioFile.path, () => {});
+    return res.status(400).json({ error: 'El título es obligatorio' });
+  }
+
+  try {
+    const { data: profile } = await supabase!
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .select('avatar_url, display_name, username')
+      .eq('id', userId)
+      .maybeSingle();
+    const artistName: string = (profile as any)?.display_name || (profile as any)?.username || 'Artista Koko';
+
+    const compressedPath = await compressAudio(audioFile.path);
+    const trackId = hashStringToInteger(`koko-track:${userId}:${title}:${Date.now()}`);
+
+    const cdnUrl = await uploadToCDN(String(trackId), compressedPath, true);
+    if (!cdnUrl) {
+      return res.status(413).json({ error: 'El archivo supera el límite de tamaño permitido o el almacenamiento está lleno' });
+    }
+
+    const coverFile = files?.cover?.[0];
+    const coverUrl: string | null = coverFile ? `/uploads/${coverFile.filename}` : ((profile as any)?.avatar_url ?? null);
+
+    await upsertTracks([{
+      itunes_id: trackId,
+      title: title.trim(),
+      artist: artistName,
+      artist_id: artistId,
+      album: album?.trim() || null,
+      cover_url: coverUrl,
+      duration_ms: durationMs ? Number(durationMs) : null,
+      genre: genre?.trim() || 'Otros',
+      release_date: new Date().toISOString().slice(0, 10),
+    }]);
+
+    return res.json({ success: true, itunesId: trackId });
+  } catch (err) {
+    console.error('[Artist] Error subiendo track:', err);
+    return res.status(500).json({ error: 'Error al subir la canción' });
+  }
+});
+
+// ── GET /api/artist/tracks/mine — canciones subidas por el artista logueado ───
+router.get('/tracks/mine', async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] || req.query.userId) as string;
+  if (!userId) return res.status(400).json({ error: 'x-user-id header requerido' });
+
+  const artistId = await getUserArtistId(userId);
+  if (!artistId) return res.json({ tracks: [] });
+
+  try {
+    const { data, error } = await supabase!
+      .schema('kokomusic')
+      .from('tracks_meta')
+      .select('itunes_id, title, artist, album, cover_url, genre, duration_ms, release_date')
+      .eq('artist_id', artistId)
+      .order('release_date', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ tracks: data ?? [] });
+  } catch (err) {
+    console.error('[Artist] Error listando tracks propios:', err);
+    return res.status(500).json({ error: 'Error al listar canciones' });
+  }
+});
+
+// ── DELETE /api/artist/tracks/:itunesId ────────────────────────────────────────
+router.delete('/tracks/:itunesId', async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] || req.query.userId) as string;
+  if (!userId) return res.status(400).json({ error: 'x-user-id header requerido' });
+
+  const itunesId = Number(req.params.itunesId);
+  if (isNaN(itunesId)) return res.status(400).json({ error: 'itunesId inválido' });
+
+  const artistId = await getUserArtistId(userId);
+  if (!artistId) return res.status(403).json({ error: 'No eres artista' });
+
+  try {
+    const { data: track } = await supabase!
+      .schema('kokomusic')
+      .from('tracks_meta')
+      .select('artist_id')
+      .eq('itunes_id', itunesId)
+      .maybeSingle();
+
+    if (!track) return res.status(404).json({ error: 'Canción no encontrada' });
+    if ((track as any).artist_id !== artistId) return res.status(403).json({ error: 'Esta canción no es tuya' });
+
+    await supabase!.schema('kokomusic').from('tracks_meta').delete().eq('itunes_id', itunesId);
+    await deleteFromCDN(String(itunesId));
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[Artist] Error borrando track:', err);
+    return res.status(500).json({ error: 'Error al borrar la canción' });
   }
 });
 

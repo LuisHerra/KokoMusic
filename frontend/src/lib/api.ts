@@ -32,9 +32,9 @@ export function formatYoutubeEmbedUrl(youtubeId: string, options: { autoplay?: b
 }
 
 
-if (typeof window !== 'undefined' && !localStorage.getItem('koko_device_id')) {
-  localStorage.setItem('koko_device_id', crypto.randomUUID());
-}
+// App privada, sin modo invitado: koko_device_id ya NO se genera
+// automáticamente aquí. Solo se asigna tras un login/registro real
+// (AuthModal.tsx lo guarda al recibir un userId válido del backend).
 
 // Fallback síncrono mientras el resolver aún no ha completado
 export let BASE = getCachedBaseUrl()
@@ -665,6 +665,19 @@ export interface KokoProfile {
   is_public?: boolean;
   created_at?: string;
   email?: string;
+  is_artist?: boolean;
+  artist_id?: number;
+}
+
+export interface ArtistTrack {
+  itunes_id: number;
+  title: string;
+  artist: string;
+  album: string | null;
+  cover_url: string | null;
+  genre: string | null;
+  duration_ms: number | null;
+  release_date: string | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -816,6 +829,34 @@ export const uploadAvatar = async (file: File): Promise<{ avatarUrl: string }> =
   }
   return res.json();
 };
+
+// ── Artista ────────────────────────────────────────────────────────────────────
+
+export const becomeArtist = (userId: string) =>
+  apiFetch<{ profile: KokoProfile }>('/friends/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ userId, become_artist: true }),
+  });
+
+export const getMyArtistTracks = () =>
+  apiFetch<{ tracks: ArtistTrack[] }>('/artist/tracks/mine');
+
+export const uploadArtistTrack = async (formData: FormData): Promise<{ success: boolean; itunesId: number }> => {
+  const userId = localStorage.getItem('koko_device_id') || '';
+  const res = await fetch(`${BASE}/artist/tracks/upload`, {
+    method: 'POST',
+    headers: userId ? { 'x-user-id': userId } : undefined,
+    body: formData,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(error.error ?? 'Error al subir la canción');
+  }
+  return res.json();
+};
+
+export const deleteArtistTrack = (itunesId: number) =>
+  apiFetch<{ success: boolean }>(`/artist/tracks/${itunesId}`, { method: 'DELETE' });
 
 export const inviteFriendsToCollab = (code: string, senderId: string, senderName: string, friendIds: string[]) =>
   apiFetch<{ success: boolean }>(`/collab/playlists/${code}/invite`, {

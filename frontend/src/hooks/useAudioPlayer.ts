@@ -191,6 +191,15 @@ export function setDjFxParams(
   audio: HTMLAudioElement,
   { reverbAmount, filterCutoff }: { reverbAmount: number; filterCutoff: number }
 ) {
+  const isNeutral = reverbAmount <= 0 && filterCutoff >= 20000;
+  // Si ya está en bypass y la cadena ni existe, no toques nada — evita crear
+  // el MediaElementAudioSourceNode (y por tanto exigir crossOrigin) para
+  // usuarios que nunca tocan un slider de FX, igual que hace applyEqBands.
+  if (isNeutral && !chains.has(audio)) return;
+  // Igual que el EQ: hay que forzar crossOrigin (y recargar la pista activa)
+  // ANTES de crear la cadena — si no, el audio queda "contaminado" (sin CORS)
+  // y Web Audio silencia TODA la salida de ese nodo, sin avisar.
+  if (!isNeutral) armCrossOriginForEq();
   const chain = getOrCreateChain(audio);
   if (!chain) return; // bypass en mobile, como el EQ
   const amount = Math.max(0, Math.min(1, reverbAmount));
@@ -538,7 +547,14 @@ export function useAudioPlayer() {
         }
 
         if (currentT && nextT) {
-          const rule = state.transitions[`${currentT.id}-${nextT.id}`];
+          // Las transiciones guardadas solo se aplican solas dentro de Modo DJ
+          // — o fuera de él si el usuario lo ha permitido explícitamente en
+          // Ajustes (autoApplySavedTransitions, off por defecto). Sin esto,
+          // cualquier pareja de tracks usada alguna vez en una mezcla DJ
+          // haría crossfade "mágico" también en reproducción normal.
+          const rule = (state.isDjModeActive || state.autoApplySavedTransitions)
+            ? state.transitions[`${currentT.id}-${nextT.id}`]
+            : undefined;
 
           // Precarga real del buffer de audio para transiciones DJ: sin esto, el
           // elemento <audio> del track entrante no empieza a cargar bytes hasta

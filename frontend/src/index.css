@@ -369,6 +369,20 @@ html, body, #root {
   padding: 0 24px 24px;
 }
 
+/* ── Panel de Artista ──────────────────────────────────────────────────────── */
+.artist-studio-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .artist-studio-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Search Bar ─────────────────────────────────────────────────────────────── */
 .search-bar {
   flex: 1;

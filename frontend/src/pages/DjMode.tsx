@@ -92,6 +92,7 @@ export default function DjMode() {
     djFx,
     setDjFx,
     resetDjFx,
+    setIsDjModeActive,
   } = usePlayerStore();
 
   const defaultDeckB = queue.length > 0 && queueIndex < queue.length - 1 ? queue[queueIndex + 1] : null;
@@ -190,11 +191,15 @@ export default function DjMode() {
     const audio = getActiveAudio();
     setDjFxParams(audio, { reverbAmount: djFx.reverbAmount, filterCutoff: djFx.filterCutoff });
     setAudioPlaybackRate(djFx.slowedRate);
-  }, [djFx]);
+  }, [djFx, currentTrack?.id]);
 
   useEffect(() => {
-    return () => { resetDjFx(); };
-  }, [resetDjFx]);
+    setIsDjModeActive(true);
+    return () => {
+      resetDjFx();
+      setIsDjModeActive(false);
+    };
+  }, [resetDjFx, setIsDjModeActive]);
 
   const stopPreview = () => {
     previewRef.current?.stop();
