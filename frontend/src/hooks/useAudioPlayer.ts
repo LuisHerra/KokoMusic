@@ -107,6 +107,14 @@ interface AudioChain {
   source: MediaElementAudioSourceNode;
   filters: BiquadFilterNode[];
   gain: GainNode;
+  // Modo DJ — efectos en vivo. Permanecen en bypass (djDry=1, djWet=0,
+  // djFilter=20000Hz) salvo que DjMode.tsx mueva un slider, así el resto
+  // de la app (Player.tsx, MobileFullPlayer.tsx) no nota su existencia.
+  djFilter: BiquadFilterNode;
+  djDry: GainNode;
+  djWet: GainNode;
+  djDelay: DelayNode;
+  djFeedback: GainNode;
 }
 
 const chains = new Map<HTMLAudioElement, AudioChain>();
@@ -135,17 +143,61 @@ function getOrCreateChain(audio: HTMLAudioElement): AudioChain | null {
   const gain = ctx.createGain();
   gain.gain.value = 1;
 
-  // Chain: source → filter[0] → ... → filter[n] → gain → destination
+  // Nodos de efectos DJ — creados siempre (barato) pero en bypass hasta que
+  // DjMode.tsx los mueva vía setDjFxParams().
+  const djFilter = ctx.createBiquadFilter();
+  djFilter.type = 'lowpass';
+  djFilter.frequency.value = 20000; // por encima del rango audible = sin efecto
+  const djDry = ctx.createGain();
+  djDry.gain.value = 1;
+  const djWet = ctx.createGain();
+  djWet.gain.value = 0;
+  const djDelay = ctx.createDelay(2);
+  djDelay.delayTime.value = 0.06;
+  const djFeedback = ctx.createGain();
+  djFeedback.gain.value = 0.15;
+
+  // Chain: source → filter[0] → ... → filter[n] → djFilter → { seca: djDry, mojada: djDelay⇄djFeedback → djWet } → gain → destination
   source.connect(filters[0]);
   for (let i = 0; i < filters.length - 1; i++) {
     filters[i].connect(filters[i + 1]);
   }
-  filters[filters.length - 1].connect(gain);
+  filters[filters.length - 1].connect(djFilter);
+
+  djFilter.connect(djDry);
+  djDry.connect(gain);
+
+  djFilter.connect(djDelay);
+  djDelay.connect(djFeedback);
+  djFeedback.connect(djDelay); // bucle de feedback = eco/reverb barato
+  djDelay.connect(djWet);
+  djWet.connect(gain);
+
   gain.connect(ctx.destination);
 
-  const chain = { source, filters, gain };
+  const chain = { source, filters, gain, djFilter, djDry, djWet, djDelay, djFeedback };
   chains.set(audio, chain);
   return chain;
+}
+
+/**
+ * Ajusta los efectos en vivo de Modo DJ sobre este elemento de audio.
+ * `reverbAmount` en [0, 1]: 0 = sin efecto (dry puro). `filterCutoff` en Hz
+ * (20000 = sin efecto, valores bajos = barrido de filtro paso-bajo clásico).
+ * Fuerza la creación de la cadena de Web Audio si aún no existía (igual
+ * coste/recarga que activar el EQ por primera vez, ver armCrossOriginForEq).
+ */
+export function setDjFxParams(
+  audio: HTMLAudioElement,
+  { reverbAmount, filterCutoff }: { reverbAmount: number; filterCutoff: number }
+) {
+  const chain = getOrCreateChain(audio);
+  if (!chain) return; // bypass en mobile, como el EQ
+  const amount = Math.max(0, Math.min(1, reverbAmount));
+  chain.djWet.gain.value = amount * 0.6;
+  chain.djFeedback.gain.value = 0.15 + amount * 0.35;
+  chain.djDelay.delayTime.value = 0.06 + amount * 0.25;
+  chain.djFilter.frequency.value = Math.max(200, Math.min(20000, filterCutoff));
 }
 
 /**
@@ -245,9 +297,20 @@ export function getAudioElements() {
   return { audio1, audio2, activeIdx };
 }
 
+/**
+ * Ajusta la velocidad de reproducción. Cuando `rate` se aleja de 1, desactiva
+ * `preservesPitch` para que el tono baje/suba con la velocidad (el clásico
+ * efecto "vinilo ralentizado" que se busca en Modo DJ) en vez del rate con
+ * corrección de tono que hacen los navegadores por defecto.
+ */
 export function setAudioPlaybackRate(rate: number) {
-  audio1.playbackRate = rate;
-  audio2.playbackRate = rate;
+  const preserve = Math.abs(rate - 1) < 0.01;
+  for (const a of [audio1, audio2]) {
+    a.playbackRate = rate;
+    a.preservesPitch = preserve;
+    (a as any).mozPreservesPitch = preserve;
+    (a as any).webkitPreservesPitch = preserve;
+  }
 }
 
 let audioElementsUnlocked = false;
@@ -439,6 +502,17 @@ export function useAudioPlayer() {
 
         const state = usePlayerStore.getState();
         const currentT = state.currentTrack;
+
+        // DJ loop: si el track actual tiene un loop marcado, saltar al inicio
+        // del loop en cuanto se alcanza su final — antes que cualquier otra
+        // lógica de esta tanda para no perder el punto de corte.
+        if (currentT) {
+          const cues = state.cuesByTrack[currentT.id];
+          if (cues && cues.loopStart !== null && cues.loopEnd !== null && audio.currentTime >= cues.loopEnd) {
+            seekAudio(cues.loopStart);
+            return;
+          }
+        }
         const queue = state.queue;
         const queueIndex = state.queueIndex;
         let nextT = null;

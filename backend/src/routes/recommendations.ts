@@ -32,6 +32,7 @@ import {
   type FeedbackEvent,
 } from '../services/recommendationCache';
 import { getColdStartCandidates, generateCandidates, type EnrichedCandidate } from '../services/candidateGenerator';
+import { getRecentlyShown, recordShown } from '../services/recommendationImpressions';
 import {
   triggerUserPipeline,
   onAppOpen,
@@ -148,11 +149,39 @@ function mapCandidatesToTracks(candidates: EnrichedCandidate[]) {
   }));
 }
 
+/**
+ * Descarta candidatos ya mostrados a este usuario en las últimas 24h (estilo
+ * Spotify) antes de recortar a `limit`, y registra los finalmente elegidos.
+ * Si filtrar deja muy pocos candidatos (pool pequeño, ej. cold-start), se
+ * ignora el filtro para esa tanda — mejor repetir una canción que no mostrar
+ * nada. `avoidRepeats=false` desactiva el filtro por completo (ajuste del
+ * usuario en Perfil → Algoritmo).
+ */
+function applyRepeatFilter(
+  userId: string,
+  candidates: EnrichedCandidate[],
+  limit: number,
+  avoidRepeats: boolean
+): EnrichedCandidate[] {
+  let pool = candidates;
+  if (avoidRepeats) {
+    const recentlyShown = getRecentlyShown(userId);
+    const filtered = candidates.filter((c) => !recentlyShown.has(c.trackId));
+    if (filtered.length >= Math.min(5, limit)) {
+      pool = filtered;
+    }
+  }
+  const finalTracks = pool.slice(0, limit);
+  recordShown(userId, finalTracks.map((c) => c.trackId));
+  return finalTracks;
+}
+
 router.get('/', async (req: Request, res: Response) => {
   const start = Date.now();
   const userId = (req.headers['x-user-id'] || 'default') as string;
   const limit = Math.min(parseInt((req.query.limit as string) || '30', 10), 100);
   const mood = req.query.mood as string | undefined;
+  const avoidRepeats = req.query.avoidRepeats !== 'false';
   const region = getUserRegion(userId);
 
   try {
@@ -166,7 +195,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       const elapsed = Date.now() - start;
       return res.json({
-        tracks: mapCandidatesToTracks(coldCandidates.slice(0, limit)),
+        tracks: mapCandidatesToTracks(applyRepeatFilter(userId, coldCandidates, limit, avoidRepeats)),
         source: 'cold_start',
         cached: false,
         elapsedMs: elapsed,
@@ -204,7 +233,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       const elapsed = Date.now() - start;
       return res.json({
-        tracks: mapCandidatesToTracks(diverse.slice(0, limit)),
+        tracks: mapCandidatesToTracks(applyRepeatFilter(userId, diverse, limit, avoidRepeats)),
         source: fresh ? 'cache_fresh' : 'cache_stale',
         cached: true,
         stale: !fresh,
@@ -220,7 +249,7 @@ router.get('/', async (req: Request, res: Response) => {
     const coldCandidates = await getColdStartCandidates(limit, region);
     const elapsed = Date.now() - start;
     return res.json({
-      tracks: mapCandidatesToTracks(coldCandidates.slice(0, limit)),
+      tracks: mapCandidatesToTracks(applyRepeatFilter(userId, coldCandidates, limit, avoidRepeats)),
       source: 'cache_miss_cold_start',
       cached: false,
       elapsedMs: elapsed,

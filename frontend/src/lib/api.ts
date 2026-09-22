@@ -868,10 +868,17 @@ export function resolveImageUrl(url?: string): string | undefined {
 
 // ── Personalization & Algorithmic Onboarding ───────────────────────────────────
 
-export const getPersonalizedRecommendations = (limit = 30, mood?: string) =>
-  apiFetch<{ tracks: Track[]; source: string; cached: boolean; elapsedMs: number }>(
-    `/recommendations?limit=${limit}${mood ? `&mood=${encodeURIComponent(mood)}` : ''}`
+export const getPersonalizedRecommendations = (limit = 30, mood?: string) => {
+  let avoidRepeatsParam = '';
+  try {
+    if (localStorage.getItem('koko_algo_avoid_repeat_recs') === 'false') {
+      avoidRepeatsParam = '&avoidRepeats=false';
+    }
+  } catch {}
+  return apiFetch<{ tracks: Track[]; source: string; cached: boolean; elapsedMs: number }>(
+    `/recommendations?limit=${limit}${mood ? `&mood=${encodeURIComponent(mood)}` : ''}${avoidRepeatsParam}`
   );
+};
 
 export const getTrendingTracks = (limit = 30) =>
   apiFetch<{ tracks: Track[]; region: string }>(`/recommendations/trending?limit=${limit}`);

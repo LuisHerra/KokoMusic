@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, type MouseEvent } from 'react';
 import { usePlayerStore, type TransitionRule } from '../store/playerStore';
-import { seekAudio } from '../hooks/useAudioPlayer';
+import { seekAudio, getActiveAudio, setDjFxParams, setAudioPlaybackRate } from '../hooks/useAudioPlayer';
 import { resolveImageUrl, getTrack, type Track } from '../lib/api';
 import { IconPlay, IconPause, IconNext, IconMusic } from '../components/Player/PlayerIcons';
 import DjMixerModal from '../components/Player/DjMixerModal';
-import { computeAutoMix, startCrossfadePreview, type CrossfadePreviewHandle } from '../lib/djTransition';
+import { computeAutoMix, startCrossfadePreview, estimateBpm, type CrossfadePreviewHandle } from '../lib/djTransition';
+
+const BPM_COMPATIBLE_RANGE = 6;
 
 function formatTime(secs: number): string {
   if (!isFinite(secs) || secs < 0) return '0:00';
@@ -82,6 +84,14 @@ export default function DjMode() {
     transitions,
     removeTransition,
     setTransition,
+    cuesByTrack,
+    setHotCue,
+    clearHotCue,
+    setLoopRegion,
+    clearLoop,
+    djFx,
+    setDjFx,
+    resetDjFx,
   } = usePlayerStore();
 
   const defaultDeckB = queue.length > 0 && queueIndex < queue.length - 1 ? queue[queueIndex + 1] : null;
@@ -97,6 +107,56 @@ export default function DjMode() {
 
   const currentPairKey = currentTrack && deckBTrack ? pairKey(currentTrack.id, deckBTrack.id) : null;
   const currentRule: TransitionRule | undefined = currentPairKey ? transitions[currentPairKey] : undefined;
+
+  // Loops / Hot Cues del track que suena ahora en Deck A
+  const currentCues = currentTrack ? cuesByTrack[currentTrack.id] : undefined;
+  const hotCues = currentCues?.hotCues ?? [null, null, null, null];
+  const hasActiveLoop = currentCues?.loopStart != null && currentCues?.loopEnd != null;
+  const [pendingLoopStart, setPendingLoopStart] = useState<number | null>(null);
+
+  const handleHotCueClick = (slot: number) => {
+    if (!currentTrack) return;
+    const existing = hotCues[slot];
+    if (existing != null) {
+      seekAudio(existing);
+    } else {
+      setHotCue(currentTrack.id, slot, progress);
+    }
+  };
+
+  const handleHotCueClear = (e: MouseEvent, slot: number) => {
+    e.stopPropagation();
+    if (!currentTrack) return;
+    clearHotCue(currentTrack.id, slot);
+  };
+
+  const handleLoopClick = () => {
+    if (!currentTrack) return;
+    if (hasActiveLoop) {
+      clearLoop(currentTrack.id);
+      setPendingLoopStart(null);
+    } else if (pendingLoopStart === null) {
+      setPendingLoopStart(progress);
+    } else {
+      if (progress > pendingLoopStart) {
+        setLoopRegion(currentTrack.id, pendingLoopStart, progress);
+      }
+      setPendingLoopStart(null);
+    }
+  };
+
+  // Candidatos de Deck B ordenados por cercanía de BPM (estimado, no real) a
+  // la pista que suena en Deck A — para elegir un Deck B "compatible" a ojo.
+  const deckACurrentBpm = currentTrack ? estimateBpm(currentTrack.title, currentTrack.artist) : null;
+  const deckBCandidates = useMemo(() => {
+    const candidates = queue.filter(t => t.id !== currentTrack?.id);
+    if (deckACurrentBpm === null) return candidates.map(t => ({ track: t, bpm: null as number | null, diff: Infinity }));
+    const scored = candidates.map(t => {
+      const bpm = estimateBpm(t.title, t.artist);
+      return { track: t, bpm, diff: Math.abs(bpm - deckACurrentBpm) };
+    });
+    return scored.sort((a, b) => a.diff - b.diff);
+  }, [queue, currentTrack?.id, deckACurrentBpm]);
 
   // "Auto-Mix Perfecto" automático: en cuanto hay una pareja A→B válida sin
   // transición configurada, se genera una automáticamente (una sola vez por
@@ -122,6 +182,19 @@ export default function DjMode() {
   useEffect(() => {
     return () => { previewRef.current?.stop(); };
   }, []);
+
+  // Aplica los efectos en vivo (reverb/filtro/slowed) al deck que suena de
+  // verdad. Al salir de Modo DJ, vuelve todo a neutro para no dejar rastro
+  // en el resto del reproductor.
+  useEffect(() => {
+    const audio = getActiveAudio();
+    setDjFxParams(audio, { reverbAmount: djFx.reverbAmount, filterCutoff: djFx.filterCutoff });
+    setAudioPlaybackRate(djFx.slowedRate);
+  }, [djFx]);
+
+  useEffect(() => {
+    return () => { resetDjFx(); };
+  }, [resetDjFx]);
 
   const stopPreview = () => {
     previewRef.current?.stop();
@@ -223,11 +296,45 @@ export default function DjMode() {
           <div className="dj-progress-bar">
             <span className="dj-progress-time">{formatTime(progress)}</span>
             <div className="dj-progress-track" onClick={handleProgressClick}>
+              {hasActiveLoop && duration > 0 && (
+                <div
+                  className="dj-loop-region"
+                  style={{
+                    left: `${(currentCues!.loopStart! / duration) * 100}%`,
+                    width: `${((currentCues!.loopEnd! - currentCues!.loopStart!) / duration) * 100}%`,
+                  }}
+                />
+              )}
               <div className="dj-progress-fill" style={{ width: `${progressPct}%` }}>
                 <div className="dj-progress-thumb" />
               </div>
             </div>
             <span className="dj-progress-time right">{formatTime(duration)}</span>
+          </div>
+
+          <div className="dj-cues-row">
+            {[0, 1, 2, 3].map((slot) => (
+              <button
+                key={slot}
+                className={`dj-cue-btn ${hotCues[slot] != null ? 'active' : ''}`}
+                onClick={() => handleHotCueClick(slot)}
+                disabled={!currentTrack}
+                title={hotCues[slot] != null ? `Saltar a ${formatTime(hotCues[slot]!)}` : 'Marcar hot cue aquí'}
+              >
+                {slot + 1}
+                {hotCues[slot] != null && (
+                  <span className="dj-cue-clear" onClick={(e) => handleHotCueClear(e, slot)} title="Borrar cue">×</span>
+                )}
+              </button>
+            ))}
+            <button
+              className={`dj-loop-btn ${hasActiveLoop ? 'active' : ''} ${pendingLoopStart !== null ? 'pending' : ''}`}
+              onClick={handleLoopClick}
+              disabled={!currentTrack}
+              title={hasActiveLoop ? 'Desactivar loop' : pendingLoopStart !== null ? 'Marcar fin del loop' : 'Marcar inicio del loop'}
+            >
+              {hasActiveLoop ? 'Loop ●' : pendingLoopStart !== null ? 'Marcar fin' : 'Loop'}
+            </button>
           </div>
 
           <button className="dj-play-btn" onClick={() => setIsPlaying(!isPlaying)} disabled={!currentTrack}>
@@ -285,7 +392,7 @@ export default function DjMode() {
 
           {showDeckBPicker && (
             <div className="dj-deckb-picker">
-              {queue.filter(t => t.id !== currentTrack?.id).map((t) => (
+              {deckBCandidates.map(({ track: t, bpm, diff }) => (
                 <button
                   key={t.id}
                   className={`dj-deckb-picker-item ${deckBTrack?.id === t.id ? 'active' : ''}`}
@@ -299,6 +406,11 @@ export default function DjMode() {
                     <div className="dj-deckb-picker-title">{t.title}</div>
                     <div className="dj-deckb-picker-artist">{t.artist}</div>
                   </div>
+                  {bpm !== null && (
+                    <span className={`dj-deckb-picker-bpm ${diff <= BPM_COMPATIBLE_RANGE ? 'compatible' : ''}`}>
+                      ~{bpm} BPM{diff <= BPM_COMPATIBLE_RANGE ? ' · Compatible' : ''}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -320,6 +432,59 @@ export default function DjMode() {
             Saltar a esta pista
           </button>
         </div>
+      </div>
+
+      <div className="dj-fx-panel">
+        <h2>Efectos en vivo</h2>
+        <p className="section-subtitle" style={{ marginBottom: 14 }}>
+          Se aplican solo a lo que suena ahora, y vuelven a cero al salir de Modo DJ.
+        </p>
+
+        <div className="dj-fx-row">
+          <span className="dj-fx-label">Slowed</span>
+          <input
+            type="range"
+            min={0.7}
+            max={1.15}
+            step={0.01}
+            value={djFx.slowedRate}
+            onChange={(e) => setDjFx({ slowedRate: Number(e.target.value) })}
+            disabled={!currentTrack}
+          />
+          <span className="dj-fx-value">{djFx.slowedRate.toFixed(2)}x</span>
+        </div>
+
+        <div className="dj-fx-row">
+          <span className="dj-fx-label">Reverb / Eco</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={djFx.reverbAmount}
+            onChange={(e) => setDjFx({ reverbAmount: Number(e.target.value) })}
+            disabled={!currentTrack}
+          />
+          <span className="dj-fx-value">{Math.round(djFx.reverbAmount * 100)}%</span>
+        </div>
+
+        <div className="dj-fx-row">
+          <span className="dj-fx-label">Barrido de filtro</span>
+          <input
+            type="range"
+            min={200}
+            max={20000}
+            step={100}
+            value={djFx.filterCutoff}
+            onChange={(e) => setDjFx({ filterCutoff: Number(e.target.value) })}
+            disabled={!currentTrack}
+          />
+          <span className="dj-fx-value">{djFx.filterCutoff >= 20000 ? 'Off' : `${(djFx.filterCutoff / 1000).toFixed(1)}kHz`}</span>
+        </div>
+
+        {(djFx.slowedRate !== 1 || djFx.reverbAmount !== 0 || djFx.filterCutoff < 20000) && (
+          <button className="dj-fx-reset-btn" onClick={resetDjFx}>Restablecer</button>
+        )}
       </div>
 
       {savedTransitions.length > 0 && (

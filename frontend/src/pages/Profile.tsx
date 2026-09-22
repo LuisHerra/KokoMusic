@@ -192,6 +192,7 @@ export default function ProfilePage() {
   const [studioMaster, setStudioMaster] = useState(() => localStorage.getItem('koko_algo_studio_master') !== 'false');
   const [producerAffinity, setProducerAffinity] = useState(() => localStorage.getItem('koko_algo_producer_affinity') !== 'false');
   const [skipPenalty, setSkipPenalty] = useState(() => localStorage.getItem('koko_algo_skip_penalty') !== 'false');
+  const [avoidRepeatRecs, setAvoidRepeatRecs] = useState(() => localStorage.getItem('koko_algo_avoid_repeat_recs') !== 'false');
 
   // Streaming Engine Settings
   const [audioQuality, setAudioQuality] = useState(() => localStorage.getItem('koko_audio_quality') ?? 'auto');
@@ -1154,6 +1155,16 @@ export default function ProfilePage() {
               onChange={(val) => {
                 setSkipPenalty(val);
                 localStorage.setItem('koko_algo_skip_penalty', String(val));
+              }}
+            />
+
+            <ToggleRow
+              label="Evitar Repetir Recomendaciones"
+              description="No vuelve a sugerirte la misma canción en el Koko-Mix durante 24 horas, como hace Spotify. Desactívalo si prefieres ver siempre las mismas sugerencias."
+              checked={avoidRepeatRecs}
+              onChange={(val) => {
+                setAvoidRepeatRecs(val);
+                localStorage.setItem('koko_algo_avoid_repeat_recs', String(val));
               }}
             />
           </Section>

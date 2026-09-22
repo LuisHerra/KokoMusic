@@ -33,6 +33,13 @@ export interface TransitionRule {
   fadeInDuration?: number;   // segundos del fade in
 }
 
+/** Hot cues (hasta 4 puntos marcados) + loop opcional, guardados por trackId. */
+export interface TrackCues {
+  hotCues: (number | null)[]; // longitud 4, índice = slot
+  loopStart: number | null;
+  loopEnd: number | null;
+}
+
 interface PlayerState {
   currentTrack: Track | null;
   queue: Track[];
@@ -60,6 +67,18 @@ interface PlayerState {
 
   // DJ Transitions
   transitions: Record<string, TransitionRule>;
+
+  // DJ Loops / Hot Cues (por trackId)
+  cuesByTrack: Record<string, TrackCues>;
+  setHotCue: (trackId: string, slot: number, time: number) => void;
+  clearHotCue: (trackId: string, slot: number) => void;
+  setLoopRegion: (trackId: string, start: number, end: number) => void;
+  clearLoop: (trackId: string) => void;
+
+  // DJ Efectos en vivo — no persistido, vuelve a neutro al salir de Modo DJ
+  djFx: { slowedRate: number; reverbAmount: number; filterCutoff: number };
+  setDjFx: (partial: Partial<PlayerState['djFx']>) => void;
+  resetDjFx: () => void;
 
   // Sinfonía Sync
   isSinfoniaSyncEnabled: boolean;
@@ -160,6 +179,11 @@ function shuffleArray(array: Track[], currentTrack: Track | null): Track[] {
 }
 
 const savedTransitions = JSON.parse(localStorage.getItem('koko_dj_transitions') || '{}');
+const savedCues = JSON.parse(localStorage.getItem('koko_dj_cues') || '{}');
+
+function emptyTrackCues(): TrackCues {
+  return { hotCues: [null, null, null, null], loopStart: null, loopEnd: null };
+}
 
 const savedCurrentTrack = (() => {
   try {
@@ -263,6 +287,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   sleepTimerEndTime: null,
 
   transitions: savedTransitions,
+  cuesByTrack: savedCues,
+  djFx: { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 },
 
   isEmbedMode: false,
   embedYoutubeId: null,
@@ -612,6 +638,43 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     localStorage.setItem('koko_dj_transitions', JSON.stringify(newRules));
     return { transitions: newRules };
   }),
+
+  setHotCue: (trackId, slot, time) => set((state) => {
+    const existing = state.cuesByTrack[trackId] ?? emptyTrackCues();
+    const hotCues = [...existing.hotCues];
+    hotCues[slot] = time;
+    const newCues = { ...state.cuesByTrack, [trackId]: { ...existing, hotCues } };
+    localStorage.setItem('koko_dj_cues', JSON.stringify(newCues));
+    return { cuesByTrack: newCues };
+  }),
+
+  clearHotCue: (trackId, slot) => set((state) => {
+    const existing = state.cuesByTrack[trackId];
+    if (!existing) return {};
+    const hotCues = [...existing.hotCues];
+    hotCues[slot] = null;
+    const newCues = { ...state.cuesByTrack, [trackId]: { ...existing, hotCues } };
+    localStorage.setItem('koko_dj_cues', JSON.stringify(newCues));
+    return { cuesByTrack: newCues };
+  }),
+
+  setLoopRegion: (trackId, start, end) => set((state) => {
+    const existing = state.cuesByTrack[trackId] ?? emptyTrackCues();
+    const newCues = { ...state.cuesByTrack, [trackId]: { ...existing, loopStart: start, loopEnd: end } };
+    localStorage.setItem('koko_dj_cues', JSON.stringify(newCues));
+    return { cuesByTrack: newCues };
+  }),
+
+  clearLoop: (trackId) => set((state) => {
+    const existing = state.cuesByTrack[trackId];
+    if (!existing) return {};
+    const newCues = { ...state.cuesByTrack, [trackId]: { ...existing, loopStart: null, loopEnd: null } };
+    localStorage.setItem('koko_dj_cues', JSON.stringify(newCues));
+    return { cuesByTrack: newCues };
+  }),
+
+  setDjFx: (partial) => set((state) => ({ djFx: { ...state.djFx, ...partial } })),
+  resetDjFx: () => set({ djFx: { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 } }),
 
   isSinfoniaSyncEnabled: localStorage.getItem('koko_sinfonia_sync') !== 'false',
   setSinfoniaSyncEnabled: (enabled) => {

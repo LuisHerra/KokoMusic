@@ -2,6 +2,19 @@ import type { CrossfadeCurve, TransitionRule } from '../store/playerStore';
 import { getLyrics, getStreamUrl, type Track } from './api';
 import { parseSyncedLyrics, detectLyricSections } from './lyricsParser';
 
+/**
+ * Estimación determinista de BPM a partir de título+artista — misma fórmula
+ * que el backend (candidateGenerator.ts:estimateBpm), portada aquí para no
+ * necesitar ida y vuelta al servidor solo para ordenar el picker de Deck B.
+ * NO es análisis de audio real — ver el prefijo "~" que se muestra en UI.
+ */
+export function estimateBpm(title: string, artist: string): number {
+  const charSum =
+    title.split('').reduce((s, c) => s + c.charCodeAt(0), 0) +
+    artist.split('').reduce((s, c) => s + c.charCodeAt(0), 0) || 100;
+  return 75 + (charSum % 76); // 75-150 BPM
+}
+
 export function getFadeRatio(ratio: number, curve: CrossfadeCurve): number {
   switch (curve) {
     case 'exponential': return Math.pow(ratio, 2);
