@@ -19,7 +19,7 @@ app = Flask(__name__, static_folder=static_dir, static_url_path='')
 app.url_map.strict_slashes = False
 
 SERVER_PORT = 3001
-CLOUD_BACKEND_URL = "https://lherraa-kokomusic.hf.space/api"
+CLOUD_BACKEND_URL = "https://kokomusic.onrender.com/api"
 is_running = False
 
 RESERVED_STREAM_PATHS = {'status', 'prefetch', 'warm-cdn', 'cdn', 'purge-cache', 'batch', 'custom', 'recommendations', 'history', 'user-tracks', 'resolve'}
