@@ -49,3 +49,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Clon local del repo del Space de Hugging Face — es un repo git aparte,
+# nunca debe trackearse dentro de este (se coló como gitlink por un
+# `git add -A` accidental, ver commit que elimina HF-kokoMusic-space).
+HF-kokoMusic-space/
+
