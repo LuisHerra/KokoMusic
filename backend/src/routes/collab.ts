@@ -31,7 +31,7 @@ router.get('/playlists', async (req, res) => {
   if (!userId) return err(res, 'userId requerido', 400);
 
   // Fetch playlists owned by user
-  const { data: owned } = await supabase!
+  const { data: owned, error: ownedErr } = await supabase!
     .schema('kokomusic')
     .from('collab_playlists')
     .select('*')
@@ -39,11 +39,16 @@ router.get('/playlists', async (req, res) => {
     .order('updated_at', { ascending: false });
 
   // Fetch playlists where user is a collaborator
-  const { data: collabRows } = await supabase!
+  const { data: collabRows, error: collabErr } = await supabase!
     .schema('kokomusic')
     .from('collab_playlist_collaborators')
     .select('playlist_id')
     .eq('user_id', userId);
+
+  if (ownedErr || collabErr) {
+    console.error('[Collab] Error listando playlists:', ownedErr ?? collabErr);
+    return err(res, (ownedErr ?? collabErr)!.message);
+  }
 
   const collabIds = (collabRows ?? []).map((r: any) => r.playlist_id);
   let collabPlaylists: any[] = [];

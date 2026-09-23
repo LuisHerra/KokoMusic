@@ -14,6 +14,7 @@ import { getUserStatsFromCloud } from '../services/historyService';
 import { getTrackById } from '../services/metadataService';
 import { hashStringToInteger } from '../services/artistService';
 import { getArtistFromDB, upsertArtist } from '../services/supabaseService';
+import { uploadImageToCDN } from '../services/cdnService';
 
 const router = Router();
 
@@ -829,11 +830,15 @@ router.get('/status', async (req, res) => {
 
 // ── POST /api/friends/profile/avatar ──────────────────────────────────────────
 // Upload avatar image
-router.post('/profile/avatar', upload.single('avatar'), (req, res) => {
+router.post('/profile/avatar', upload.single('avatar'), async (req, res) => {
   if (!req.file) {
     return err(res, 'No se proporcionó ningún archivo de imagen', 400);
   }
-  const avatarUrl = `/uploads/${req.file.filename}`;
+  const avatarUrl = await uploadImageToCDN(req.file.path, 'avatars');
+  if (!avatarUrl) {
+    fs.unlink(req.file.path, () => {});
+    return err(res, 'No se pudo guardar la imagen en el CDN', 502);
+  }
   res.json({ avatarUrl });
 });
 

@@ -26,6 +26,8 @@ export async function searchTracks(query: string, limit = 20): Promise<TrackMeta
   if (!isYtSearchDisabled()) {
     try {
       const yts = (await import('yt-search')).default;
+      const { rotateYtProxy } = await import('./ytResolverService');
+      rotateYtProxy();
       const result = await yts(query);
       videos = result.videos || [];
       recordYtSearchSuccess();

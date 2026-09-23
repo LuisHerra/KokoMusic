@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { playlists } from './playlists';
+import { playlists, persistPlaylist } from './playlists';
 import { searchTracks } from '../services/spotifyService';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../services/supabaseService';
@@ -515,6 +515,7 @@ router.post('/import', async (req: Request, res: Response) => {
       updatedAt: new Date().toISOString(),
     };
     
+    await persistPlaylist(localPl);
     playlists.set(localPlId, localPl);
 
     // 3. Devolvemos respuesta rápida y procesamos en background
@@ -551,6 +552,7 @@ router.post('/import', async (req: Request, res: Response) => {
       await new Promise(r => setTimeout(r, 200));
     }
     
+    await persistPlaylist(localPl).catch((e) => console.error('[Spotify Import] Error guardando playlist:', e));
     console.log(`[Spotify Import] Completado: ${plData.name} (${position} canciones importadas)`);
 
   } catch (error) {

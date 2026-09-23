@@ -33,11 +33,31 @@ import { isYtSearchDisabled, recordYtSearchFailure, recordYtSearchSuccess } from
  * datacenter, y yt-search scrapea resultados de búsqueda de YouTube
  * directamente — sujeto al mismo tipo de bloqueo.
  */
-const ytProxyUrl = process.env.PROXY_URL;
-if (ytProxyUrl) {
-  http.globalAgent = new HttpProxyAgent(ytProxyUrl);
-  https.globalAgent = new HttpsProxyAgent(ytProxyUrl);
-  console.log('[YTResolver] yt-search enrutado a través de proxy configurado (PROXY_URL).');
+// Pool de proxies: PROXY_URLS (separados por comas) o, si no, PROXY_URL.
+// Cada búsqueda rota al siguiente (round-robin) para repartir carga entre
+// proxies en vez de saturar uno solo; keepAlive reutiliza el túnel en vez de
+// abrir uno nuevo por petición.
+const ytProxyPool = (process.env.PROXY_URLS || process.env.PROXY_URL || '')
+  .split(',')
+  .map((u) => u.trim())
+  .filter(Boolean)
+  .map((url) => ({
+    http: new HttpProxyAgent(url, { keepAlive: true }),
+    https: new HttpsProxyAgent(url, { keepAlive: true }),
+  }));
+let ytProxyCursor = 0;
+
+/** Apunta el agente global al siguiente proxy del pool. Llamar justo antes de cada yts(). */
+export function rotateYtProxy(): void {
+  if (ytProxyPool.length === 0) return;
+  const next = ytProxyPool[ytProxyCursor++ % ytProxyPool.length];
+  http.globalAgent = next.http;
+  https.globalAgent = next.https;
+}
+
+if (ytProxyPool.length > 0) {
+  rotateYtProxy();
+  console.log(`[YTResolver] yt-search enrutado por un pool de ${ytProxyPool.length} proxy(s) en round-robin.`);
 }
 
 export interface YoutubeResolution {
@@ -153,6 +173,7 @@ export async function searchYoutubeVideos(query: string, limit = 15): Promise<an
 
   if (!isYtSearchDisabled()) {
     try {
+      rotateYtProxy();
       const result = await yts(query);
       videos = result.videos.slice(0, limit);
       recordYtSearchSuccess();

@@ -389,6 +389,120 @@ export async function generateCandidates(
   return merged;
 }
 
+function shuffleInPlace<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Pool "Descubrir": música FUERA de la zona de confort del usuario.
+ *   - tracks_meta de géneros que no están en su top 5 (ventana aleatoria del catálogo)
+ *   - charts de todas las regiones cacheadas
+ * Excluye sus top artistas y lo escuchado recientemente, máx. 1 canción por artista.
+ * Solo lee Supabase — cero llamadas externas.
+ */
+export async function generateDiscoveryCandidates(
+  userId: string,
+  profile: TasteProfile | null,
+  poolSize = 120
+): Promise<EnrichedCandidate[]> {
+  if (!supabase) return [];
+
+  const exclude = buildExcludeSet(userId);
+  const topGenres = profile
+    ? Object.entries(profile.genreAffinity).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([g]) => g)
+    : [];
+  const topArtists = new Set((profile?.topArtists ?? []).map((a) => a.name.toLowerCase()));
+
+  const toCandidate = (
+    trackId: string, title: string, artist: string, artistId: number, cover: string,
+    durationMs: number, genre: string, releaseDate: string | null, source: EnrichedCandidate['source'],
+  ): EnrichedCandidate => ({
+    trackId, title, artist, artistId, cover, durationMs, genre, releaseDate,
+    affinityScore: 0,
+    isNewFromFollowedArtist: false,
+    source,
+    bpmEstimate: estimateBpm(title, artist),
+    energyEstimate: estimateEnergy(title, artist),
+  });
+
+  // Ventana aleatoria del catálogo: PostgREST no tiene ORDER BY random(), así que
+  // se usa un offset aleatorio sobre el conteo estimado.
+  const catalogQuery = async (): Promise<EnrichedCandidate[]> => {
+    const genreList = `(${topGenres.map((g) => `"${g}"`).join(',')})`;
+    const excludeTopGenres = (q: any) => (topGenres.length > 0 ? q.not('genre', 'in', genreList) : q);
+
+    const { count } = await excludeTopGenres(
+      supabase!.schema('kokomusic').from('tracks_meta')
+        .select('itunes_id', { count: 'estimated', head: true })
+        .not('cover_url', 'is', null)
+    );
+    const windowSize = poolSize * 2;
+    const offset = count && count > windowSize ? Math.floor(Math.random() * (count - windowSize)) : 0;
+
+    const { data, error } = await excludeTopGenres(
+      supabase!.schema('kokomusic').from('tracks_meta')
+        .select('itunes_id, title, artist, artist_id, cover_url, duration_ms, genre, release_date')
+        .not('cover_url', 'is', null)
+        .neq('cover_url', '')
+    ).range(offset, offset + windowSize - 1);
+    if (error || !data) return [];
+
+    return (data as any[]).map((row) => toCandidate(
+      String(row.itunes_id), row.title || '', row.artist || '', Number(row.artist_id) || 0,
+      row.cover_url || '', Number(row.duration_ms) || 180_000, row.genre || 'Otros',
+      row.release_date || null, 'taste',
+    ));
+  };
+
+  const chartsQuery = async (): Promise<EnrichedCandidate[]> => {
+    const { data, error } = await supabase!.schema('kokomusic').from('external_charts_cache')
+      .select('payload_json')
+      .order('fetched_at', { ascending: false })
+      .limit(12);
+    if (error || !data) return [];
+    const out: EnrichedCandidate[] = [];
+    for (const row of data as any[]) {
+      for (const item of (row.payload_json as any[]) || []) {
+        const trackId = String(item.trackId || item.id || item.track_id || '');
+        if (!trackId) continue;
+        const rawCover = String(item.cover || item.coverUrl || item.cover_url || item.image || '');
+        out.push(toCandidate(
+          trackId,
+          String(item.title || item.trackName || item.name || ''),
+          String(item.artist || item.artistName || item.artist_name || ''),
+          Number(item.artistId || item.artist_id || 0),
+          isLastfmPlaceholderCover(rawCover) ? '' : rawCover,
+          Number(item.durationMs || item.duration_ms || 180_000),
+          String(item.genre || 'Otros'),
+          item.releaseDate || item.release_date || null,
+          'charts',
+        ));
+      }
+    }
+    return out;
+  };
+
+  const [catalog, charts] = await Promise.all([catalogQuery(), chartsQuery()]);
+
+  const seenTracks = new Set<string>();
+  const seenArtists = new Set<string>();
+  const pool: EnrichedCandidate[] = [];
+  for (const c of shuffleInPlace([...catalog, ...charts])) {
+    const artistKey = c.artist.toLowerCase();
+    if (!c.cover || !c.title || seenTracks.has(c.trackId) || exclude.has(c.trackId)) continue;
+    if (topArtists.has(artistKey) || seenArtists.has(artistKey)) continue;
+    seenTracks.add(c.trackId);
+    seenArtists.add(artistKey);
+    pool.push(c);
+    if (pool.length >= poolSize) break;
+  }
+  return pool;
+}
+
 /**
  * Cold-start candidate list for users with no taste profile.
  * Reads directly from external_charts_cache and returns enriched candidates.

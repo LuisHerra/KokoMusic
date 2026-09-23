@@ -16,16 +16,16 @@ const WINDOW_MS = 24 * 60 * 60 * 1000; // 24h — cubre también "misma sesión"
 // userId -> (trackId -> timestamp del último show)
 const shownStore = new Map<string, Map<string, number>>();
 
-/** Devuelve el set de trackIds mostrados a este usuario en las últimas 24h. */
-export function getRecentlyShown(userId: string): Set<string> {
+/** trackId → timestamp del último show, para lo mostrado a este usuario en las últimas 24h. */
+export function getRecentlyShown(userId: string): Map<string, number> {
   const userMap = shownStore.get(userId);
-  if (!userMap) return new Set();
+  if (!userMap) return new Map();
 
   const now = Date.now();
-  const result = new Set<string>();
+  const result = new Map<string, number>();
   for (const [trackId, ts] of userMap) {
     if (now - ts < WINDOW_MS) {
-      result.add(trackId);
+      result.set(trackId, ts);
     } else {
       userMap.delete(trackId); // limpieza perezosa de entradas caducadas
     }

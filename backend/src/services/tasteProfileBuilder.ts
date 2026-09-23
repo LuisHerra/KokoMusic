@@ -14,7 +14,7 @@
 
 import { supabase } from './supabaseService';
 import { readHistory, type HistoryEntry } from './historyService';
-import { getLikedTracks } from '../routes/playlists';
+import { getLikedTracks, ensureUserPlaylistsLoaded } from '../routes/playlists';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -217,6 +217,7 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
 async function fetchLikedSignals(userId: string): Promise<EnrichedPlay[]> {
   if (!supabase) return [];
 
+  await ensureUserPlaylistsLoaded(userId).catch(() => {});
   const liked = getLikedTracks(userId);
   if (liked.length === 0) return [];
 

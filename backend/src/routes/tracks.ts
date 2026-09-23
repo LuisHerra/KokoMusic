@@ -901,7 +901,8 @@ router.post('/upload', upload.fields([
     // Procesar cover
     const coverFile = files?.cover?.[0];
     if (coverFile) {
-      finalCover = `/uploads/${coverFile.filename}`;
+      const { uploadImageToCDN } = require('../services/cdnService');
+      finalCover = (await uploadImageToCDN(coverFile.path, 'covers')) ?? `/uploads/${coverFile.filename}`;
     } else if (sourceType === 'youtube_alias') {
       finalCover = `https://img.youtube.com/vi/${youtubeId}/0.jpg`;
     }

@@ -15,7 +15,7 @@ import { cache } from '../services/cacheService';
 import { getArtistInfo, hashStringToInteger } from '../services/artistService';
 import { supabase, upsertTracks } from '../services/supabaseService';
 import { compressAudio } from '../services/audioCompressionService';
-import { uploadToCDN, deleteFromCDN } from '../services/cdnService';
+import { uploadToCDN, deleteFromCDN, uploadImageToCDN } from '../services/cdnService';
 
 const router = Router();
 
@@ -251,7 +251,8 @@ router.post('/tracks/upload', uploadTrack.fields([{ name: 'audio', maxCount: 1 }
     }
 
     const coverFile = files?.cover?.[0];
-    const coverUrl: string | null = coverFile ? `/uploads/${coverFile.filename}` : ((profile as any)?.avatar_url ?? null);
+    const uploadedCover = coverFile ? await uploadImageToCDN(coverFile.path, 'covers') : null;
+    const coverUrl: string | null = uploadedCover ?? ((profile as any)?.avatar_url ?? null);
 
     await upsertTracks([{
       itunes_id: trackId,

@@ -456,13 +456,19 @@ router.post('/prefetch', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'ids debe ser un array' });
   }
 
-  // Pre-calentar la resolución en memoria con delay entre peticiones (250ms)
+  // Pre-calentar la resolución en memoria con delay entre peticiones (250ms).
+  // Lo que ya está en R2 se salta (no necesita proxy). El PRIMERO de la lista
+  // (el siguiente en sonar) además se sube a R2 ya, para que al llegar su turno
+  // suene desde el CDN en vez de relay + descarga duplicada simultánea.
   setImmediate(async () => {
-    for (const id of ids.slice(0, 5)) {
+    for (const [idx, rawId] of ids.slice(0, 5).entries()) {
+      const id = String(rawId);
       try {
-        const { youtubeId, artist, title } = await resolveYoutubeIdForTrack(String(id));
+        if (await findTrackInCDN(id)) continue;
+        const { youtubeId, artist, title } = await resolveYoutubeIdForTrack(id);
         if (youtubeId) {
-          await resolveAudioStream(youtubeId, { artist, title, itunesId: id });
+          const resolved = await resolveAudioStream(youtubeId, { artist, title, itunesId: id });
+          if (idx === 0 && resolved?.url) cacheStreamInBackground(id, getStreamRelayUrl(youtubeId));
         }
       } catch {}
       // Espaciado para respetar los límites de InnerTube

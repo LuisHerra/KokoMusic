@@ -845,6 +845,12 @@ export function useAudioPlayer() {
         usePlayerStore.getState().setCurrentYoutubeId(currentTrack.id);
       }
 
+      // El /status resuelve el youtubeId (búsqueda en YouTube vía proxy en un miss)
+      // y bloqueaba el arranque del audio en CADA cambio de canción. Solo hace
+      // falta con el reproductor de YouTube activado; el fallback de onError ya
+      // resuelve el youtubeId por su cuenta si el audio falla.
+      if (localStorage.getItem('koko_use_youtube_player') !== 'true') return false;
+
       try {
         const API_BASE = await getApiUrl();
         const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
@@ -897,13 +903,14 @@ export function useAudioPlayer() {
 
     // Pre-cargar en segundo plano el siguiente tema de la cola vía API prefetch (sin sockets crudos en móvil)
     const state = usePlayerStore.getState();
-    if (state.queue && state.queue.length > state.queueIndex + 1) {
-      const nextInQueue = state.queue[state.queueIndex + 1];
-      if (nextInQueue && nextInQueue.id) {
-        import('../lib/api').then(({ prefetchAudio }) => {
-          prefetchAudio([nextInQueue.id]).catch(() => {});
-        }).catch(() => {});
-      }
+    const upcomingIds = (state.queue ?? [])
+      .slice(state.queueIndex + 1, state.queueIndex + 4)
+      .map((t) => t?.id)
+      .filter(Boolean) as string[];
+    if (upcomingIds.length > 0) {
+      import('../lib/api').then(({ prefetchAudio }) => {
+        prefetchAudio(upcomingIds).catch(() => {});
+      }).catch(() => {});
     }
 
     // Primero comprobar si debe usar embed mode; si no, cargar audio normal

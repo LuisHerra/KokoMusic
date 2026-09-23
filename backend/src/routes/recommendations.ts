@@ -31,7 +31,12 @@ import {
   setCachedPlaylist,
   type FeedbackEvent,
 } from '../services/recommendationCache';
-import { getColdStartCandidates, generateCandidates, type EnrichedCandidate } from '../services/candidateGenerator';
+import {
+  getColdStartCandidates,
+  generateCandidates,
+  generateDiscoveryCandidates,
+  type EnrichedCandidate,
+} from '../services/candidateGenerator';
 import { getRecentlyShown, recordShown } from '../services/recommendationImpressions';
 import {
   triggerUserPipeline,
@@ -39,7 +44,7 @@ import {
   onTrackCompleted,
   onArtistFollowed,
 } from '../services/backgroundJobRunner';
-import { seedInitialProfile } from '../services/tasteProfileBuilder';
+import { seedInitialProfile, loadTasteProfileStale } from '../services/tasteProfileBuilder';
 import { setUserRegion, getUserRegion } from '../services/regionService';
 import { addTracksToLikedSongs } from './playlists';
 import { getTrendingTracks } from '../services/trendingService';
@@ -66,7 +71,8 @@ function applySmartReorder(candidates: EnrichedCandidate[]): EnrichedCandidate[]
   if (candidates.length <= 1) return candidates;
 
   const unsorted = [...candidates];
-  const sorted: EnrichedCandidate[] = [unsorted.shift()!];
+  const startIdx = Math.floor(Math.random() * Math.min(5, unsorted.length));
+  const sorted: EnrichedCandidate[] = [unsorted.splice(startIdx, 1)[0]];
 
   while (unsorted.length > 0) {
     const current = sorted[sorted.length - 1];
@@ -157,23 +163,38 @@ function mapCandidatesToTracks(candidates: EnrichedCandidate[]) {
  * nada. `avoidRepeats=false` desactiva el filtro por completo (ajuste del
  * usuario en Perfil → Algoritmo).
  */
-function applyRepeatFilter(
-  userId: string,
-  candidates: EnrichedCandidate[],
+function applyRepeatFilter<T extends { trackId: string }>(
+  impressionsKey: string,
+  candidates: T[],
   limit: number,
   avoidRepeats: boolean
-): EnrichedCandidate[] {
+): T[] {
   let pool = candidates;
   if (avoidRepeats) {
-    const recentlyShown = getRecentlyShown(userId);
-    const filtered = candidates.filter((c) => !recentlyShown.has(c.trackId));
-    if (filtered.length >= Math.min(5, limit)) {
-      pool = filtered;
-    }
+    // Lo no mostrado va primero; si no llega a `limit`, se rellena con lo
+    // mostrado hace MÁS tiempo — nunca se vuelve a la cabeza fija de la lista.
+    const shownAt = getRecentlyShown(impressionsKey);
+    const unseen = candidates.filter((c) => !shownAt.has(c.trackId));
+    const seen = candidates
+      .filter((c) => shownAt.has(c.trackId))
+      .sort((a, b) => shownAt.get(a.trackId)! - shownAt.get(b.trackId)!);
+    pool = [...unseen, ...seen];
   }
   const finalTracks = pool.slice(0, limit);
-  recordShown(userId, finalTracks.map((c) => c.trackId));
+  recordShown(impressionsKey, finalTracks.map((c) => c.trackId));
   return finalTracks;
+}
+
+/**
+ * Muestreo ponderado por posición (Efraimidis–Spirakis): el top del ranking
+ * sigue siendo lo más probable, pero cada petición saca una selección distinta
+ * en vez de siempre los mismos N primeros.
+ */
+function rankWeightedShuffle<T>(items: T[]): T[] {
+  return items
+    .map((item, rank) => ({ item, key: Math.pow(Math.random(), 1 + rank * 0.08) }))
+    .sort((a, b) => b.key - a.key)
+    .map((x) => x.item);
 }
 
 router.get('/', async (req: Request, res: Response) => {
@@ -188,14 +209,14 @@ router.get('/', async (req: Request, res: Response) => {
     // ── 1. Cold-start check ────────────────────────────────────────────────────
     if (isColdStart(userId)) {
       console.log(`[Recs] Cold-start path for ${userId} in region ${region}`);
-      const coldCandidates = await getColdStartCandidates(limit, region);
+      const coldCandidates = await getColdStartCandidates(limit * 3, region);
 
       // Trigger pipeline for future visits (non-blocking)
       setImmediate(() => triggerUserPipeline(userId));
 
       const elapsed = Date.now() - start;
       return res.json({
-        tracks: mapCandidatesToTracks(applyRepeatFilter(userId, coldCandidates, limit, avoidRepeats)),
+        tracks: mapCandidatesToTracks(applyRepeatFilter(userId, rankWeightedShuffle(coldCandidates), limit, avoidRepeats)),
         source: 'cold_start',
         cached: false,
         elapsedMs: elapsed,
@@ -225,15 +246,15 @@ router.get('/', async (req: Request, res: Response) => {
         candidates = filtered.length >= 5 ? filtered : candidates;
       }
 
-      // ── 3. Re-ranking: BPM/energy coherence ───────────────────────────────────
-      const reranked = applySmartReorder(candidates);
+      // ── 3. Selección rotatoria (ponderada por ranking + anti-repetición) ──────
+      const selection = applyRepeatFilter(userId, rankWeightedShuffle(candidates), limit, avoidRepeats);
 
-      // ── 4. Diversity filter ───────────────────────────────────────────────────
-      const diverse = applyDiversityFilter(reranked);
+      // ── 4. Orden dentro de la selección: BPM/energía + diversidad ──────────────
+      const diverse = applyDiversityFilter(applySmartReorder(selection));
 
       const elapsed = Date.now() - start;
       return res.json({
-        tracks: mapCandidatesToTracks(applyRepeatFilter(userId, diverse, limit, avoidRepeats)),
+        tracks: mapCandidatesToTracks(diverse),
         source: fresh ? 'cache_fresh' : 'cache_stale',
         cached: true,
         stale: !fresh,
@@ -246,10 +267,10 @@ router.get('/', async (req: Request, res: Response) => {
     console.log(`[Recs] Cache miss for ${userId} — triggering pipeline, serving cold start`);
     setImmediate(() => triggerUserPipeline(userId));
 
-    const coldCandidates = await getColdStartCandidates(limit, region);
+    const coldCandidates = await getColdStartCandidates(limit * 3, region);
     const elapsed = Date.now() - start;
     return res.json({
-      tracks: mapCandidatesToTracks(applyRepeatFilter(userId, coldCandidates, limit, avoidRepeats)),
+      tracks: mapCandidatesToTracks(applyRepeatFilter(userId, rankWeightedShuffle(coldCandidates), limit, avoidRepeats)),
       source: 'cache_miss_cold_start',
       cached: false,
       elapsedMs: elapsed,
@@ -322,7 +343,9 @@ router.post('/onboarding', async (req: Request, res: Response) => {
 
     // If initial liked tracks were selected, record them into the user's liked-songs playlist
     if (Array.isArray(trackIds) && trackIds.length > 0) {
-      addTracksToLikedSongs(userId, trackIds);
+      await addTracksToLikedSongs(userId, trackIds).catch((e) =>
+        console.error('[Recs] No se pudieron guardar los me gusta del onboarding:', e)
+      );
     }
 
     // 1. Create and persist synthetic prior
@@ -350,11 +373,13 @@ router.get('/trending', async (req: Request, res: Response) => {
   const userId = (req.headers['x-user-id'] || 'default') as string;
   const region = (req.query.region as string) || getUserRegion(userId);
   const limit = Math.min(parseInt((req.query.limit as string) || '30', 10), 50);
+  const avoidRepeats = req.query.avoidRepeats !== 'false';
 
   try {
-    const tracks = await getTrendingTracks(region);
+    const ranked = (await getTrendingTracks(region)).map((t) => ({ ...t, trackId: String(t.id) }));
+    const tracks = applyRepeatFilter(`${userId}:trending`, rankWeightedShuffle(ranked), limit, avoidRepeats);
     res.json({
-      tracks: tracks.slice(0, limit).map((t) => ({
+      tracks: tracks.map((t) => ({
         id: t.id,
         itunesId: t.itunesId,
         artistId: t.artistId,
@@ -372,6 +397,35 @@ router.get('/trending', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[Recs] Error fetching trending tracks:', error);
     res.status(500).json({ error: 'Failed to fetch trending tracks' });
+  }
+});
+
+// ── GET /api/recommendations/discover ─────────────────────────────────────────
+// Rail "Descubrir": géneros y artistas fuera de la zona de confort del usuario.
+// El pool se recalcula como mucho cada 30 min (solo Supabase, sin APIs externas)
+// y cada petición saca una muestra distinta con anti-repetición propia.
+
+const DISCOVER_POOL_TTL_MS = 30 * 60 * 1000;
+const discoverPools = new Map<string, { candidates: EnrichedCandidate[]; computedAt: number }>();
+
+router.get('/discover', async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] || 'default') as string;
+  const limit = Math.min(parseInt((req.query.limit as string) || '20', 10), 50);
+  const avoidRepeats = req.query.avoidRepeats !== 'false';
+
+  try {
+    let entry = discoverPools.get(userId);
+    if (!entry || Date.now() - entry.computedAt > DISCOVER_POOL_TTL_MS) {
+      const profile = await loadTasteProfileStale(userId);
+      entry = { candidates: await generateDiscoveryCandidates(userId, profile), computedAt: Date.now() };
+      discoverPools.set(userId, entry);
+    }
+    const shuffled = [...entry.candidates].sort(() => Math.random() - 0.5);
+    const selection = applyRepeatFilter(`${userId}:discover`, shuffled, limit, avoidRepeats);
+    res.json({ tracks: mapCandidatesToTracks(applyDiversityFilter(selection)) });
+  } catch (error) {
+    console.error('[Recs] Error building discover rail:', error);
+    res.status(500).json({ error: 'Failed to build discover recommendations' });
   }
 });
 

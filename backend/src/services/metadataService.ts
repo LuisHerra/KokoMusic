@@ -202,7 +202,7 @@ export function cleanTrackNameAndArtist(rawTitle: string, rawArtist: string): { 
 /**
  * Cross-resolves track metadata via iTunes & Last.fm to enrich YouTube tracks with genres, official artist names, release dates, and album art.
  */
-export async function enrichTrackWithExternalAPIs(track: TrackMetadata): Promise<TrackMetadata> {
+export async function enrichTrackWithExternalAPIs(track: TrackMetadata, allowNetwork = true): Promise<TrackMetadata> {
   if (track.genre && track.genre !== 'Desconocido' && track.genre !== 'Urbano / Pop' && track.itunesId > 0) {
     return track;
   }
@@ -213,8 +213,9 @@ export async function enrichTrackWithExternalAPIs(track: TrackMetadata): Promise
   if (cached) return { ...track, ...JSON.parse(cached) };
 
   try {
+    if (!allowNetwork) throw new Error('skip');
     const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(cleanArtist + ' ' + cleanTitle)}&media=music&entity=musicTrack&limit=1`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const data = await res.json() as any;
       const match = data.results?.[0];
@@ -415,30 +416,34 @@ export async function searchTracks(
       // problema de ranking, el proveedor no la trae. Buscar solo con la
       // mitad inicial de la query (normalmente el título) suele esquivar la
       // palabra que rompió la búsqueda completa.
-      if (hasPoorRelevance && queryTokens.length >= 3) {
-        const trimmedQuery = query.trim().split(/\s+/).slice(0, Math.ceil(queryTokens.length / 2)).join(' ');
-        if (trimmedQuery.toLowerCase() !== query.trim().toLowerCase()) {
-          try {
-            const trimmedTracks = await fetchItunesRaw(trimmedQuery, limit);
-            if (trimmedTracks.length > 0) {
-              console.log(`[Metadata] Reintento con query recortada "${trimmedQuery}" encontró ${trimmedTracks.length} resultado(s) que "${query}" no traía.`);
-              const existingFp = new Set(tracks.map(trackFingerprint));
-              for (const t of trimmedTracks) {
-                const fp = trackFingerprint(t);
-                if (!existingFp.has(fp)) {
-                  existingFp.add(fp);
-                  tracks.push(t);
-                }
-              }
-            }
-          } catch (err) {
-            console.warn('[Metadata] Error en reintento con query recortada:', err);
+      // El reintento recortado y YouTube son independientes: se lanzan a la vez
+      // (antes iban en serie, sumando sus latencias) y se fusionan en el mismo orden.
+      const trimmedQuery = hasPoorRelevance && queryTokens.length >= 3
+        ? query.trim().split(/\s+/).slice(0, Math.ceil(queryTokens.length / 2)).join(' ')
+        : null;
+      const runTrimmed = !!trimmedQuery && trimmedQuery.toLowerCase() !== query.trim().toLowerCase();
+      const [trimmedResult, ytResult] = await Promise.allSettled([
+        runTrimmed ? fetchItunesRaw(trimmedQuery!, limit) : Promise.resolve([] as TrackMetadata[]),
+        searchYouTube(query, limit),
+      ]);
+
+      if (trimmedResult.status === 'rejected') {
+        console.warn('[Metadata] Error en reintento con query recortada:', trimmedResult.reason);
+      } else if (trimmedResult.value.length > 0) {
+        console.log(`[Metadata] Reintento con query recortada "${trimmedQuery}" encontró ${trimmedResult.value.length} resultado(s) que "${query}" no traía.`);
+        const existingFp = new Set(tracks.map(trackFingerprint));
+        for (const t of trimmedResult.value) {
+          const fp = trackFingerprint(t);
+          if (!existingFp.has(fp)) {
+            existingFp.add(fp);
+            tracks.push(t);
           }
         }
       }
 
       try {
-        const ytTracks = await searchYouTube(query, limit);
+        if (ytResult.status === 'rejected') throw ytResult.reason;
+        const ytTracks = ytResult.value;
         if (ytTracks.length > 0) {
           const existingFingerprints = new Set(tracks.map(trackFingerprint));
           for (const yt of ytTracks) {
@@ -694,7 +699,12 @@ export async function searchYouTube(query: string, limit: number, cacheKey?: str
     const rawTracks = filteredVideos.map((v, idx) => ytResultToTrack(v, idx));
 
     // Cross-resolve YouTube metadata with iTunes & Last.fm to populate real genres, official artist names, release dates and album art
-    const enrichedTracks = await Promise.all(rawTracks.map(t => enrichTrackWithExternalAPIs(t)));
+    // Solo los primeros resultados van a iTunes: con limit=50 eran 50 lookups
+    // paralelos (rate-limit de iTunes) y la respuesta esperaba al más lento.
+    const ENRICH_NETWORK_MAX = 12;
+    const enrichedTracks = await Promise.all(
+      rawTracks.map((t, idx) => enrichTrackWithExternalAPIs(t, idx < ENRICH_NETWORK_MAX))
+    );
 
     // Deduplicar DESPUÉS de enriquecer, no antes: dos vídeos de YouTube con
     // título/canal distintos (p. ej. "OTRO FILI (Audio)" de un canal random y

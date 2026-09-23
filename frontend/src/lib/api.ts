@@ -101,8 +101,8 @@ export interface InferredArtist {
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
-export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube' | 'lyrics' = 'itunes') =>
-  apiFetch<{ tracks: Track[]; source: string; artist?: InferredArtist | null }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`);
+export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube' | 'lyrics' = 'itunes', signal?: AbortSignal) =>
+  apiFetch<{ tracks: Track[]; source: string; artist?: InferredArtist | null }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`, { signal });
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 export const getTrack = async (id: string) => {
@@ -923,6 +923,9 @@ export const getPersonalizedRecommendations = (limit = 30, mood?: string) => {
 
 export const getTrendingTracks = (limit = 30) =>
   apiFetch<{ tracks: Track[]; region: string }>(`/recommendations/trending?limit=${limit}`);
+
+export const getDiscoverTracks = (limit = 20) =>
+  apiFetch<{ tracks: Track[] }>(`/recommendations/discover?limit=${limit}`);
 
 /**
  * Dispara los pipelines offline de recomendación (perfil de gustos + candidatos)

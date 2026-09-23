@@ -116,7 +116,18 @@ function loadUsage(): UsageStats {
   return { requestsThisMonth: 0, estimatedStorageMB: 0, lastResetDate: month };
 }
 
+// Escritura diferida: incrementRequests() se llama en cada reproducción y un
+// writeFileSync síncrono por petición bloqueaba el event loop.
+let saveTimer: NodeJS.Timeout | null = null;
 function saveUsage(stats: UsageStats): void {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    writeUsage(stats);
+  }, 5000);
+}
+
+function writeUsage(stats: UsageStats): void {
   try {
     const dir = path.dirname(USAGE_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -238,8 +249,18 @@ export async function listObjectsInCDN(): Promise<string[]> {
  * Devuelve la URL CDN si existe, o null si no está.
  * Consume 1 ó 2 Class A requests (HeadObject).
  */
+// Caché de existencia en R2: antes cada reproducción pagaba 2 HEAD a R2 antes
+// de responder. Los aciertos casi nunca cambian; los fallos se recuerdan poco
+// porque el auto-cacheo en background puede subir el track en cualquier momento.
+const CDN_HIT_TTL_MS = 6 * 60 * 60 * 1000;
+const CDN_MISS_TTL_MS = 2 * 60 * 1000;
+const cdnExistence = new Map<string, { url: string | null; expires: number }>();
+
 export async function findTrackInCDN(trackId: string): Promise<string | null> {
   if (!isCDNEnabled()) return null;
+
+  const known = cdnExistence.get(trackId);
+  if (known && known.expires > Date.now()) return known.url;
 
   // Los dos prefijos se comprueban en PARALELO, no en secuencia — si R2 está
   // lento/inalcanzable, pagar el timeout dos veces seguidas (hasta ~26s con
@@ -251,10 +272,12 @@ export async function findTrackInCDN(trackId: string): Promise<string | null> {
     getR2Client().send(new HeadObjectCommand({ Bucket: BUCKET(), Key: largeKey(trackId) })),
   ]);
 
-  if (permanent.status === 'fulfilled') return permanentUrl(trackId);
-  if (large.status === 'fulfilled') return largeUrl(trackId);
+  let url: string | null = null;
+  if (permanent.status === 'fulfilled') url = permanentUrl(trackId);
+  else if (large.status === 'fulfilled') url = largeUrl(trackId);
 
-  return null;
+  cdnExistence.set(trackId, { url, expires: Date.now() + (url ? CDN_HIT_TTL_MS : CDN_MISS_TTL_MS) });
+  return url;
 }
 
 /**
@@ -335,6 +358,7 @@ export async function uploadToCDN(
     }));
 
     incrementStorage(sizeMB);
+    cdnExistence.set(trackId, { url: publicUrl, expires: Date.now() + CDN_HIT_TTL_MS });
 
     const tag = isLarge ? '⏳' : '✅';
     console.log(`[CDN] ${tag} Subido: ${trackId} (${sizeMB.toFixed(1)} MB) → ${publicUrl}`);
@@ -347,6 +371,47 @@ export async function uploadToCDN(
     return publicUrl;
   } catch (err) {
     console.error(`[CDN] Error subiendo ${trackId}:`, err);
+    return null;
+  }
+}
+
+const IMAGE_CONTENT_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif',
+};
+
+/**
+ * Sube una imagen (avatar, portada) a R2 bajo images/<folder>/<nombre>.
+ * El disco de Render es efímero: lo que se guarde en data/uploads desaparece
+ * en cada redeploy/reinicio, así que toda imagen de usuario debe vivir en R2.
+ * Borra el archivo local tras subirlo. Devuelve la URL pública o null.
+ */
+export async function uploadImageToCDN(localPath: string, folder: 'avatars' | 'covers'): Promise<string | null> {
+  if (!isCDNEnabled() || !fs.existsSync(localPath)) return null;
+
+  const ext = path.extname(localPath).toLowerCase();
+  const key = `images/${folder}/${path.basename(localPath)}`;
+  const stat = fs.statSync(localPath);
+
+  try {
+    incrementRequests(1);
+    await getR2Client().send(new PutObjectCommand({
+      Bucket: BUCKET(),
+      Key: key,
+      Body: fs.createReadStream(localPath),
+      ContentType: IMAGE_CONTENT_TYPES[ext] ?? 'application/octet-stream',
+      ContentLength: stat.size,
+      CacheControl: 'public, max-age=31536000, immutable',
+    }));
+    incrementStorage(stat.size / (1024 * 1024));
+    fs.unlink(localPath, () => {});
+    return `${CDN_BASE()}/${key}`;
+  } catch (err) {
+    console.error(`[CDN] Error subiendo imagen ${key}:`, err);
     return null;
   }
 }
@@ -380,6 +445,7 @@ export function getPublicCDNUrl(trackId: string): string {
  */
 export async function deleteFromCDN(trackId: string): Promise<boolean> {
   if (!isCDNEnabled()) return false;
+  cdnExistence.delete(trackId);
   let deleted = false;
   for (const key of [permanentKey(trackId), largeKey(trackId)]) {
     try {

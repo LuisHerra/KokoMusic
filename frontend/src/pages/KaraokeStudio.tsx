@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
-import { getLyrics, resolveImageUrl } from '../lib/api';
+import { getLyrics, resolveImageUrl, getStreamUrl } from '../lib/api';
 import { parseSyncedLyrics, type LyricsLine } from '../lib/lyricsParser';
 
 const DB_NAME = 'KokoKaraokeDB';
@@ -88,9 +88,10 @@ async function deleteStudioRecording(id: string): Promise<void> {
 
 export default function KaraokeStudioPage() {
   const navigate = useNavigate();
-  const { currentTrack, setProgress } = usePlayerStore();
+  const { currentTrack } = usePlayerStore();
 
   const [isRecording, setIsRecording] = useState(false);
+  const [songTime, setSongTime] = useState(0);
   const [recSeconds, setRecSeconds] = useState(0);
   const [liveMonitor, setLiveMonitor] = useState(true);
   const [selectedScale, setSelectedScale] = useState('chromatic');
@@ -114,6 +115,43 @@ export default function KaraokeStudioPage() {
   const vocalAudioRef = useRef<HTMLAudioElement | null>(null);
   const recSecsRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const vocalUrlRef = useRef<string | null>(null);
+  const activeLineRef = useRef<HTMLDivElement | null>(null);
+
+  // El reproductor principal seguía sonando debajo del estudio (dos copias de
+  // la canción a la vez). Se pausa al entrar y se reanuda al salir si sonaba.
+  useEffect(() => {
+    const wasPlaying = usePlayerStore.getState().isPlaying;
+    if (wasPlaying) usePlayerStore.getState().setIsPlaying(false);
+    return () => {
+      if (wasPlaying) usePlayerStore.getState().setIsPlaying(true);
+    };
+  }, []);
+
+  const closeAudioCtx = () => {
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+  };
+
+  const releaseVocalUrl = () => {
+    if (vocalUrlRef.current) URL.revokeObjectURL(vocalUrlRef.current);
+    vocalUrlRef.current = null;
+  };
+
+  // Base musical: URL absoluta del backend (una ruta relativa "/api/stream"
+  // apuntaba al dominio del frontend en producción → sin música). Sin
+  // forceStream: el backend redirige al CDN; esta pista no pasa por Web Audio.
+  const createBackingAudio = (trackId: string) => {
+    const audio = new Audio(getStreamUrl(trackId));
+    audio.volume = musicVolume;
+    audio.addEventListener('timeupdate', () => setSongTime(audio.currentTime));
+    return audio;
+  };
+
+  const stopBackingAudio = () => {
+    bgAudioRef.current?.pause();
+    bgAudioRef.current = null;
+  };
 
   // Screen resize listener
   useEffect(() => {
@@ -124,39 +162,36 @@ export default function KaraokeStudioPage() {
 
   // Fetch lyrics if track active
   useEffect(() => {
+    let cancelled = false;
     if (currentTrack) {
       getLyrics(currentTrack.id)
         .then(res => {
-          if (res?.syncedLyrics) {
-            setLyricsLines(parseSyncedLyrics(res.syncedLyrics));
-          } else {
-            setLyricsLines([]);
-          }
+          if (cancelled) return;
+          setLyricsLines(res?.syncedLyrics ? parseSyncedLyrics(res.syncedLyrics) : []);
         })
-        .catch(() => setLyricsLines([]));
+        .catch(() => { if (!cancelled) setLyricsLines([]); });
 
-      getRecordings(currentTrack.id).then(setRecordingsList);
+      getRecordings(currentTrack.id).then(list => { if (!cancelled) setRecordingsList(list); });
     } else {
-      getRecordings().then(setRecordingsList);
+      getRecordings().then(list => { if (!cancelled) setRecordingsList(list); });
     }
+    return () => { cancelled = true; };
   }, [currentTrack]);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(t => t.stop());
       }
-      if (bgAudioRef.current) {
-        bgAudioRef.current.pause();
-      }
-      if (vocalAudioRef.current) {
-        vocalAudioRef.current.pause();
-      }
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-      }
+      bgAudioRef.current?.pause();
+      vocalAudioRef.current?.pause();
+      audioCtxRef.current?.close().catch(() => {});
+      if (vocalUrlRef.current) URL.revokeObjectURL(vocalUrlRef.current);
     };
   }, []);
 
@@ -193,8 +228,13 @@ export default function KaraokeStudioPage() {
     sourceNode.connect(inputGain);
 
     if (autotuneAmount > 10) {
+      // Las ramas se suman en outputGain: cada peaking filter deja pasar la
+      // señal completa, así que sin compensar la voz salía ~7× más fuerte y saturaba.
+      const snapFreqs = filteredScaleFreqs.slice(0, 6);
+      outputGain.gain.value = 1 / (snapFreqs.length + 1);
+
       // Pitch Snapper: High-Q Peaking Bandpass Array
-      filteredScaleFreqs.slice(0, 6).forEach((freq) => {
+      snapFreqs.forEach((freq) => {
         const filter = ctx.createBiquadFilter();
         filter.type = 'peaking';
         filter.frequency.value = freq;
@@ -247,18 +287,37 @@ export default function KaraokeStudioPage() {
 
     try {
       setStatusMessage('Iniciando música y grabadora de voz...');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      // Supresión de ruido y ganancia automática destrozan la voz cantada; la
+      // cancelación de eco se mantiene para que la música de los altavoces no
+      // se cuele en la toma.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false },
+        video: false,
+      });
       micStreamRef.current = stream;
       audioChunksRef.current = [];
 
-      // 1. GUARANTEED DEDICATED BACKGROUND MUSIC PLAYBACK
-      const bgAudio = new Audio(`/api/stream/${currentTrack.id}?autoDownload=true&forceStream=true`);
-      bgAudio.volume = musicVolume;
-      bgAudio.crossOrigin = 'anonymous';
+      // 1. Base musical: la grabación no empieza hasta que la música suena de
+      // verdad (en un arranque en frío puede tardar segundos), si no la voz
+      // queda desfasada respecto a la base.
+      stopBackingAudio();
+      vocalAudioRef.current?.pause();
+      setPlayingRecId(null);
+      const bgAudio = createBackingAudio(currentTrack.id);
       bgAudioRef.current = bgAudio;
-      bgAudio.play().catch(err => console.warn('[Studio] bgAudio play error:', err));
+      setStatusMessage('Cargando la base musical...');
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 10000);
+        bgAudio.addEventListener('playing', () => { clearTimeout(timeout); resolve(); }, { once: true });
+        bgAudio.play().catch(err => {
+          console.warn('[Studio] bgAudio play error:', err);
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
 
       // 2. WEB AUDIO DSP FOR LIVE MONITORING & RECORDING
+      closeAudioCtx();
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
@@ -327,35 +386,32 @@ export default function KaraokeStudioPage() {
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach(t => t.stop());
     }
-    if (bgAudioRef.current) {
-      bgAudioRef.current.pause();
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
-    }
+    stopBackingAudio();
+    closeAudioCtx();
+  };
+
+  const stopRecordedMix = () => {
+    vocalAudioRef.current?.pause();
+    vocalAudioRef.current = null;
+    stopBackingAudio();
+    closeAudioCtx();
+    releaseVocalUrl();
+    setPlayingRecId(null);
   };
 
   const playRecordedMix = (rec: StudioRecording) => {
-    if (playingRecId === rec.id) {
-      if (vocalAudioRef.current) vocalAudioRef.current.pause();
-      if (bgAudioRef.current) bgAudioRef.current.pause();
-      setPlayingRecId(null);
-      return;
-    }
+    const wasPlayingThis = playingRecId === rec.id;
+    stopRecordedMix();
+    if (wasPlayingThis) return;
 
-    // Play Background Beat
-    if (currentTrack) {
-      const bgAudio = new Audio(`/api/stream/${currentTrack.id}?autoDownload=true&forceStream=true`);
-      bgAudio.volume = musicVolume;
-      bgAudio.play().catch(() => {});
-      bgAudioRef.current = bgAudio;
-    }
+    // Base de ESA toma (rec.trackId), no la canción que esté cargada ahora
+    const bgAudio = createBackingAudio(rec.trackId);
+    bgAudioRef.current = bgAudio;
 
-    // Play Vocal Track with Auto-Tune DSP
     const url = URL.createObjectURL(rec.blob);
+    vocalUrlRef.current = url;
     const vocalAudio = new Audio(url);
     vocalAudio.volume = vocalVolume;
-    vocalAudio.crossOrigin = 'anonymous';
     vocalAudioRef.current = vocalAudio;
 
     try {
@@ -369,21 +425,25 @@ export default function KaraokeStudioPage() {
       console.warn('[Studio] AudioContext fallback:', e);
     }
 
-    vocalAudio.play().catch(err => console.error('[Studio] Vocal play error:', err));
+    // Voz y base arrancan juntas en cuanto la base está lista, para que no se desfasen.
+    bgAudio.addEventListener('playing', () => {
+      vocalAudio.play().catch(err => console.error('[Studio] Vocal play error:', err));
+    }, { once: true });
+    bgAudio.play().catch(() => vocalAudio.play().catch(() => {}));
     setPlayingRecId(rec.id);
 
-    vocalAudio.onended = () => {
-      if (bgAudioRef.current) bgAudioRef.current.pause();
-      setPlayingRecId(null);
-    };
+    vocalAudio.onended = () => stopRecordedMix();
   };
 
   const handleDownloadFile = (rec: StudioRecording) => {
     const url = URL.createObjectURL(rec.blob);
+    const ext = rec.blob.type.includes('mp4') || rec.blob.type.includes('aac') ? 'm4a'
+      : rec.blob.type.includes('ogg') ? 'ogg' : 'webm';
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Karaoke_${rec.trackTitle.replace(/[^a-z0-9]/gi, '_')}_${rec.id}.webm`;
+    a.download = `Karaoke_${rec.trackTitle.replace(/[^a-z0-9]/gi, '_')}_${rec.id}.${ext}`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleDeleteRec = async (id: string) => {
@@ -398,10 +458,58 @@ export default function KaraokeStudioPage() {
     return `${m}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
+  // Sincronizado con el tiempo real de la base, no con el contador de grabación
+  // (que ignoraba el buffering y se quedaba congelado fuera de una toma).
   const activeLineIndex = lyricsLines.findIndex((l, idx) => {
     const next = lyricsLines[idx + 1];
-    return recSeconds >= l.time && (!next || recSeconds < next.time);
+    return songTime >= l.time && (!next || songTime < next.time);
   });
+
+  useEffect(() => {
+    activeLineRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [activeLineIndex]);
+
+  const seekLyrics = (time: number) => {
+    if (bgAudioRef.current) bgAudioRef.current.currentTime = time;
+  };
+
+  const recordingsPanel = (
+    <div style={{
+      background: 'rgba(15, 12, 25, 0.5)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      borderRadius: 16,
+      padding: 16,
+      overflowY: 'auto',
+      minHeight: 0,
+    }}>
+      <h3 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 800 }}>Tus Tomas ({recordingsList.length})</h3>
+      {recordingsList.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No tienes grabaciones aún.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {recordingsList.map((rec) => (
+            <div key={rec.id} style={{ background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.trackTitle} ({formatSecs(rec.duration)})</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{new Date(rec.timestamp).toLocaleString()}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => playRecordedMix(rec)} disabled={isRecording} style={{ background: 'var(--accent)', color: '#000', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+                  {playingRecId === rec.id ? 'Detener' : 'Mezcla'}
+                </button>
+                <button onClick={() => handleDownloadFile(rec)} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 11, cursor: 'pointer' }}>
+                  Descargar
+                </button>
+                <button onClick={() => handleDeleteRec(rec.id)} style={{ background: 'rgba(255,75,75,0.2)', color: '#ff4b4b', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 11, cursor: 'pointer' }}>
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   const coverUrl = currentTrack ? resolveImageUrl(currentTrack.cover) : '';
 
@@ -454,7 +562,7 @@ export default function KaraokeStudioPage() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
             style={{
               background: 'rgba(255,255,255,0.1)',
               border: '1px solid rgba(255,255,255,0.15)',
@@ -597,9 +705,10 @@ export default function KaraokeStudioPage() {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: lyricsLines.length > 0 ? 'flex-start' : 'center',
             textAlign: 'center',
             overflowY: 'auto',
+            minHeight: 0,
           }}>
             {lyricsLines.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: 700 }}>
@@ -609,7 +718,8 @@ export default function KaraokeStudioPage() {
                   return (
                     <div
                       key={idx}
-                      onClick={() => setProgress(line.time)}
+                      ref={isActive ? activeLineRef : undefined}
+                      onClick={() => seekLyrics(line.time)}
                       style={{
                         fontSize: isActive ? (isMobile ? 24 : 32) : isPast ? 16 : 20,
                         fontWeight: isActive ? 900 : 600,
@@ -639,7 +749,9 @@ export default function KaraokeStudioPage() {
           </div>
         )}
 
-        {/* FREESTYLE SCRATCHPAD */}
+        {/* COLUMNA DERECHA: bloc de rimas + tomas (en móvil, cada uno en su pestaña) */}
+        {(!isMobile || mobileTab === 'notes' || mobileTab === 'recordings') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
         {(!isMobile || mobileTab === 'notes') && (
           <div style={{
             background: 'rgba(15, 12, 25, 0.5)',
@@ -649,7 +761,8 @@ export default function KaraokeStudioPage() {
             padding: isMobile ? 16 : 24,
             display: 'flex',
             flexDirection: 'column',
-            minHeight: isMobile ? 260 : undefined,
+            minHeight: isMobile ? 260 : 180,
+            flex: isMobile ? undefined : 1,
           }}>
             <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--accent)', marginBottom: 12 }}>
               Bloc de Notas & Rimas
@@ -675,42 +788,8 @@ export default function KaraokeStudioPage() {
             />
           </div>
         )}
-
-        {/* MOBILE RECORDINGS TAB */}
-        {isMobile && mobileTab === 'recordings' && (
-          <div style={{
-            background: 'rgba(15, 12, 25, 0.5)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 16,
-            padding: 16,
-          }}>
-            <h3 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 800 }}>Tus Tomas ({recordingsList.length})</h3>
-            {recordingsList.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No tienes grabaciones aún.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {recordingsList.map((rec) => (
-                  <div key={rec.id} style={{ background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{rec.trackTitle} ({formatSecs(rec.duration)})</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{new Date(rec.timestamp).toLocaleTimeString()}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => playRecordedMix(rec)} style={{ background: 'var(--accent)', color: '#000', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 11, fontWeight: 800 }}>
-                        {playingRecId === rec.id ? 'Detener' : 'Mezcla'}
-                      </button>
-                      <button onClick={() => handleDownloadFile(rec)} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 11 }}>
-                        Descargar
-                      </button>
-                      <button onClick={() => handleDeleteRec(rec.id)} style={{ background: 'rgba(255,75,75,0.2)', color: '#ff4b4b', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 11 }}>
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {(!isMobile || mobileTab === 'recordings') && recordingsPanel}
+        </div>
         )}
       </div>
 

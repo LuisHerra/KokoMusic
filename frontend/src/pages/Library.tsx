@@ -21,11 +21,9 @@ import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import { getAllOfflineTracks, deleteOfflineTrack } from '../lib/offlineAudio';
 import ArtistLinks from '../components/Common/ArtistLinks';
 
+// Solo lectura: el id lo fija el login. Inventar uno aquí creaba cuentas fantasma.
 function getDeviceId(): string {
-  const k = 'koko_device_id';
-  let id = localStorage.getItem(k);
-  if (!id) { id = crypto.randomUUID(); localStorage.setItem(k, id); }
-  return id;
+  return localStorage.getItem('koko_device_id') ?? '';
 }
 function getDisplayName(): string {
   return localStorage.getItem('koko_display_name') ?? 'Oyente';
@@ -482,6 +480,7 @@ export default function Library() {
       setCreating(false);
       navigate(`/playlist/${pl.share_code}?collab=true`);
     },
+    onError: (e: Error) => setError(`No se pudo crear la playlist: ${e.message}`),
   });
 
   const deleteMutation = useMutation({

@@ -990,12 +990,7 @@ export default function Playlist() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const deviceId = (() => {
-    const k = 'koko_device_id';
-    let did = localStorage.getItem(k);
-    if (!did) { did = crypto.randomUUID(); localStorage.setItem(k, did); }
-    return did;
-  })();
+  const deviceId = localStorage.getItem('koko_device_id') ?? '';
   const displayName = localStorage.getItem('koko_display_name') ?? 'Oyente';
 
   // Collab state: persisted per playlist ID

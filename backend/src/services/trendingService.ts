@@ -145,7 +145,9 @@ export async function updateTrendingData(region = 'spain'): Promise<void> {
       const key = normalizeStr(`${meta.title}-${meta.artist}`);
       candidates.set(key, {
         track,
-        score: count * 50 // 50 points per play
+        // Logarítmico: con ~25 usuarios, unos pocos clics en la propia sección de
+        // tendencias bastaban para fijar una canción arriba para siempre.
+        score: Math.round(20 * Math.log2(1 + count)),
       });
     }
 
@@ -197,7 +199,7 @@ export async function updateTrendingData(region = 'spain'): Promise<void> {
     const sortedCandidates = Array.from(candidates.values())
       .sort((a, b) => b.score - a.score);
 
-    cachedTrendingTracksByRegion.set(normRegion, sortedCandidates.map(c => c.track).slice(0, 30));
+    cachedTrendingTracksByRegion.set(normRegion, sortedCandidates.map(c => c.track).slice(0, 60));
 
     // --- Compute Trending Genres ---
     // Combine genres from play events and charts

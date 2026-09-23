@@ -288,11 +288,11 @@ export default function Search() {
 
   const { data, isLoading } = useQuery<{ tracks: Track[]; source: string; artist?: InferredArtist | null }>({
     queryKey: ['search', query, source, mood],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (mood && !query) {
         return getRecommendations(50, mood).then(tracks => ({ tracks, source: 'youtube', artist: null }));
       }
-      return searchTracks(query, 50, source as any);
+      return searchTracks(query, 30, source as any, signal);
     },
     enabled: query.trim().length > 0 || (!!mood && !query),
     staleTime: 10 * 60 * 1000,

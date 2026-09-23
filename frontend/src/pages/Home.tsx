@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { TrackCard } from '../components/TrackCard/TrackGrid';
-import { getPersonalizedRecommendations, getRecommendations, getTrendingTracks, resolveImageUrl } from '../lib/api';
+import { getPersonalizedRecommendations, getTrendingTracks, getDiscoverTracks, resolveImageUrl } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 
 import { useThemeStore } from '../store/themeStore';
@@ -82,6 +82,14 @@ export default function Home() {
   });
   const trendingTracks = trendingData?.tracks ?? [];
 
+  const { data: discoverData, isLoading: isDiscoverLoading, isFetching: isDiscoverFetching, refetch: refetchDiscover } = useQuery({
+    queryKey: ['discover-tracks'],
+    queryFn: () => getDiscoverTracks(20),
+    refetchOnWindowFocus: false,
+    staleTime: 2 * 60 * 1000,
+  });
+  const discoverTracks = discoverData?.tracks ?? [];
+
   // "Emisoras recomendadas" reales: los artistas top de tu Koko-Mix, con su
   // portada real (antes era una lista fija de 6 artistas ajenos al usuario
   // con fotos de stock de Unsplash que ni siquiera eran suyas).
@@ -115,7 +123,7 @@ export default function Home() {
   const handlePlayRandomKokoMix = async () => {
     try {
       setError('Generando Mix Aleatorio de tu historial y perfil...');
-      const recs = await getRecommendations(30);
+      const recs = (await getPersonalizedRecommendations(30)).tracks;
       if (recs && recs.length > 0) {
         const shuffled = [...recs].sort(() => Math.random() - 0.5);
         usePlayerStore.getState().setIsShuffle(true);
@@ -534,6 +542,70 @@ export default function Home() {
             ) : (
               <div className="empty-state" style={{ padding: '24px 0', border: '1px dashed #ffffff15', borderRadius: 8 }}>
                 <p style={{ color: 'var(--text-secondary)' }}>Escucha tus primeras canciones para activar tu Koko-Mix personalizado</p>
+              </div>
+            )}
+          </div>
+
+          {/* Descubrir: fuera de la zona de confort (otros géneros/artistas), rota en cada refresco */}
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <h2 className="section-title">Descubrir</h2>
+                <p className="section-subtitle">Géneros y artistas que todavía no sueles escuchar</p>
+              </div>
+              <button
+                onClick={() => refetchDiscover()}
+                disabled={isDiscoverFetching}
+                title="Otra tanda"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--accent)',
+                  cursor: isDiscoverFetching ? 'default' : 'pointer',
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  opacity: isDiscoverFetching ? 0.5 : 1,
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </button>
+            </div>
+            {isDiscoverLoading ? (
+              <div className="tracks-rail">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="track-card" style={{ cursor: 'default' }}>
+                    <div className="skeleton" style={{ aspectRatio: '1', borderRadius: 'var(--radius-md)', marginBottom: 12 }} />
+                    <div className="skeleton" style={{ height: 14, width: '80%', marginBottom: 8 }} />
+                    <div className="skeleton" style={{ height: 12, width: '60%' }} />
+                  </div>
+                ))}
+              </div>
+            ) : discoverTracks.length > 0 ? (
+              <div className="tracks-rail">
+                {discoverTracks.map((track) => (
+                  <TrackCard
+                    key={track.id}
+                    track={track}
+                    isPlaying={currentTrack?.id === track.id && isPlaying}
+                    onClick={() => handlePlay(track, discoverTracks)}
+                    onAddToQueue={() => {
+                      addToQueue(track);
+                      setError(`Añadido a la cola: ${track.title}`);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state" style={{ padding: '24px 0', border: '1px dashed #ffffff15', borderRadius: 8 }}>
+                <p style={{ color: 'var(--text-secondary)' }}>Aún no hay suficiente catálogo para descubrir — vuelve pronto</p>
               </div>
             )}
           </div>

@@ -217,6 +217,19 @@ async function inferArtistFromSearch(query: string, tracks: any[]): Promise<Infe
  * historial (más abajo) habría hecho mucho más visible al meter canciones
  * de un usuario en los resultados de otro.
  */
+// Historial por usuario cacheado 60s: mientras se escribe, cada búsqueda
+// releía hasta 2000 filas de Supabase aunque los tracks vinieran de caché.
+const HISTORY_CACHE_TTL_MS = 60 * 1000;
+const historyCache = new Map<string, { entries: HistoryEntry[]; expires: number }>();
+
+async function getCachedHistory(userId: string): Promise<HistoryEntry[]> {
+  const hit = historyCache.get(userId);
+  if (hit && hit.expires > Date.now()) return hit.entries;
+  const entries = await getHistoryForUser(userId);
+  historyCache.set(userId, { entries, expires: Date.now() + HISTORY_CACHE_TTL_MS });
+  return entries;
+}
+
 async function personalizeTracks(
   rawTracks: TrackMetadata[],
   query: string,
@@ -232,7 +245,7 @@ async function personalizeTracks(
 
   if (userId) {
     try {
-      history = await getHistoryForUser(userId);
+      history = await getCachedHistory(userId);
       if (history && history.length > 0) {
         for (const entry of history) {
           if (entry.artist) {
@@ -411,9 +424,11 @@ router.get('/', async (req: Request, res: Response) => {
     const l2Hit = await getSearchCache(searchSource, normalizedQ);
     if (l2Hit) {
       console.log(`[Search] L2 hit: "${normalizedQ}" (${searchSource})`);
-      const inferredArtist = await inferArtistFromSearch(q.trim(), l2Hit);
+      const [inferredArtist, tracks] = await Promise.all([
+        inferArtistFromSearch(q.trim(), l2Hit),
+        personalizeTracks(l2Hit, q.trim(), userId, searchSource, userRegion),
+      ]);
       cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify({ tracks: l2Hit, artist: inferredArtist }));
-      const tracks = await personalizeTracks(l2Hit, q.trim(), userId, searchSource, userRegion);
       prewarmTopTracks(tracks);
       return res.json({ tracks, artist: inferredArtist, source: searchSource, cached: true });
     }
@@ -423,8 +438,12 @@ router.get('/', async (req: Request, res: Response) => {
     const rawTracks = await searchTracks(q.trim(), Number(limit) || 20, searchSource);
 
     // Inferir si la búsqueda corresponde a un artista — sobre el crudo, no
-    // depende del usuario, así que se puede cachear junto a los tracks.
-    const inferredArtist = await inferArtistFromSearch(q.trim(), rawTracks);
+    // depende del usuario, así que se puede cachear junto a los tracks. Corre
+    // en paralelo con la personalización (ambas solo necesitan el crudo).
+    const [inferredArtist, tracks] = await Promise.all([
+      inferArtistFromSearch(q.trim(), rawTracks),
+      personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion),
+    ]);
 
     // Write-through a L1 + L2 (non-blocking) — solo si hay resultados. Un []
     // vacío suele ser un fallo transitorio (rate-limit, timeout, endpoint
@@ -435,8 +454,6 @@ router.get('/', async (req: Request, res: Response) => {
       cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify({ tracks: rawTracks, artist: inferredArtist }));
       setSearchCache(searchSource, normalizedQ, rawTracks).catch(() => {});
     }
-
-    const tracks = await personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion);
 
     // Precalentar en segundo plano el stream de los primeros resultados para
     // que el play sea casi instantáneo en el caso común (no bloquea la respuesta).
