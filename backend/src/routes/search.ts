@@ -6,6 +6,7 @@ import { hashStringToInteger } from '../services/artistService';
 import { cache } from '../services/cacheService';
 import { getSearchCache, setSearchCache } from '../services/searchCacheService';
 import { prewarmTopTracks } from '../services/streamResolverService';
+import { getKokoArtistTracks, matchKokoArtistTracks } from '../services/kokoArtistCatalog';
 
 /**
  * ¿El título de este track del historial contiene TODAS las palabras de la
@@ -230,6 +231,25 @@ async function getCachedHistory(userId: string): Promise<HistoryEntry[]> {
   return entries;
 }
 
+/**
+ * iTunes/YouTube no conocen las canciones publicadas por artistas de Koko: se
+ * buscan en el catálogo propio y van primero (con tan pocos usuarios, si buscas
+ * ese nombre exacto es casi seguro que buscas esa canción). Nunca se cachean con
+ * el crudo, para que una subida nueva aparezca al momento.
+ */
+async function withKokoArtistTracks(tracks: TrackMetadata[], query: string, source: SearchSource): Promise<TrackMetadata[]> {
+  if (source === 'lyrics') return tracks;
+  try {
+    const matches = matchKokoArtistTracks(query, await getKokoArtistTracks());
+    if (matches.length === 0) return tracks;
+    const ids = new Set(matches.map((t) => t.id));
+    return [...matches, ...tracks.filter((t) => !ids.has(String(t.id)))];
+  } catch (err) {
+    console.warn('[Search] No se pudo consultar el catálogo de artistas Koko:', err);
+    return tracks;
+  }
+}
+
 async function personalizeTracks(
   rawTracks: TrackMetadata[],
   query: string,
@@ -415,7 +435,11 @@ router.get('/', async (req: Request, res: Response) => {
       const parsed = JSON.parse(l1Hit);
       const rawTracks: TrackMetadata[] = Array.isArray(parsed) ? parsed : parsed.tracks;
       const cachedArtist = Array.isArray(parsed) ? null : parsed.artist;
-      const tracks = await personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion);
+      const tracks = await withKokoArtistTracks(
+        await personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion),
+        q.trim(),
+        searchSource
+      );
       prewarmTopTracks(tracks);
       return res.json({ tracks, artist: cachedArtist, source: searchSource, cached: true });
     }
@@ -426,7 +450,8 @@ router.get('/', async (req: Request, res: Response) => {
       console.log(`[Search] L2 hit: "${normalizedQ}" (${searchSource})`);
       const [inferredArtist, tracks] = await Promise.all([
         inferArtistFromSearch(q.trim(), l2Hit),
-        personalizeTracks(l2Hit, q.trim(), userId, searchSource, userRegion),
+        personalizeTracks(l2Hit, q.trim(), userId, searchSource, userRegion)
+          .then((t) => withKokoArtistTracks(t, q.trim(), searchSource)),
       ]);
       cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify({ tracks: l2Hit, artist: inferredArtist }));
       prewarmTopTracks(tracks);
@@ -442,7 +467,8 @@ router.get('/', async (req: Request, res: Response) => {
     // en paralelo con la personalización (ambas solo necesitan el crudo).
     const [inferredArtist, tracks] = await Promise.all([
       inferArtistFromSearch(q.trim(), rawTracks),
-      personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion),
+      personalizeTracks(rawTracks, q.trim(), userId, searchSource, userRegion)
+        .then((t) => withKokoArtistTracks(t, q.trim(), searchSource)),
     ]);
 
     // Write-through a L1 + L2 (non-blocking) — solo si hay resultados. Un []

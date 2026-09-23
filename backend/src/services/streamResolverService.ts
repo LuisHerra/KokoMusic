@@ -13,6 +13,7 @@ import { cache } from './cacheService';
 import { resolveLiteStream, purgeLiteCache, type KokoLiteResolvedStream } from './kokoLiteService';
 import { resolveYoutubeId } from './ytResolverService';
 import { metrics } from './metricsService';
+import { findTrackInCDN } from './cdnService';
 
 export type StreamSourceType = 'innertube' | 'lite';
 
@@ -123,6 +124,9 @@ const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 export async function prewarmTrackStream(track: PrewarmableTrack): Promise<void> {
   try {
     if (!track?.id || track.id.startsWith('custom_')) return;
+    // Ya en R2 (incluidas las canciones subidas por artistas Koko, que NO
+    // existen en YouTube): no hay nada que precalentar ni que gastar en proxy.
+    if (await findTrackInCDN(track.id)) return;
 
     let youtubeId: string | null = null;
 

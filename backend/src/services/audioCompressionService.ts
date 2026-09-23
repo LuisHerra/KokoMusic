@@ -12,8 +12,10 @@ const AUDIO_SAMPLE_RATE = process.env.AUDIO_SAMPLE_RATE ?? '48000';
 
 /**
  * Comprime un archivo de audio de entrada a formato Opus altamente eficiente utilizando FFmpeg.
- * Aplica normalización EBU R128 (-14 LUFS) para consistencia de volumen.
- * 
+ * Sin loudnorm: remuestrea internamente a 192 kHz y en la CPU mínima de Render
+ * convertía una subida de pocos MB en minutos de espera. El resto del catálogo
+ * (cdnAutoCacheService) tampoco normaliza, así que el volumen queda coherente.
+ *
  * @param inputPath Ruta al archivo de audio original
  * @returns Ruta al archivo transcodificado (.opus), o la ruta original si falla
  */
@@ -44,7 +46,6 @@ export async function compressAudio(inputPath: string): Promise<string> {
     '-compression_level', String(AUDIO_COMPRESSION_LEVEL),
     '-ar', AUDIO_SAMPLE_RATE,
     '-ac', '2',
-    '-af', 'loudnorm=I=-14:LRA=11:TP=-1.5',
     '-y',
     `"${outputPath}"`,
   ].join(' ');

@@ -16,6 +16,7 @@ import { getArtistInfo, hashStringToInteger } from '../services/artistService';
 import { supabase, upsertTracks } from '../services/supabaseService';
 import { compressAudio } from '../services/audioCompressionService';
 import { uploadToCDN, deleteFromCDN, uploadImageToCDN } from '../services/cdnService';
+import { invalidateKokoArtistCatalog } from '../services/kokoArtistCatalog';
 
 const router = Router();
 
@@ -234,24 +235,28 @@ router.post('/tracks/upload', uploadTrack.fields([{ name: 'audio', maxCount: 1 }
   }
 
   try {
-    const { data: profile } = await supabase!
-      .schema('kokomusic')
-      .from('koko_profiles')
-      .select('avatar_url, display_name, username')
-      .eq('id', userId)
-      .maybeSingle();
-    const artistName: string = (profile as any)?.display_name || (profile as any)?.username || 'Artista Koko';
-
-    const compressedPath = await compressAudio(audioFile.path);
+    const startedAt = Date.now();
     const trackId = hashStringToInteger(`koko-track:${userId}:${title}:${Date.now()}`);
+    const coverFile = files?.cover?.[0];
 
-    const cdnUrl = await uploadToCDN(String(trackId), compressedPath, true);
+    // Perfil, audio (compresión + R2) y portada son independientes: en paralelo.
+    const [{ data: profile }, cdnUrl, uploadedCover] = await Promise.all([
+      supabase!
+        .schema('kokomusic')
+        .from('koko_profiles')
+        .select('avatar_url, display_name, username')
+        .eq('id', userId)
+        .maybeSingle(),
+      compressAudio(audioFile.path).then((compressedPath) => uploadToCDN(String(trackId), compressedPath, true)),
+      coverFile ? uploadImageToCDN(coverFile.path, 'covers') : Promise.resolve(null),
+    ]);
+    console.log(`[Artist] Subida de "${title}" procesada en ${Date.now() - startedAt} ms`);
+
     if (!cdnUrl) {
       return res.status(413).json({ error: 'El archivo supera el límite de tamaño permitido o el almacenamiento está lleno' });
     }
 
-    const coverFile = files?.cover?.[0];
-    const uploadedCover = coverFile ? await uploadImageToCDN(coverFile.path, 'covers') : null;
+    const artistName: string = (profile as any)?.display_name || (profile as any)?.username || 'Artista Koko';
     const coverUrl: string | null = uploadedCover ?? ((profile as any)?.avatar_url ?? null);
 
     await upsertTracks([{
@@ -265,6 +270,7 @@ router.post('/tracks/upload', uploadTrack.fields([{ name: 'audio', maxCount: 1 }
       genre: genre?.trim() || 'Otros',
       release_date: new Date().toISOString().slice(0, 10),
     }]);
+    invalidateKokoArtistCatalog();
 
     return res.json({ success: true, itunesId: trackId });
   } catch (err) {
@@ -321,6 +327,7 @@ router.delete('/tracks/:itunesId', async (req: Request, res: Response) => {
 
     await supabase!.schema('kokomusic').from('tracks_meta').delete().eq('itunes_id', itunesId);
     await deleteFromCDN(String(itunesId));
+    invalidateKokoArtistCatalog();
 
     return res.json({ success: true });
   } catch (err) {

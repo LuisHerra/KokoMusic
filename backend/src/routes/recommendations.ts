@@ -48,6 +48,7 @@ import { seedInitialProfile, loadTasteProfileStale } from '../services/tasteProf
 import { setUserRegion, getUserRegion } from '../services/regionService';
 import { addTracksToLikedSongs } from './playlists';
 import { getTrendingTracks } from '../services/trendingService';
+import { getKokoArtistTracks, genreFamily } from '../services/kokoArtistCatalog';
 
 const router = Router();
 
@@ -186,6 +187,69 @@ function applyRepeatFilter<T extends { trackId: string }>(
 }
 
 /**
+ * Empujón suave a artistas de Koko: como mucho UNA canción suya por tanda, solo
+ * si su género es de la misma familia que los dominantes del usuario, y sujeta
+ * al anti-repetición de 24h (así no sale en cada refresco). Sustituye una
+ * posición a partir de la 3ª para no desplazar la cabeza del mix.
+ */
+async function maybeInjectKokoArtistTrack(
+  userId: string,
+  pool: EnrichedCandidate[],
+  selection: EnrichedCandidate[],
+  avoidRepeats: boolean
+): Promise<EnrichedCandidate[]> {
+  if (selection.length === 0) return selection;
+
+  const familyCounts = new Map<string, number>();
+  for (const c of pool) {
+    const f = genreFamily(c.genre);
+    if (f) familyCounts.set(f, (familyCounts.get(f) || 0) + 1);
+  }
+  const topFamilies = new Set(
+    [...familyCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([f]) => f)
+  );
+  if (topFamilies.size === 0) return selection;
+
+  let catalog;
+  try {
+    catalog = await getKokoArtistTracks();
+  } catch {
+    return selection;
+  }
+
+  const shown = avoidRepeats ? getRecentlyShown(userId) : new Map<string, number>();
+  const inSelection = new Set(selection.map((c) => c.trackId));
+  const eligible = catalog.filter((t) => {
+    const f = genreFamily(t.genre);
+    return !!f && topFamilies.has(f) && !inSelection.has(t.id) && !shown.has(t.id) && !!t.cover;
+  });
+  if (eligible.length === 0) return selection;
+
+  const pick = eligible[Math.floor(Math.random() * eligible.length)];
+  recordShown(userId, [pick.id]);
+
+  const result = [...selection];
+  const minPos = Math.min(2, result.length - 1);
+  const pos = minPos + Math.floor(Math.random() * (result.length - minPos));
+  result[pos] = {
+    trackId: pick.id,
+    title: pick.title,
+    artist: pick.artist,
+    artistId: pick.artistId,
+    cover: pick.cover,
+    durationMs: pick.duration,
+    genre: pick.genre,
+    releaseDate: pick.releaseDate,
+    affinityScore: 0,
+    isNewFromFollowedArtist: false,
+    source: 'taste',
+    bpmEstimate: 100,
+    energyEstimate: 0.5,
+  };
+  return result;
+}
+
+/**
  * Muestreo ponderado por posición (Efraimidis–Spirakis): el top del ranking
  * sigue siendo lo más probable, pero cada petición saca una selección distinta
  * en vez de siempre los mismos N primeros.
@@ -251,10 +315,11 @@ router.get('/', async (req: Request, res: Response) => {
 
       // ── 4. Orden dentro de la selección: BPM/energía + diversidad ──────────────
       const diverse = applyDiversityFilter(applySmartReorder(selection));
+      const withKoko = await maybeInjectKokoArtistTrack(userId, candidates, diverse, avoidRepeats);
 
       const elapsed = Date.now() - start;
       return res.json({
-        tracks: mapCandidatesToTracks(diverse),
+        tracks: mapCandidatesToTracks(withKoko),
         source: fresh ? 'cache_fresh' : 'cache_stale',
         cached: true,
         stale: !fresh,
