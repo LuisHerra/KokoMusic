@@ -435,7 +435,7 @@ export default function Home() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
               <div>
                 <h2 className="section-title" style={{ marginBottom: 2 }}>Koko-Mix</h2>
-                <p className="section-subtitle" style={{ margin: 0 }}>Recomendaciones basadas en tu historial</p>
+                <p className="section-subtitle" style={{ margin: 0 }}>Tus artistas, parecidos y lo que hace tiempo que no escuchas</p>
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }}>
                 <button
@@ -551,7 +551,7 @@ export default function Home() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
                 <h2 className="section-title">Descubrir</h2>
-                <p className="section-subtitle">Géneros y artistas que todavía no sueles escuchar</p>
+                <p className="section-subtitle">Artistas nuevos para ti, parecidos a los que escuchas y a lo que oyen tus amigos</p>
               </div>
               <button
                 onClick={() => refetchDiscover()}

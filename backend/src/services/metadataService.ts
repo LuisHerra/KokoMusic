@@ -521,6 +521,43 @@ async function fetchItunesRaw(term: string, limit: number): Promise<TrackMetadat
   return deduplicateTracks(songs.map((item, idx) => itunesResultToTrack(item, idx)));
 }
 
+/**
+ * Canciones más relevantes de un artista según iTunes (filtradas a ese artista
+ * exacto, no homónimos ni colaboraciones sueltas). Cacheado 7 días y persistido
+ * en tracks_meta, así que el mismo artista solo cuesta una llamada externa.
+ */
+export async function getArtistTopTracksFromItunes(artistName: string, limit = 5): Promise<TrackMetadata[]> {
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const target = norm(artistName);
+  if (!target) return [];
+  const cacheKey = `artist-top:${target}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return (JSON.parse(cached) as TrackMetadata[]).slice(0, limit);
+
+  try {
+    const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(artistName)}&entity=musicTrack&attribute=artistTerm&limit=25&media=music`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return [];
+    const data = (await res.json()) as any;
+    const songs = (data.results ?? []).filter(
+      (r: any) => r.kind === 'song' && r.trackId && norm(r.artistName || '') === target
+    );
+    // Remixes, directos y sesiones al final: para recomendar se quiere el tema original.
+    const altVersion = /remix|en vivo|live|session|acoustic|ac[uú]stic|instrumental|sped up|slowed|karaoke|versi[oó]n/i;
+    const tracks = deduplicateTracks(songs.map((item: any, idx: number) => itunesResultToTrack(item, idx)))
+      .sort((a, b) => Number(altVersion.test(a.title)) - Number(altVersion.test(b.title)))
+      .slice(0, 10);
+    cache.setex(cacheKey, tracks.length > 0 ? 7 * 86400 : 6 * 3600, JSON.stringify(tracks));
+    if (tracks.length > 0) {
+      cacheTracksById(tracks);
+      upsertTracks(tracks.map(trackToRow)).catch(() => {});
+    }
+    return tracks.slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
 /** Fallback search in Deezer API when iTunes API blocks or yields no results */
 export async function searchDeezer(query: string, limit = 10): Promise<TrackMetadata[]> {
   try {

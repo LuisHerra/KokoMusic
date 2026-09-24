@@ -158,10 +158,17 @@ function hashCode(str: string): number {
  * búsqueda, con concurrencia limitada para no saturar KokoMusic-lite ni
  * disparar demasiadas búsquedas de YouTube en paralelo.
  */
-export function prewarmTopTracks(tracks: PrewarmableTrack[], count = 4): void {
+// Cada búsqueda lanzaba una tanda de precalentado (YouTube + lite por proxy);
+// mientras el usuario escribe se acumulaban y frenaban las búsquedas siguientes
+// en la CPU mínima de Render. Solo vale la tanda de la búsqueda más reciente.
+let prewarmGeneration = 0;
+
+export function prewarmTopTracks(tracks: PrewarmableTrack[], count = 2): void {
+  const myGeneration = ++prewarmGeneration;
   const targets = tracks.slice(0, count);
   (async () => {
     for (const track of targets) {
+      if (myGeneration !== prewarmGeneration) return;
       await prewarmTrackStream(track);
     }
   })().catch(() => {});

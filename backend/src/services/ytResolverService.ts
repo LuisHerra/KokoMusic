@@ -168,27 +168,59 @@ const MAX_ALTERNATES = 3;
  * KokoMusic-lite y por eso fallaba siempre, mientras que resolver un track
  * puntual (vía perfil de artista) sí funcionaba al pasar primero por aquí.
  */
-export async function searchYoutubeVideos(query: string, limit = 15): Promise<any[]> {
-  let videos: any[] = [];
+const YTS_TIMEOUT_MS = 8000;
+const YTS_HEDGE_AFTER_MS = 3500;
 
-  if (!isYtSearchDisabled()) {
-    try {
-      rotateYtProxy();
-      const result = await yts(query);
-      videos = result.videos.slice(0, limit);
-      recordYtSearchSuccess();
-    } catch {
-      recordYtSearchFailure();
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms)),
+  ]);
+}
+
+/** Resuelve con el primer array no vacío; [] si todos terminan vacíos. */
+function firstNonEmpty<T>(promises: Promise<T[]>[]): Promise<T[]> {
+  return new Promise((resolve) => {
+    let pending = promises.length;
+    for (const p of promises) {
+      p.then((r) => {
+        if (r.length > 0) resolve(r);
+        else if (--pending === 0) resolve([]);
+      }, () => { if (--pending === 0) resolve([]); });
     }
-  }
+  });
+}
 
-  if (videos.length === 0) {
-    const { searchLite } = await import('./kokoLiteService');
+export async function searchYoutubeVideos(query: string, limit = 15): Promise<any[]> {
+  const { searchLite } = await import('./kokoLiteService');
+
+  // yt-search no tiene timeout propio: con el proxy lento una búsqueda podía
+  // tardar 40 s+. Se acota, y si a los 3,5 s no ha respondido se lanza en
+  // paralelo KokoMusic-lite y gana el primero que traiga resultados.
+  const viaYts: Promise<any[]> = isYtSearchDisabled()
+    ? Promise.resolve([])
+    : (async () => {
+        try {
+          rotateYtProxy();
+          const result = await withTimeout(yts(query), YTS_TIMEOUT_MS);
+          recordYtSearchSuccess();
+          return result.videos.slice(0, limit);
+        } catch {
+          recordYtSearchFailure();
+          return [];
+        }
+      })();
+
+  const early = await Promise.race([viaYts, new Promise<null>((r) => setTimeout(() => r(null), YTS_HEDGE_AFTER_MS))]);
+  if (early && early.length > 0) return early;
+
+  if (early !== null) {
     console.log(`[YTResolver] yt-search vacío — buscando via KokoMusic-lite: "${query}"`);
-    videos = await searchLite(query);
+    return searchLite(query);
   }
 
-  return videos;
+  console.log(`[YTResolver] yt-search lento — lanzando KokoMusic-lite en paralelo: "${query}"`);
+  return firstNonEmpty([viaYts, searchLite(query).catch(() => [])]);
 }
 
 /**

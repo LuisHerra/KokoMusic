@@ -26,7 +26,6 @@ import {
   getCachedPlaylist,
   isCacheFresh,
   recordFeedback,
-  isColdStart,
   getCacheStats,
   setCachedPlaylist,
   type FeedbackEvent,
@@ -44,7 +43,7 @@ import {
   onTrackCompleted,
   onArtistFollowed,
 } from '../services/backgroundJobRunner';
-import { seedInitialProfile, loadTasteProfileStale } from '../services/tasteProfileBuilder';
+import { seedInitialProfile, loadTasteProfileStale, buildAndPersistTasteProfile } from '../services/tasteProfileBuilder';
 import { setUserRegion, getUserRegion } from '../services/regionService';
 import { addTracksToLikedSongs } from './playlists';
 import { getTrendingTracks } from '../services/trendingService';
@@ -261,6 +260,25 @@ function rankWeightedShuffle<T>(items: T[]): T[] {
     .map((x) => x.item);
 }
 
+// Cálculo del pool en curso por usuario — varias peticiones a la vez (Home pide
+// KokoMix, el botón Mix...) esperan al mismo cálculo en vez de lanzar varios.
+const mixPoolsInFlight = new Map<string, Promise<void>>();
+
+async function ensureMixPool(userId: string): Promise<void> {
+  if (getCachedPlaylist(userId)) return;
+  let pending = mixPoolsInFlight.get(userId);
+  if (!pending) {
+    pending = (async () => {
+      const profile = (await loadTasteProfileStale(userId)) ?? (await buildAndPersistTasteProfile(userId));
+      if (!profile) return;
+      const candidates = await generateCandidates(userId, profile);
+      if (candidates.length >= 5) setCachedPlaylist(userId, candidates);
+    })().finally(() => mixPoolsInFlight.delete(userId));
+    mixPoolsInFlight.set(userId, pending);
+  }
+  await pending;
+}
+
 router.get('/', async (req: Request, res: Response) => {
   const start = Date.now();
   const userId = (req.headers['x-user-id'] || 'default') as string;
@@ -270,22 +288,11 @@ router.get('/', async (req: Request, res: Response) => {
   const region = getUserRegion(userId);
 
   try {
-    // ── 1. Cold-start check ────────────────────────────────────────────────────
-    if (isColdStart(userId)) {
-      console.log(`[Recs] Cold-start path for ${userId} in region ${region}`);
-      const coldCandidates = await getColdStartCandidates(limit * 3, region);
-
-      // Trigger pipeline for future visits (non-blocking)
-      setImmediate(() => triggerUserPipeline(userId));
-
-      const elapsed = Date.now() - start;
-      return res.json({
-        tracks: mapCandidatesToTracks(applyRepeatFilter(userId, rankWeightedShuffle(coldCandidates), limit, avoidRepeats)),
-        source: 'cold_start',
-        cached: false,
-        elapsedMs: elapsed,
-      });
-    }
+    // ── 1. Pool del usuario: si no está en memoria (p. ej. tras un reinicio de
+    // Render) se calcula ya desde Supabase. Antes se servían charts globales
+    // mientras tanto, y como Render reinicia a menudo, KokoMix era casi siempre
+    // "mainstream sin sentido".
+    await ensureMixPool(userId).catch((err) => console.error(`[Recs] No se pudo calcular el mix de ${userId}:`, err));
 
     // ── 2. Read from cache (stale-while-revalidate) ────────────────────────────
     const cached = getCachedPlaylist(userId);
@@ -328,15 +335,13 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    // ── 5. Cache miss: trigger build + return cold start as temporary fallback ──
-    console.log(`[Recs] Cache miss for ${userId} — triggering pipeline, serving cold start`);
-    setImmediate(() => triggerUserPipeline(userId));
-
+    // ── 5. Usuario realmente nuevo (sin perfil ni historial): charts + onboarding ──
+    console.log(`[Recs] Cold-start path for ${userId} in region ${region}`);
     const coldCandidates = await getColdStartCandidates(limit * 3, region);
     const elapsed = Date.now() - start;
     return res.json({
       tracks: mapCandidatesToTracks(applyRepeatFilter(userId, rankWeightedShuffle(coldCandidates), limit, avoidRepeats)),
-      source: 'cache_miss_cold_start',
+      source: 'cold_start',
       cached: false,
       elapsedMs: elapsed,
     });
@@ -485,8 +490,13 @@ router.get('/discover', async (req: Request, res: Response) => {
       entry = { candidates: await generateDiscoveryCandidates(userId, profile), computedAt: Date.now() };
       discoverPools.set(userId, entry);
     }
-    const shuffled = [...entry.candidates].sort(() => Math.random() - 0.5);
-    const selection = applyRepeatFilter(`${userId}:discover`, shuffled, limit, avoidRepeats);
+    // El pool ya viene ordenado por relevancia (similitud / afinidad de amigos):
+    // se rota ponderando por ese orden en vez de barajar al azar.
+    // Lo que ya está en su KokoMix no se repite en Descubrir (se ven en la misma pantalla).
+    const inMix = new Set((getCachedPlaylist(userId)?.candidates ?? []).map((c) => c.trackId));
+    const fresh = entry.candidates.filter((c) => !inMix.has(c.trackId));
+    const pool = fresh.length >= limit ? fresh : entry.candidates;
+    const selection = applyRepeatFilter(`${userId}:discover`, rankWeightedShuffle(pool), limit, avoidRepeats);
     res.json({ tracks: mapCandidatesToTracks(applyDiversityFilter(selection)) });
   } catch (error) {
     console.error('[Recs] Error building discover rail:', error);
