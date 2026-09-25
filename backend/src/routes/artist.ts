@@ -303,6 +303,75 @@ router.get('/tracks/mine', async (req: Request, res: Response) => {
   }
 });
 
+// ── PATCH /api/artist/tracks/:itunesId — editar título y/o portada ────────────
+router.patch('/tracks/:itunesId', uploadTrack.fields([{ name: 'cover', maxCount: 1 }]), async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] || req.body.userId) as string;
+  if (!userId) return res.status(400).json({ error: 'x-user-id header requerido' });
+
+  const itunesId = Number(req.params.itunesId);
+  if (isNaN(itunesId)) return res.status(400).json({ error: 'itunesId inválido' });
+
+  const files = req.files as { cover?: Express.Multer.File[] } | undefined;
+  const coverFile = files?.cover?.[0];
+  const title = typeof req.body.title === 'string' ? req.body.title.trim() : undefined;
+
+  if (title === '') {
+    if (coverFile) fs.unlink(coverFile.path, () => {});
+    return res.status(400).json({ error: 'El título no puede estar vacío' });
+  }
+  if (title === undefined && !coverFile) {
+    return res.status(400).json({ error: 'Nada que actualizar' });
+  }
+
+  const artistId = await getUserArtistId(userId);
+  if (!artistId) {
+    if (coverFile) fs.unlink(coverFile.path, () => {});
+    return res.status(403).json({ error: 'No eres artista' });
+  }
+
+  try {
+    const { data: track } = await supabase!
+      .schema('kokomusic')
+      .from('tracks_meta')
+      .select('artist_id')
+      .eq('itunes_id', itunesId)
+      .maybeSingle();
+
+    if (!track || (track as any).artist_id !== artistId) {
+      if (coverFile) fs.unlink(coverFile.path, () => {});
+      return res.status(track ? 403 : 404).json({ error: track ? 'Esta canción no es tuya' : 'Canción no encontrada' });
+    }
+
+    const update: Record<string, string> = {};
+    if (title !== undefined) update.title = title;
+    if (coverFile) {
+      const coverUrl = await uploadImageToCDN(coverFile.path, 'covers');
+      if (!coverUrl) return res.status(500).json({ error: 'No se pudo subir la portada' });
+      update.cover_url = coverUrl;
+    }
+
+    const { data: updated, error } = await supabase!
+      .schema('kokomusic')
+      .from('tracks_meta')
+      .update(update)
+      .eq('itunes_id', itunesId)
+      .select('itunes_id, title, artist, album, cover_url, genre, duration_ms, release_date')
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Metadatos cacheados de la canción (y sus letras, que dependen del título).
+    invalidateKokoArtistCatalog();
+    cache.del(`track:${itunesId}`);
+    cache.del(`lyrics:${itunesId}`);
+    cache.del(`lyrics-miss:${itunesId}`);
+
+    return res.json({ success: true, track: updated });
+  } catch (err) {
+    console.error('[Artist] Error editando track:', err);
+    return res.status(500).json({ error: 'Error al editar la canción' });
+  }
+});
+
 // ── DELETE /api/artist/tracks/:itunesId ────────────────────────────────────────
 router.delete('/tracks/:itunesId', async (req: Request, res: Response) => {
   const userId = (req.headers['x-user-id'] || req.query.userId) as string;
