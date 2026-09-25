@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchTracks, addToJamQueue, getRecommendations, getTrackRadio, BASE } from '../lib/api';
+import { pickRecommendations } from '../lib/recommendationPicker';
 import type { Track, InferredArtist } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
@@ -438,13 +439,15 @@ export default function Search() {
       const radio = await getTrackRadio(track.id);
       const existingIds = new Set([track.id]);
       const existingKeys = new Set([`${track.title.toLowerCase().trim()}_${track.artist.toLowerCase().trim()}`]);
-      const recs = (radio?.tracks || []).filter(t => {
+      const deduped = (radio?.tracks || []).filter(t => {
         const key = `${t.title.toLowerCase().trim()}_${t.artist.toLowerCase().trim()}`;
         if (existingIds.has(t.id) || existingKeys.has(key)) return false;
         existingIds.add(t.id);
         existingKeys.add(key);
         return true;
-      }).slice(0, 15);
+      });
+      // Quita lo escuchado hace poco y aplica el modo determinista/exploratorio.
+      const recs = pickRecommendations(deduped, 15);
 
       if (recs && recs.length > 0) {
         const currentStore = usePlayerStore.getState();
@@ -467,13 +470,15 @@ export default function Search() {
       const radio = await getTrackRadio(track.id);
       const existingIds = new Set([track.id]);
       const existingKeys = new Set([`${track.title.toLowerCase().trim()}_${track.artist.toLowerCase().trim()}`]);
-      const recs = (radio?.tracks || []).filter(t => {
+      const deduped = (radio?.tracks || []).filter(t => {
         const key = `${t.title.toLowerCase().trim()}_${t.artist.toLowerCase().trim()}`;
         if (existingIds.has(t.id) || existingKeys.has(key)) return false;
         existingIds.add(t.id);
         existingKeys.add(key);
         return true;
-      }).slice(0, 15);
+      });
+      // Quita lo escuchado hace poco y aplica el modo determinista/exploratorio.
+      const recs = pickRecommendations(deduped, 15);
 
       if (recs && recs.length > 0) {
         const currentStore = usePlayerStore.getState();

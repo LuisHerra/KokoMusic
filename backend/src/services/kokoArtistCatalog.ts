@@ -7,12 +7,14 @@
 
 import { supabase } from './supabaseService';
 import type { TrackMetadata } from './metadataService';
+import type { ArtistInfo } from './artistService';
 
 const TTL_MS = 60 * 1000;
 let cached: { tracks: TrackMetadata[]; expires: number } | null = null;
 
 export function invalidateKokoArtistCatalog(): void {
   cached = null;
+  artistsCache = null;
 }
 
 export async function getKokoArtistTracks(): Promise<TrackMetadata[]> {
@@ -97,4 +99,90 @@ export function genreFamily(genre: string | null | undefined): string | null {
   if (/rock|metal|punk|alternativ|indie/.test(g)) return 'rock';
   if (/pop/.test(g)) return 'pop';
   return null;
+}
+
+// ── Perfil público de artista Koko ───────────────────────────────────────────
+// GET /api/artist/:id tiraba siempre por iTunes/YouTube (getArtistInfo), que no
+// conocen a los artistas de KokoMusic: para cualquier otro usuario el perfil
+// acababa en 404 (el propio artista solo lo veía porque su pestaña usa
+// /artist/tracks/mine). Esto lo resuelve contra koko_profiles + tracks_meta.
+
+interface KokoArtistRow {
+  artist_id: number;
+  display_name: string | null;
+  username: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+}
+
+let artistsCache: { rows: KokoArtistRow[]; expires: number } | null = null;
+
+async function getKokoArtistRows(): Promise<KokoArtistRow[]> {
+  if (artistsCache && artistsCache.expires > Date.now()) return artistsCache.rows;
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .schema('kokomusic')
+    .from('koko_profiles')
+    .select('artist_id, display_name, username, bio, avatar_url')
+    .eq('is_artist', true)
+    .not('artist_id', 'is', null);
+  if (error) throw error;
+  const rows = (data ?? []).map((r: any) => ({ ...r, artist_id: Number(r.artist_id) })) as KokoArtistRow[];
+  artistsCache = { rows, expires: Date.now() + TTL_MS };
+  return rows;
+}
+
+/** Mismo hash que artistService.hashStringToInteger (copiado para no crear un import circular). */
+function hashName(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Devuelve el perfil de un artista Koko si `identifier` lo identifica: su
+ * artist_id real, el hash de su nombre (así enlazan las subidas de biblioteca
+ * `custom_…`) o su nombre. null si no es un artista Koko.
+ */
+export async function getKokoArtistProfile(identifier: number | string): Promise<ArtistInfo | null> {
+  const rows = await getKokoArtistRows();
+  if (rows.length === 0) return null;
+
+  const nameOf = (r: KokoArtistRow) => r.display_name || r.username || 'Artista Koko';
+  let row: KokoArtistRow | undefined;
+  if (typeof identifier === 'number') {
+    row = rows.find((r) => r.artist_id === identifier) || rows.find((r) => hashName(nameOf(r)) === identifier);
+  } else {
+    const wanted = normalize(identifier);
+    row = rows.find((r) => normalize(nameOf(r)) === wanted || (!!r.username && normalize(r.username) === wanted));
+  }
+  if (!row) return null;
+
+  const name = nameOf(row);
+  const catalog = await getKokoArtistTracks();
+  const topTracks = catalog
+    .filter((t) => t.artistId === row!.artist_id)
+    .sort((a, b) => String(b.releaseDate || '').localeCompare(String(a.releaseDate || '')));
+
+  const genreCounts = new Map<string, number>();
+  for (const t of topTracks) genreCounts.set(t.genre, (genreCounts.get(t.genre) || 0) + 1);
+  const genre = [...genreCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'Artista Koko';
+
+  return {
+    itunesArtistId: row.artist_id,
+    name,
+    bio: row.bio || '',
+    image: row.avatar_url || topTracks[0]?.cover || '',
+    genre,
+    topTracks,
+    albums: [],
+    isVerified: false,
+  };
+}
+
+export function invalidateKokoArtistProfiles(): void {
+  artistsCache = null;
 }

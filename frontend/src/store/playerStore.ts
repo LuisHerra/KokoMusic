@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import { getTrackRadio, type Track } from '../lib/api';
+import { markTrackPlayed, pickRecommendations } from '../lib/recommendationPicker';
 import { logToServer } from '../lib/logger';
 
 let globalUnlockHandler: (() => void) | null = null;
@@ -261,6 +262,7 @@ const savedGamerMode = (() => {
 
 function recordPlayedTrack(trackId: string, setFn: any, getFn: any) {
   if (!trackId) return;
+  markTrackPlayed(trackId);
   const current: string[] = getFn().sessionPlayedTrackIds || [];
   if (!current.includes(trackId)) {
     const updated = [...current, trackId];
@@ -395,9 +397,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             if (radio?.tracks && radio.tracks.length > 0) {
               const { queue: currentQueue, sessionPlayedTrackIds } = get();
               const existingIds = new Set([...currentQueue.map(t => t.id), ...(sessionPlayedTrackIds || [])]);
-              const fresh = radio.tracks.filter(t => !existingIds.has(t.id));
+              const fresh = pickRecommendations(radio.tracks, 3, existingIds);
               if (fresh.length > 0) {
-                const extended = [...currentQueue, ...fresh.slice(0, 3)];
+                const extended = [...currentQueue, ...fresh];
                 set({ queue: extended, originalQueue: extended });
                 console.log(`[playerStore] Dynamic queue enriched via Radio: +${Math.min(fresh.length, 3)} tracks`);
               }
@@ -425,9 +427,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         if (radio?.tracks && radio.tracks.length > 0) {
           const { queue: currentQueue, sessionPlayedTrackIds } = get();
           const existingIds = new Set([...currentQueue.map(t => t.id), ...(sessionPlayedTrackIds || [])]);
-          const fresh = radio.tracks.filter(t => !existingIds.has(t.id));
+          const fresh = pickRecommendations(radio.tracks, 10, existingIds);
           if (fresh.length > 0) {
-            const newQueue = [...queue, ...fresh.slice(0, 10)];
+            const newQueue = [...queue, ...fresh];
             if (fresh[0]?.id) recordPlayedTrack(fresh[0].id, set, get);
             set({
               queue: newQueue,

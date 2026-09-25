@@ -250,6 +250,9 @@ async function withKokoArtistTracks(tracks: TrackMetadata[], query: string, sour
   }
 }
 
+/** Tiempo máximo que la respuesta espera a la búsqueda de afinidad en YouTube. */
+const AFFINITY_BUDGET_MS = 1500;
+
 async function personalizeTracks(
   rawTracks: TrackMetadata[],
   query: string,
@@ -358,16 +361,24 @@ async function personalizeTracks(
       if (cachedSupp !== null) {
         suppTracks = JSON.parse(cachedSupp);
       } else {
-        try {
-          const ytTracks = await searchYouTube(query, 15);
-          suppTracks = ytTracks.filter(t => matchesKnownArtist(t.artist));
-        } catch (err) {
-          console.warn('[Search] Error buscando afinidad de artista en YouTube:', err);
-          suppTracks = [];
-        }
-        // TTL corto si no encontró nada (puede ser transitorio), más largo
-        // si sí — mismo criterio que otras cachés negativas del proyecto.
-        cache.setex(suppCacheKey, suppTracks.length > 0 ? 3600 : 600, JSON.stringify(suppTracks));
+        // Esta segunda búsqueda va por YouTube (proxy residencial) y antes
+        // bloqueaba la respuesta entera varios segundos. Ahora le damos un
+        // presupuesto corto: si no llega a tiempo, respondemos sin ella y el
+        // resultado queda cacheado para la siguiente búsqueda igual.
+        const suppPromise = searchYouTube(query, 15)
+          .then(ytTracks => ytTracks.filter(t => matchesKnownArtist(t.artist)))
+          .catch(err => {
+            console.warn('[Search] Error buscando afinidad de artista en YouTube:', err);
+            return [] as TrackMetadata[];
+          })
+          .then(found => {
+            // TTL corto si no encontró nada (puede ser transitorio), más largo
+            // si sí — mismo criterio que otras cachés negativas del proyecto.
+            cache.setex(suppCacheKey, found.length > 0 ? 3600 : 600, JSON.stringify(found));
+            return found;
+          });
+        const timedOut = new Promise<null>(resolve => setTimeout(() => resolve(null), AFFINITY_BUDGET_MS));
+        suppTracks = (await Promise.race([suppPromise, timedOut])) ?? [];
       }
 
       if (suppTracks.length > 0) {

@@ -16,7 +16,7 @@ import { getArtistInfo, hashStringToInteger } from '../services/artistService';
 import { supabase, upsertTracks } from '../services/supabaseService';
 import { compressAudio } from '../services/audioCompressionService';
 import { uploadToCDN, deleteFromCDN, uploadImageToCDN } from '../services/cdnService';
-import { invalidateKokoArtistCatalog } from '../services/kokoArtistCatalog';
+import { invalidateKokoArtistCatalog, getKokoArtistProfile } from '../services/kokoArtistCatalog';
 
 const router = Router();
 
@@ -346,6 +346,15 @@ router.get('/:id', async (req: Request, res: Response) => {
     identifier = nameQuery;
   } else if (!isNaN(Number(idParam))) {
     identifier = Number(idParam);
+  }
+
+  // Artistas de KokoMusic primero: iTunes/YouTube no los conocen. Sin caché
+  // L1 aquí (el catálogo ya cachea 60s) para que una subida nueva aparezca ya.
+  try {
+    const kokoArtist = await getKokoArtistProfile(identifier);
+    if (kokoArtist) return res.json({ artist: kokoArtist, source: 'koko' });
+  } catch (err) {
+    console.warn('[Artist] Error consultando artistas Koko, sigo con iTunes:', err);
   }
 
   const cacheKey = `artist-v3:${identifier}`;

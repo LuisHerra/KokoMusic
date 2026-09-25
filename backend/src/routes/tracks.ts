@@ -973,32 +973,124 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Función para limpiar metadatos de YouTube para mejor coincidencia en letras
-function cleanMetadataForLyrics(title: string, author: string) {
-  let artist = author;
-  let trackName = title;
+// ── Limpieza de metadatos para LRCLIB ─────────────────────────────────────────
+// LRCLIB indexa por "artista principal" + "título limpio". Antes limpiábamos
+// de forma agresiva y a ciegas (partir SIEMPRE por " - ", borrar palabras como
+// "music"/"remix"/"cover" en cualquier parte del título, mandar el artista con
+// todos los colaboradores) y eso convertía "Song - Remastered 2011" en
+// artista="Song" / título="Remastered 2011", o "Bad Bunny, Jhay Cortez" en un
+// artista que LRCLIB no conoce. Ahora generamos varias variantes, de la más
+// fiel a la más agresiva, y validamos lo que devuelve la búsqueda.
 
-  // Si el título contiene " - ", probablemente sea "Artista - Canción"
-  if (title.includes(' - ')) {
-    const parts = title.split(' - ');
-    artist = parts[0].trim();
-    trackName = parts[1].trim();
+const LYRICS_NOISE_IN_BRACKETS = /[\(\[][^\)\]]*\b(feat|ft|with|con|prod|remaster(ed)?|live|en vivo|version|versi[oó]n|edit|official|oficial|video|v[ií]deo|audio|lyrics?|letra|visualizer|mono|stereo|explicit|clean|hd|hq|4k)\b[^\)\]]*[\)\]]/gi;
+const LYRICS_NOISE_SUFFIX = /\s+-\s+(\d{4}\s+)?(remaster(ed)?|live|en vivo|radio edit|single version|album version|versi[oó]n|mono|stereo|edit|acoustic|ac[uú]stic[oa])\b.*$/i;
+
+function cleanLyricsTitle(title: string): string {
+  return title
+    .replace(LYRICS_NOISE_IN_BRACKETS, '')
+    .replace(LYRICS_NOISE_SUFFIX, '')
+    .replace(/\s+(feat|ft)\.?\s+.*$/i, '')
+    .replace(/\b(official\s+(music\s+)?(video|audio)|lyric\s+video|video\s+oficial|audio\s+oficial)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[\s\-|·]+$/, '')
+    .trim();
+}
+
+function primaryLyricsArtist(artist: string): string {
+  return artist
+    .replace(/\s*-\s*topic$/i, '')
+    .replace(/vevo$/i, '')
+    .split(/\s*(?:,|&|\bx\b|\bfeat\.?|\bft\.?|\by\b|\band\b)\s*/i)[0]
+    .trim();
+}
+
+function lyricsQueryVariants(trackMeta: { title: string; artist: string; itunesId?: number }): Array<{ artist: string; title: string }> {
+  const variants: Array<{ artist: string; title: string }> = [];
+  const push = (artist: string, title: string) => {
+    artist = artist.trim();
+    title = title.trim();
+    if (!artist || !title) return;
+    if (!variants.some((v) => v.artist.toLowerCase() === artist.toLowerCase() && v.title.toLowerCase() === title.toLowerCase())) {
+      variants.push({ artist, title });
+    }
+  };
+
+  // 1. Metadatos tal cual (iTunes/Deezer ya vienen limpios), solo sin adornos.
+  push(primaryLyricsArtist(trackMeta.artist), cleanLyricsTitle(trackMeta.title));
+
+  // 2. Vídeos de YouTube: el título suele ser "Artista - Canción".
+  const isYouTube = !trackMeta.itunesId;
+  if (isYouTube && trackMeta.title.includes(' - ')) {
+    const [maybeArtist, ...rest] = trackMeta.title.split(' - ');
+    push(primaryLyricsArtist(maybeArtist), cleanLyricsTitle(rest.join(' - ')));
   }
 
-  // Quitar VEVO, Topic, etc. del artista
-  artist = artist
-    .replace(/\b(vevo|topic|official|music|records|group)\b/gi, '')
-    .trim();
+  // 3. Artista completo (algunos dúos están indexados así en LRCLIB).
+  push(trackMeta.artist.replace(/\s*-\s*topic$/i, ''), cleanLyricsTitle(trackMeta.title));
+  return variants;
+}
 
-  // Quitar etiquetas comunes en YouTube de la canción
-  trackName = trackName
-    .replace(/\(.*?\)/g, '')
-    .replace(/\[.*?\]/g, '')
-    .replace(/\b(official|video|audio|lyric|lyrics|hq|hd|music|remix|cover|feat\.?|ft\.?)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
 
-  return { artist, title: trackName };
+function hasLyricsContent(d: any): boolean {
+  return !!d && (!!d.syncedLyrics || !!d.plainLyrics || d.instrumental === true);
+}
+
+const LRCLIB_HEADERS = { 'User-Agent': 'KokoMusic (https://kokomusic.onrender.com)' };
+
+async function lrclibFetch(path: string): Promise<any | null> {
+  const res = await fetch(`https://lrclib.net/api${path}`, {
+    headers: LRCLIB_HEADERS,
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** De los resultados de /api/search, el que tenga letra, cuyo artista encaje y, si sabemos la duración, que dure lo mismo (±5s). */
+function pickBestLyricsResult(results: any[], artist: string, durationSec?: number): any | null {
+  const wantedArtist = normalizeForMatch(artist);
+  const candidates = results.filter((r) => hasLyricsContent(r));
+  const artistMatches = (r: any) => {
+    const a = normalizeForMatch(r.artistName || '');
+    return !!wantedArtist && (a.includes(wantedArtist) || wantedArtist.includes(a));
+  };
+  const durationMatches = (r: any) => !durationSec || !r.duration || Math.abs(r.duration - durationSec) <= 5;
+
+  return (
+    candidates.find((r) => artistMatches(r) && durationMatches(r)) ||
+    candidates.find((r) => artistMatches(r)) ||
+    null
+  );
+}
+
+async function findLyrics(trackMeta: { title: string; artist: string; itunesId?: number; duration?: number }): Promise<any | null> {
+  const durationSec = trackMeta.duration ? Math.round(trackMeta.duration / 1000) : undefined;
+  const variants = lyricsQueryVariants(trackMeta);
+
+  // Coincidencia exacta primero (rápida y fiable), en cada variante.
+  for (const v of variants) {
+    const data = await lrclibFetch(`/get?artist_name=${encodeURIComponent(v.artist)}&track_name=${encodeURIComponent(v.title)}`);
+    if (hasLyricsContent(data)) return data;
+  }
+
+  // Búsqueda difusa, validando artista/duración en vez de coger results[0] a ciegas.
+  for (const v of variants) {
+    const results = await lrclibFetch(`/search?track_name=${encodeURIComponent(v.title)}&artist_name=${encodeURIComponent(v.artist)}`);
+    const best = Array.isArray(results) ? pickBestLyricsResult(results, v.artist, durationSec) : null;
+    if (best) return best;
+  }
+
+  // Último recurso: búsqueda libre con q=, por si el título tiene otra grafía.
+  const first = variants[0];
+  if (first) {
+    const results = await lrclibFetch(`/search?q=${encodeURIComponent(`${first.artist} ${first.title}`)}`);
+    const best = Array.isArray(results) ? pickBestLyricsResult(results, first.artist, durationSec) : null;
+    if (best) return best;
+  }
+  return null;
 }
 
 import { searchLite } from '../services/kokoLiteService';
@@ -1079,13 +1171,19 @@ router.get('/:id/video', async (req: Request, res: Response) => {
 });
 
 // GET /api/tracks/:id/lyrics
+const LYRICS_MISS_TTL_SEC = 6 * 60 * 60; // un "no hay letra" se reintenta a las 6h (LRCLIB crece a diario)
+
 router.get('/:id/lyrics', async (req: Request, res: Response) => {
   const { id } = req.params;
   const cacheKey = `lyrics:${id}`;
-  
+  const missKey = `lyrics-miss:${id}`;
+
   const cached = cache.get(cacheKey);
   if (cached) {
     return res.json(JSON.parse(cached));
+  }
+  if (cache.get(missKey)) {
+    return res.status(404).json({ error: 'Letras no encontradas para esta canción' });
   }
 
   try {
@@ -1102,43 +1200,21 @@ router.get('/:id/lyrics', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Track no encontrado para obtener letras' });
     }
 
-    // 2. Limpiar artista y título
-    const { artist, title } = cleanMetadataForLyrics(trackMeta.title, trackMeta.artist);
-    console.log(`[Lyrics] Buscando en lrclib para: "${artist}" - "${title}" (Original: "${trackMeta.artist}" - "${trackMeta.title}")`);
-
-    // 3. Consultar lrclib.net (primero exacto)
-    let response = await fetch(
-      `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`
-    );
-
-    let data = null;
-
-    if (response.ok) {
-      data = await response.json();
-    } else {
-      // Fallback: Usar buscador de lrclib
-      console.log(`[Lyrics] Fallback de búsqueda para: "${artist}" - "${title}"`);
-      const searchResp = await fetch(
-        `https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`
-      );
-      if (searchResp.ok) {
-        const results = await searchResp.json();
-        if (Array.isArray(results) && results.length > 0) {
-          data = results[0];
-          console.log(`[Lyrics] Fallback exitoso encontrado: "${data.artistName}" - "${data.trackName}"`);
-        }
-      }
-    }
+    // 2. Probar variantes de artista/título contra LRCLIB
+    const data = await findLyrics(trackMeta);
 
     if (!data) {
+      console.log(`[Lyrics] Sin letra para "${trackMeta.artist}" - "${trackMeta.title}"`);
+      cache.setex(missKey, LYRICS_MISS_TTL_SEC, '1');
       return res.status(404).json({ error: 'Letras no encontradas para esta canción' });
     }
-    
+
     // Guardar en caché por 7 días ya que las letras no cambian
     cache.setex(cacheKey, 604800, JSON.stringify(data));
-    
+
     return res.json(data);
   } catch (error) {
+    // Timeout/red: no se cachea como "sin letra", puede ser algo puntual de LRCLIB.
     console.error('[Lyrics] Error obteniendo letras:', error);
     return res.status(500).json({ error: 'Error al conectar con el servidor de letras' });
   }
