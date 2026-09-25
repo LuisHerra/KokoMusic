@@ -185,8 +185,10 @@ export async function resolveStream(
     return { ...data, cached: false };
   } catch (err: any) {
     recordFailure();
+    // Timeout / error de red = problema del servicio (Render despertando,
+    // proxy caído), no del video: no lo marcamos como malo — de eso ya se
+    // encarga el circuit breaker.
     console.error(`[KokoLiteClient] Error resolviendo stream para ${videoId}:`, err.message || err);
-    cache.setex(badVideoCacheKey(videoId), NEGATIVE_CACHE_TTL_SEC, '1');
     return null;
   }
 }
@@ -196,6 +198,9 @@ export async function resolveStream(
  */
 export async function purgeStreamCache(videoId: string): Promise<boolean> {
   cache.del(`resolved-stream:${videoId}`);
+  // Sin esto, los reintentos del frontend (que purgan antes de reintentar)
+  // chocaban siempre con la caché negativa y nunca volvían a preguntar a Lite.
+  cache.del(badVideoCacheKey(videoId));
   const endpoint = appendKey(`${BASE_URL}/api/stream/${encodeURIComponent(videoId)}/cache`);
 
   try {
