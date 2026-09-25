@@ -163,7 +163,15 @@ function hashCode(str: string): number {
 // en la CPU mínima de Render. Solo vale la tanda de la búsqueda más reciente.
 let prewarmGeneration = 0;
 
-export function prewarmTopTracks(tracks: PrewarmableTrack[], count = 2): void {
+// Cada precalentado es una resolución completa contra YouTube (por proxy y con
+// la cuenta de la cookie). Buscando mientras se escribe se disparaban muchas y
+// contribuían a que YouTube limitara la sesión ("Este contenido no está
+// disponible"). Ahora solo el primer resultado, y se puede apagar del todo con
+// DISABLE_STREAM_PREWARM=true.
+const PREWARM_DISABLED = process.env.DISABLE_STREAM_PREWARM === 'true';
+
+export function prewarmTopTracks(tracks: PrewarmableTrack[], count = 1): void {
+  if (PREWARM_DISABLED) return;
   const myGeneration = ++prewarmGeneration;
   const targets = tracks.slice(0, count);
   (async () => {
