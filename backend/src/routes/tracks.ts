@@ -1083,17 +1083,36 @@ async function findLyrics(trackMeta: { title: string; artist: string; itunesId?:
     if (best) return best;
   }
 
-  // Último recurso: búsqueda libre con q=, por si el título tiene otra grafía.
+  // Búsqueda libre con q=, por si el título tiene otra grafía.
   const first = variants[0];
   if (first) {
     const results = await lrclibFetch(`/search?q=${encodeURIComponent(`${first.artist} ${first.title}`)}`);
     const best = Array.isArray(results) ? pickBestLyricsResult(results, first.artist, durationSec) : null;
     if (best) return best;
   }
+
+  // Último recurso: YouTube Music (catálogo de Musixmatch/LyricFind, más amplio
+  // que LRCLIB pero solo texto plano, sin tiempos). Va por el proxy de Lite, por
+  // eso solo se pide cuando LRCLIB no tiene nada.
+  for (const v of variants.slice(0, 2)) {
+    const yt = await getLiteLyrics(v.artist, v.title);
+    if (yt) {
+      console.log(`[Lyrics] Letra de YouTube Music (${yt.source || 'sin fuente'}) para "${v.artist}" - "${v.title}"`);
+      return {
+        trackName: yt.title || trackMeta.title,
+        artistName: yt.artists.join(', ') || trackMeta.artist,
+        plainLyrics: yt.lyrics.replace(/\r\n/g, '\n'),
+        syncedLyrics: null,
+        instrumental: false,
+        source: 'ytmusic',
+        attribution: yt.source || null,
+      };
+    }
+  }
   return null;
 }
 
-import { searchLite } from '../services/kokoLiteService';
+import { searchLite, getLiteLyrics } from '../services/kokoLiteService';
 
 function stringToSafeIntegerHash(str: string): number {
   let hash = 5381;

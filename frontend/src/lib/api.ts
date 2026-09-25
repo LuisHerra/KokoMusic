@@ -237,6 +237,10 @@ export interface Lyrics {
   instrumental: boolean;
   plainLyrics: string | null;
   syncedLyrics: string | null;
+  /** 'ytmusic' cuando viene de YouTube Music (respaldo de LRCLIB, solo texto plano). */
+  source?: string;
+  /** Crédito de la letra, p. ej. "Fuente: Musixmatch". */
+  attribution?: string | null;
 }
 
 export const getLyrics = (trackId: string) => apiFetch<Lyrics>(`/tracks/${trackId}/lyrics`);

@@ -314,6 +314,40 @@ export async function lookupArtist(query: string): Promise<any | null> {
 }
 
 
+export interface LiteLyricsResult {
+  videoId: string;
+  title?: string;
+  artists: string[];
+  lyrics: string;
+  source?: string;
+}
+
+/**
+ * Letra en texto plano desde YouTube Music (Musixmatch/LyricFind) vía
+ * KokoMusic-lite. Respaldo para cuando LRCLIB no tiene la canción. Lite ya
+ * valida artista/título y cachea aciertos (7 días) y fallos (6h).
+ */
+export async function getLiteLyrics(artist: string, title: string): Promise<LiteLyricsResult | null> {
+  if (isBreakerOpen()) return null;
+  const params = new URLSearchParams({ artist, title });
+  const endpoint = appendKey(`${BASE_URL}/api/lyrics?${params.toString()}`);
+  try {
+    const res = await fetch(endpoint, {
+      headers: {
+        Accept: 'application/json',
+        ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as LiteLyricsResult;
+    return data?.lyrics ? data : null;
+  } catch (err: any) {
+    console.warn(`[KokoLiteClient] Error obteniendo letra de "${artist} - ${title}":`, err.message || err);
+    return null;
+  }
+}
+
 // Aliases para máxima compatibilidad con el resto del proyecto
 export const resolveAudioStream = resolveStream;
 export const resolveLiteStream = resolveStream;
