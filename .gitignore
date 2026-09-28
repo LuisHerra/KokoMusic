@@ -54,3 +54,7 @@ __pycache__/
 # `git add -A` accidental, ver commit que elimina HF-kokoMusic-space).
 HF-kokoMusic-space/
 
+
+# Builds de Electron y el repo aparte de KokoMusic-lite
+release/
+backendKokoMusic/

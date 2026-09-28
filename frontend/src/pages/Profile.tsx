@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount, getProfileNames, cleanName, uploadAvatar, resolveImageUrl, isDesktopApp, syncSpotifyTaste, becomeArtist, type KokoProfile } from '../lib/api';
 import { startSpotifyAuth, isSpotifyConnected, disconnectSpotify } from '../lib/spotifyAuth';
 import { usePlayerStore } from '../store/playerStore';
+import { getRecommendationMode, setRecommendationMode } from '../lib/recommendationPicker';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -195,6 +196,7 @@ export default function ProfilePage() {
   const [producerAffinity, setProducerAffinity] = useState(() => localStorage.getItem('koko_algo_producer_affinity') !== 'false');
   const [skipPenalty, setSkipPenalty] = useState(() => localStorage.getItem('koko_algo_skip_penalty') !== 'false');
   const [avoidRepeatRecs, setAvoidRepeatRecs] = useState(() => localStorage.getItem('koko_algo_avoid_repeat_recs') !== 'false');
+  const [exploratoryRecs, setExploratoryRecs] = useState(() => getRecommendationMode() === 'exploratory');
 
   // Streaming Engine Settings
   const [audioQuality, setAudioQuality] = useState(() => localStorage.getItem('koko_audio_quality') ?? 'auto');
@@ -1231,6 +1233,16 @@ export default function ProfilePage() {
               onChange={(val) => {
                 setSkipPenalty(val);
                 localStorage.setItem('koko_algo_skip_penalty', String(val));
+              }}
+            />
+
+            <ToggleRow
+              label="Recomendaciones Exploratorias"
+              description="Añade un pequeño factor de azar al elegir las siguientes canciones de la radio, para que la misma canción no genere siempre la misma cola. Desactívalo para recomendaciones deterministas (siempre el mismo orden)."
+              checked={exploratoryRecs}
+              onChange={(val) => {
+                setExploratoryRecs(val);
+                setRecommendationMode(val ? 'exploratory' : 'deterministic');
               }}
             />
 

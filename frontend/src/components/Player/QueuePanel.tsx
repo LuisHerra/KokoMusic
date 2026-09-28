@@ -2,6 +2,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useState, useEffect } from 'react';
 import DjMixerModal from './DjMixerModal';
 import { getJamQueue, voteJamQueueItem, removeFromJamQueue, getRecommendations, getTrackRadio } from '../../lib/api';
+import { pickRecommendations } from '../../lib/recommendationPicker';
 import { useResizableRightPanel } from '../../hooks/useResizable';
 
 function getUserId(): string {
@@ -62,12 +63,12 @@ export default function QueuePanel() {
           // 2. Fallback: Recomendaciones contextuales por artista/género
           if (candidates.length === 0) {
             const recentQueueIds = q.slice(Math.max(0, qIdx - 4), qIdx + 1).map(t => t.id);
-            candidates = await getRecommendations(5, currentTrack.artist, currentTrack.genre, recentQueueIds);
+            candidates = await getRecommendations(10, undefined, currentTrack.id, recentQueueIds, [...existingIds]);
           }
 
-          const fresh = (candidates || []).filter(t => !existingIds.has(t.id));
+          const fresh = pickRecommendations(candidates || [], 10, existingIds);
           if (fresh.length > 0) {
-            usePlayerStore.getState().appendQueue(fresh.slice(0, 10));
+            usePlayerStore.getState().appendQueue(fresh);
           }
         } catch (err) {
           console.error('Error auto-enriching queue:', err);

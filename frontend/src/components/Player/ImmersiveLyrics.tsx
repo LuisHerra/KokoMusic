@@ -7,6 +7,10 @@ import { useVideoSync } from '../../hooks/useVideoSync';
 
 import { parseSyncedLyrics, detectLyricSections } from '../../lib/lyricsParser';
 
+/** Color de respaldo cuando no se puede extraer de la portada: el acento elegido por el usuario (no el verde por defecto). */
+const ACCENT_FALLBACK = 'var(--accent)';
+const ACCENT_GRADIENT_FALLBACK = 'linear-gradient(135deg, var(--accent), var(--accent-bright))';
+
 export default function ImmersiveLyrics() {
   const { currentTrack, isLyricsOpen, toggleLyrics, progress, dominantColor, isVideoOpen, isKaraokeMode, toggleKaraoke } = usePlayerStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -23,8 +27,8 @@ export default function ImmersiveLyrics() {
   const [colorMode, setColorMode] = useState<'cover' | 'gradient' | 'white' | 'custom'>(() => getSaved('colorMode', 'cover'));
   const [customColor, setCustomColor] = useState<string>(() => getSaved('customColor', '#a78bfa'));
   const [animation, setAnimation] = useState<'scale' | 'slide' | 'blur' | 'kinetic'>(() => getSaved('animation', 'kinetic'));
-  const [extractedColor, setExtractedColor] = useState<string>('#1DB954');
-  const [extractedGradient, setExtractedGradient] = useState<string>('');
+  const [extractedColor, setExtractedColor] = useState<string>(ACCENT_FALLBACK);
+  const [extractedGradient, setExtractedGradient] = useState<string>(ACCENT_GRADIENT_FALLBACK);
   
   // Customization States
   const [showSettings, setShowSettings] = useState(false);
@@ -65,7 +69,15 @@ export default function ImmersiveLyrics() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(img, 0, 0, 64, 64);
-      const data = ctx.getImageData(0, 0, 64, 64).data;
+      let data: Uint8ClampedArray;
+      try {
+        data = ctx.getImageData(0, 0, 64, 64).data;
+      } catch {
+        // Canvas "contaminado" por CORS: la imagen carga pero no deja leer píxeles.
+        setExtractedColor(ACCENT_FALLBACK);
+        setExtractedGradient(ACCENT_GRADIENT_FALLBACK);
+        return;
+      }
       let r = 0, g = 0, b = 0, count = 0;
       let r1 = 0, g1 = 0, b1 = 0, c1 = 0;
       let r2 = 0, g2 = 0, b2 = 0, c2 = 0;
@@ -91,9 +103,15 @@ export default function ImmersiveLyrics() {
         setExtractedColor(`#${toHex(Math.floor(r/count))}${toHex(Math.floor(g/count))}${toHex(Math.floor(b/count))}`);
       }
       
-      const hex1 = c1 > 0 ? `#${toHex(Math.floor(r1/c1))}${toHex(Math.floor(g1/c1))}${toHex(Math.floor(b1/c1))}` : '#1DB954';
-      const hex2 = c2 > 0 ? `#${toHex(Math.floor(r2/c2))}${toHex(Math.floor(g2/c2))}${toHex(Math.floor(b2/c2))}` : '#1DB954';
+      const hex1 = c1 > 0 ? `#${toHex(Math.floor(r1/c1))}${toHex(Math.floor(g1/c1))}${toHex(Math.floor(b1/c1))}` : ACCENT_FALLBACK;
+      const hex2 = c2 > 0 ? `#${toHex(Math.floor(r2/c2))}${toHex(Math.floor(g2/c2))}${toHex(Math.floor(b2/c2))}` : ACCENT_FALLBACK;
       setExtractedGradient(`linear-gradient(135deg, ${hex1}, ${hex2})`);
+    };
+    // Si la portada no deja leer sus píxeles (CORS, muy habitual en móvil) o no
+    // carga, nos quedamos con el acento del usuario en vez de un color fijo.
+    img.onerror = () => {
+      setExtractedColor(ACCENT_FALLBACK);
+      setExtractedGradient(ACCENT_GRADIENT_FALLBACK);
     };
     img.src = currentTrack.cover;
   }, [currentTrack?.cover]);
@@ -566,7 +584,12 @@ export default function ImmersiveLyrics() {
             })}
           </div>
         ) : lyrics.plainLyrics ? (
-          <div className="immersive-lyrics-plain-text">{lyrics.plainLyrics}</div>
+          <div className="immersive-lyrics-plain-text">
+            {lyrics.plainLyrics}
+            {lyrics.attribution && (
+              <div style={{ marginTop: 32, fontSize: 12, fontWeight: 500, opacity: 0.5 }}>{lyrics.attribution}</div>
+            )}
+          </div>
         ) : (
           <div className="immersive-lyrics-empty">Letras no encontradas</div>
         )}

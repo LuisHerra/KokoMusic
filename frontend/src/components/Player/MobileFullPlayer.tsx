@@ -15,7 +15,7 @@ import { useVideoSync } from '../../hooks/useVideoSync';
 import SongCreditsModal from './SongCreditsModal';
 import {
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
-  IconLyrics, IconVoice, IconRadio, IconVideo, IconChevronDown,
+  IconLyrics, IconRadio, IconVideo, IconChevronDown,
   IconCheck, IconLoadingSpinner, IconCloudDownload, IconUser, IconQueue,
 } from './PlayerIcons';
 
@@ -330,6 +330,14 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     ? `linear-gradient(180deg, ${dominantColor}cc 0%, #0d0d0d 60%)`
     : 'linear-gradient(180deg, #1a1a2e 0%, #0d0d0d 60%)';
 
+  // ImmersiveLyrics vive en el layout principal (App.tsx), por debajo de este
+  // overlay fijo — si solo lo activáramos, quedaría oculto detrás hasta cerrar
+  // el reproductor. Abrimos las letras y cerramos el overlay para mostrarlas.
+  const openLyrics = () => {
+    if (!isLyricsOpen) toggleLyrics();
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -377,7 +385,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         </div>
         <button
           className="mfp-header-btn"
-          onClick={() => toggleLyrics()}
+          onClick={openLyrics}
           style={{ color: isLyricsOpen ? 'var(--accent)' : 'rgba(255,255,255,0.6)' }}
           title="Letras"
         >
@@ -726,20 +734,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
       <div className="mfp-extras">
         <button
           className="mfp-extra-btn"
-          onClick={() => {
-            onClose();
-            const evt = new KeyboardEvent('keydown', { key: 'v', altKey: true, bubbles: true });
-            window.dispatchEvent(evt);
-          }}
-          style={{ color: 'rgba(255,255,255,0.7)' }}
-        >
-          <IconVoice />
-          <span>Voz (Alt+V)</span>
-        </button>
-
-        <button
-          className="mfp-extra-btn"
-          onClick={() => toggleLyrics()}
+          onClick={openLyrics}
           style={{ color: isLyricsOpen ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconLyrics />

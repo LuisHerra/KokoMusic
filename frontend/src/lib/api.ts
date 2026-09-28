@@ -237,6 +237,10 @@ export interface Lyrics {
   instrumental: boolean;
   plainLyrics: string | null;
   syncedLyrics: string | null;
+  /** 'ytmusic' cuando viene de YouTube Music (respaldo de LRCLIB, solo texto plano). */
+  source?: string;
+  /** Crédito de la letra, p. ej. "Fuente: Musixmatch". */
+  attribution?: string | null;
 }
 
 export const getLyrics = (trackId: string) => apiFetch<Lyrics>(`/tracks/${trackId}/lyrics`);
@@ -859,6 +863,27 @@ export const uploadArtistTrack = async (formData: FormData): Promise<{ success: 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(error.error ?? 'Error al subir la canción');
+  }
+  return res.json();
+};
+
+/** Edita título y/o portada de una canción propia (solo se envía lo que cambia). */
+export const updateArtistTrack = async (
+  itunesId: number,
+  changes: { title?: string; cover?: File | null }
+): Promise<{ success: boolean; track: ArtistTrack }> => {
+  const userId = localStorage.getItem('koko_device_id') || '';
+  const formData = new FormData();
+  if (changes.title !== undefined) formData.append('title', changes.title);
+  if (changes.cover) formData.append('cover', changes.cover);
+  const res = await fetch(`${BASE}/artist/tracks/${itunesId}`, {
+    method: 'PATCH',
+    headers: userId ? { 'x-user-id': userId } : undefined,
+    body: formData,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(error.error ?? 'Error al editar la canción');
   }
   return res.json();
 };

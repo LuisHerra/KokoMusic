@@ -185,8 +185,10 @@ export async function resolveStream(
     return { ...data, cached: false };
   } catch (err: any) {
     recordFailure();
+    // Timeout / error de red = problema del servicio (Render despertando,
+    // proxy caído), no del video: no lo marcamos como malo — de eso ya se
+    // encarga el circuit breaker.
     console.error(`[KokoLiteClient] Error resolviendo stream para ${videoId}:`, err.message || err);
-    cache.setex(badVideoCacheKey(videoId), NEGATIVE_CACHE_TTL_SEC, '1');
     return null;
   }
 }
@@ -196,6 +198,9 @@ export async function resolveStream(
  */
 export async function purgeStreamCache(videoId: string): Promise<boolean> {
   cache.del(`resolved-stream:${videoId}`);
+  // Sin esto, los reintentos del frontend (que purgan antes de reintentar)
+  // chocaban siempre con la caché negativa y nunca volvían a preguntar a Lite.
+  cache.del(badVideoCacheKey(videoId));
   const endpoint = appendKey(`${BASE_URL}/api/stream/${encodeURIComponent(videoId)}/cache`);
 
   try {
@@ -308,6 +313,40 @@ export async function lookupArtist(query: string): Promise<any | null> {
   }
 }
 
+
+export interface LiteLyricsResult {
+  videoId: string;
+  title?: string;
+  artists: string[];
+  lyrics: string;
+  source?: string;
+}
+
+/**
+ * Letra en texto plano desde YouTube Music (Musixmatch/LyricFind) vía
+ * KokoMusic-lite. Respaldo para cuando LRCLIB no tiene la canción. Lite ya
+ * valida artista/título y cachea aciertos (7 días) y fallos (6h).
+ */
+export async function getLiteLyrics(artist: string, title: string): Promise<LiteLyricsResult | null> {
+  if (isBreakerOpen()) return null;
+  const params = new URLSearchParams({ artist, title });
+  const endpoint = appendKey(`${BASE_URL}/api/lyrics?${params.toString()}`);
+  try {
+    const res = await fetch(endpoint, {
+      headers: {
+        Accept: 'application/json',
+        ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as LiteLyricsResult;
+    return data?.lyrics ? data : null;
+  } catch (err: any) {
+    console.warn(`[KokoLiteClient] Error obteniendo letra de "${artist} - ${title}":`, err.message || err);
+    return null;
+  }
+}
 
 // Aliases para máxima compatibilidad con el resto del proyecto
 export const resolveAudioStream = resolveStream;

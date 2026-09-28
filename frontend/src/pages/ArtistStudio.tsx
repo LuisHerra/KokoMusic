@@ -8,6 +8,7 @@ import {
   uploadArtistTrack,
   deleteArtistTrack,
   updateArtistTrackMetadata,
+  updateArtistTrack,
   resolveImageUrl,
   getStreamUrl,
   type ArtistTrack,
@@ -270,6 +271,8 @@ export default function ArtistStudio() {
     }
   };
 
+  const [editingTrack, setEditingTrack] = useState<ArtistTrack | null>(null);
+
   const handleDelete = async (itunesId: number) => {
     await deleteArtistTrack(itunesId);
     await refetchArtistTracks();
@@ -277,7 +280,7 @@ export default function ArtistStudio() {
   };
 
   // ── Edición de letra y metadatos (mood/tags) por canción ────────────────────
-  const [editingTrack, setEditingTrack] = useState<ArtistTrack | null>(null);
+  const [editingMetadataTrack, setEditingMetadataTrack] = useState<ArtistTrack | null>(null);
 
   // ── Preview de audio (un solo reproductor local, no toca el player global) ──
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -648,6 +651,7 @@ export default function ArtistStudio() {
                 onTogglePreview={togglePreview}
                 onDelete={handleDelete}
                 onEdit={setEditingTrack}
+                onEditMetadata={setEditingMetadataTrack}
               />
             ))}
           </div>
@@ -666,7 +670,7 @@ export default function ArtistStudio() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {singles.map((t) => (
-              <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => togglePreview(t)} onDelete={() => handleDelete(t.itunes_id)} onEdit={() => setEditingTrack(t)} />
+              <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => togglePreview(t)} onDelete={() => handleDelete(t.itunes_id)} onEdit={() => setEditingTrack(t)} onEditMetadata={() => setEditingMetadataTrack(t)} />
             ))}
           </div>
         )}
@@ -675,11 +679,22 @@ export default function ArtistStudio() {
       </div>
 
       {editingTrack && (
-        <TrackMetadataModal
+        <EditTrackModal
           track={editingTrack}
           onClose={() => setEditingTrack(null)}
           onSaved={async () => {
             setEditingTrack(null);
+            await refetchArtistTracks();
+          }}
+        />
+      )}
+
+      {editingMetadataTrack && (
+        <TrackMetadataModal
+          track={editingMetadataTrack}
+          onClose={() => setEditingMetadataTrack(null)}
+          onSaved={async () => {
+            setEditingMetadataTrack(null);
             await refetchArtistTracks();
           }}
         />
@@ -845,7 +860,7 @@ function AlbumSongSlot({
 }
 
 function AlbumCard({
-  name, tracks, nowPreviewing, onTogglePreview, onDelete, onEdit,
+  name, tracks, nowPreviewing, onTogglePreview, onDelete, onEdit, onEditMetadata,
 }: {
   name: string;
   tracks: ArtistTrack[];
@@ -853,6 +868,7 @@ function AlbumCard({
   onTogglePreview: (t: ArtistTrack) => void;
   onDelete: (itunesId: number) => void;
   onEdit: (t: ArtistTrack) => void;
+  onEditMetadata: (t: ArtistTrack) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -874,7 +890,7 @@ function AlbumCard({
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
           {tracks.map((t) => (
-            <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => onTogglePreview(t)} onDelete={() => onDelete(t.itunes_id)} onEdit={() => onEdit(t)} compact />
+            <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => onTogglePreview(t)} onDelete={() => onDelete(t.itunes_id)} onEdit={() => onEdit(t)} onEditMetadata={() => onEditMetadata(t)} compact />
           ))}
         </div>
       )}
@@ -883,13 +899,14 @@ function AlbumCard({
 }
 
 function TrackRow({
-  track, isPreviewing, onTogglePreview, onDelete, onEdit, compact,
+  track, isPreviewing, onTogglePreview, onDelete, onEdit, onEditMetadata, compact,
 }: {
   track: ArtistTrack;
   isPreviewing: boolean;
   onTogglePreview: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onEditMetadata: () => void;
   compact?: boolean;
 }) {
   return (
@@ -933,10 +950,143 @@ function TrackRow({
         </div>
       </div>
       <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{formatDuration(track.duration_ms)}</span>
-      <button onClick={onEdit} title="Editar letra y metadatos" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex' }}>
+      <button onClick={onEditMetadata} title="Editar letra y metadatos" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex' }}>
         <IconPencil />
       </button>
+      <button onClick={onEdit} title="Editar nombre y portada" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+      </button>
       <button onClick={onDelete} title="Borrar" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 17, padding: 4, flexShrink: 0 }}>×</button>
+    </div>
+  );
+}
+
+/** Editar título y portada de una canción ya publicada. */
+function EditTrackModal({
+  track, onClose, onSaved,
+}: {
+  track: ArtistTrack;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [title, setTitle] = useState(track.title);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!coverFile) { setCoverPreview(null); return; }
+    const url = URL.createObjectURL(coverFile);
+    setCoverPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [coverFile]);
+
+  const trimmed = title.trim();
+  const titleChanged = trimmed !== track.title;
+  const canSave = !saving && trimmed.length > 0 && (titleChanged || !!coverFile);
+  const shownCover = coverPreview || (track.cover_url ? resolveImageUrl(track.cover_url) : null);
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setError('');
+    try {
+      await updateArtistTrack(track.itunes_id, {
+        title: titleChanged ? trimmed : undefined,
+        cover: coverFile,
+      });
+      await onSaved();
+    } catch (e: any) {
+      setError(e?.message ?? 'Error al guardar los cambios');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(5,7,12,0.75)',
+        backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 400, background: 'var(--bg-elevated)', borderRadius: 20,
+          border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 30px 80px rgba(0,0,0,0.6)', padding: 20,
+          display: 'flex', flexDirection: 'column', gap: 16,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Editar canción</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          <button
+            onClick={() => inputRef.current?.click()}
+            title="Cambiar portada"
+            style={{
+              width: 96, height: 96, borderRadius: 12, flexShrink: 0, padding: 0, cursor: 'pointer', overflow: 'hidden',
+              border: '1px dashed rgba(255,255,255,0.25)', background: 'var(--bg-highlight)', position: 'relative',
+            }}
+          >
+            {shownCover && <img src={shownCover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+            <span style={{
+              position: 'absolute', inset: 'auto 0 0 0', padding: '4px 0', fontSize: 10, fontWeight: 700,
+              background: 'rgba(0,0,0,0.6)', color: '#fff',
+            }}>
+              Cambiar
+            </span>
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setCoverFile(e.target.files?.[0] ?? null)}
+            style={{ display: 'none' }}
+          />
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Título</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+              autoFocus
+              style={{ ...inputStyle, width: '100%' }}
+            />
+            {coverFile && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Nueva portada: {coverFile.name}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {error && <p style={{ fontSize: 12, color: '#ff6b6b', margin: 0 }}>{error}</p>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-primary)',
+              borderRadius: 'var(--radius-full)', padding: '9px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={!canSave} style={{ ...pillButtonStyle(saving, false), marginTop: 0, opacity: canSave ? 1 : 0.5 }}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
