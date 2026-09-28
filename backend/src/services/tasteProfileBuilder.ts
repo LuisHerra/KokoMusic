@@ -50,6 +50,8 @@ export interface TasteProfile {
   languageAffinity?: Record<string, number>;
   /** Decade ('2020s', '2010s', '2000s', '90s', '80s', 'older') → normalised weight. */
   decadeAffinity?: Record<string, number>;
+  /** Estado de ánimo (mood, libre — lo define el artista en su canción) → normalised weight. */
+  moodAffinity?: Record<string, number>;
   /** ISO hour-of-day (0-23) → relative listening frequency. */
   hourlyDistribution: number[];
   /** Day-of-week (0=Sun … 6=Sat) → relative listening frequency. */
@@ -69,6 +71,7 @@ export interface EnrichedPlay {
   secondsListened: number;
   language?: string | null;
   releaseDate?: string | null;
+  mood?: string | null;
   /** True para entradas sintéticas venidas de "me gusta" — reciben LIKE_WEIGHT_MULTIPLIER. */
   isLikedSignal?: boolean;
 }
@@ -138,13 +141,13 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
           .map(Number)
           .filter((n) => !isNaN(n) && n > 0);
 
-        const metaMap: Record<string, { genre: string; durationMs: number; artistId: number; language?: string | null; releaseDate?: string | null }> = {};
+        const metaMap: Record<string, { genre: string; durationMs: number; artistId: number; language?: string | null; releaseDate?: string | null; mood?: string | null }> = {};
 
         if (numericIds.length > 0) {
           const { data: metas } = await supabase
             .schema('kokomusic')
             .from('tracks_meta')
-            .select('itunes_id, genre, duration_ms, artist_id, language, release_date')
+            .select('itunes_id, genre, duration_ms, artist_id, language, release_date, mood')
             .in('itunes_id', numericIds);
 
           for (const m of (metas || [])) {
@@ -154,6 +157,7 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
               artistId: (m as any).artist_id || 0,
               language: (m as any).language || null,
               releaseDate: (m as any).release_date || null,
+              mood: (m as any).mood || null,
             };
           }
         }
@@ -175,6 +179,7 @@ async function fetchEnrichedPlays(userId: string): Promise<EnrichedPlay[]> {
             secondsListened: (e.seconds_listened as number) || 0,
             language: meta.language,
             releaseDate: meta.releaseDate,
+            mood: meta.mood,
           });
         }
 
@@ -229,7 +234,7 @@ async function fetchLikedSignals(userId: string): Promise<EnrichedPlay[]> {
   const { data: metas } = await supabase
     .schema('kokomusic')
     .from('tracks_meta')
-    .select('itunes_id, artist, genre, duration_ms, artist_id, language, release_date')
+    .select('itunes_id, artist, genre, duration_ms, artist_id, language, release_date, mood')
     .in('itunes_id', numericIds);
 
   if (!metas || metas.length === 0) return [];
@@ -251,6 +256,7 @@ async function fetchLikedSignals(userId: string): Promise<EnrichedPlay[]> {
       secondsListened: durationMs / 1000, // engagement completo — es un "me gusta", no una escucha parcial
       language: meta.language || null,
       releaseDate: meta.release_date || null,
+      mood: meta.mood || null,
       isLikedSignal: true,
     });
   }
@@ -325,6 +331,7 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
   const artistRawWeights: Record<string, { weight: number; artistId: number }> = {};
   const languageWeights: Record<string, number> = {};
   const decadeWeights: Record<string, number> = {};
+  const moodWeights: Record<string, number> = {};
   const hourlyFreq = new Array<number>(24).fill(0);
   const dowFreq = new Array<number>(7).fill(0);
   let totalWeight = 0;
@@ -358,6 +365,12 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
     const decade = getDecade(play.releaseDate);
     if (decade) {
       decadeWeights[decade] = (decadeWeights[decade] || 0) + weight;
+    }
+
+    // Mood (if the track's artist set one)
+    if (play.mood) {
+      const mood = play.mood.toLowerCase().trim();
+      moodWeights[mood] = (moodWeights[mood] || 0) + weight;
     }
 
     // Artist
@@ -399,6 +412,11 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
         decadeWeights[d] = (decadeWeights[d] || 0) + (w * syntheticWeight);
       }
     }
+    if (existing.moodAffinity) {
+      for (const [m, w] of Object.entries(existing.moodAffinity)) {
+        moodWeights[m] = (moodWeights[m] || 0) + (w * syntheticWeight);
+      }
+    }
     for (const a of existing.topArtists) {
       if (!artistRawWeights[a.name]) {
         artistRawWeights[a.name] = { weight: 0, artistId: a.artistId };
@@ -418,6 +436,7 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
   const genreAffinity = normalise(genreWeights);
   const languageAffinity = Object.keys(languageWeights).length > 0 ? normalise(languageWeights) : undefined;
   const decadeAffinity = Object.keys(decadeWeights).length > 0 ? normalise(decadeWeights) : undefined;
+  const moodAffinity = Object.keys(moodWeights).length > 0 ? normalise(moodWeights) : undefined;
 
   const rawArtistOnly: Record<string, number> = {};
   for (const [name, { weight }] of Object.entries(artistRawWeights)) {
@@ -445,6 +464,7 @@ export async function buildAndPersistTasteProfile(userId: string): Promise<Taste
     topArtists,
     languageAffinity,
     decadeAffinity,
+    moodAffinity,
     hourlyDistribution: hourlyFreq.map((v) => v / totalHourly),
     dowDistribution: dowFreq.map((v) => v / totalDow),
     totalWeight,

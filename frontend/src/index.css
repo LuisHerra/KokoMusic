@@ -1329,6 +1329,17 @@ html, body, #root {
   opacity: 1 !important;
 }
 
+.activity-row-hover {
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast);
+}
+.activity-row-hover:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.activity-row-hover:hover .play-overlay {
+  opacity: 1 !important;
+}
+
 .btn-share-option {
   transition: background var(--duration-fast), transform var(--duration-fast);
 }
@@ -4510,7 +4521,7 @@ input:checked + .autoplay-slider:before {
 .artist-track-row {
   cursor: pointer;
   padding: 8px 12px;
-  grid-template-columns: 30px 1fr 80px 100px;
+  grid-template-columns: 30px 1fr 100px;
   gap: 16px;
 }
 
@@ -4596,10 +4607,15 @@ input:checked + .autoplay-slider:before {
   }
   .track-row-mobile-trigger {
     display: flex !important;
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    padding: 8px;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    color: #fff;
+    width: 32px;
+    height: 32px;
+    padding: 0;
     cursor: pointer;
   }
   .search-header-container {
@@ -4704,9 +4720,6 @@ input:checked + .autoplay-slider:before {
     grid-template-columns: 1fr;
     gap: 24px;
     padding: 16px 16px;
-  }
-  .track-row-plays {
-    display: none !important;
   }
 }
 

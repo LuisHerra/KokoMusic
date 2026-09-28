@@ -7,12 +7,18 @@ import {
   getMyArtistTracks,
   uploadArtistTrack,
   deleteArtistTrack,
+  updateArtistTrackMetadata,
   resolveImageUrl,
   getStreamUrl,
   type ArtistTrack,
 } from '../lib/api';
 
 const GENRES = ['Urbano/Latino', 'Reggaetón', 'Trap', 'Phonk', 'R&B', 'Pop', 'Hip-Hop', 'Electronic', 'Rock', 'Otros'];
+
+// Mismas etiquetas que backend/src/routes/tracks.ts (moodMap) — así una canción
+// con mood asignado también cuenta para el desglose "Estado de ánimo" en Stats,
+// además de alimentar el algoritmo de recomendación.
+const MOODS = ['Enérgico', 'Chill', 'Intense', 'Emotional', 'Urban', 'Party'];
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '--:--';
@@ -269,6 +275,9 @@ export default function ArtistStudio() {
     await refetchArtistTracks();
     if (nowPreviewing === itunesId) stopPreview();
   };
+
+  // ── Edición de letra y metadatos (mood/tags) por canción ────────────────────
+  const [editingTrack, setEditingTrack] = useState<ArtistTrack | null>(null);
 
   // ── Preview de audio (un solo reproductor local, no toca el player global) ──
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -638,6 +647,7 @@ export default function ArtistStudio() {
                 nowPreviewing={nowPreviewing}
                 onTogglePreview={togglePreview}
                 onDelete={handleDelete}
+                onEdit={setEditingTrack}
               />
             ))}
           </div>
@@ -656,13 +666,24 @@ export default function ArtistStudio() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {singles.map((t) => (
-              <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => togglePreview(t)} onDelete={() => handleDelete(t.itunes_id)} />
+              <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => togglePreview(t)} onDelete={() => handleDelete(t.itunes_id)} onEdit={() => setEditingTrack(t)} />
             ))}
           </div>
         )}
       </div>
         </div>
       </div>
+
+      {editingTrack && (
+        <TrackMetadataModal
+          track={editingTrack}
+          onClose={() => setEditingTrack(null)}
+          onSaved={async () => {
+            setEditingTrack(null);
+            await refetchArtistTracks();
+          }}
+        />
+      )}
 
       {showPreview && (
         <PublicPreviewModal
@@ -824,13 +845,14 @@ function AlbumSongSlot({
 }
 
 function AlbumCard({
-  name, tracks, nowPreviewing, onTogglePreview, onDelete,
+  name, tracks, nowPreviewing, onTogglePreview, onDelete, onEdit,
 }: {
   name: string;
   tracks: ArtistTrack[];
   nowPreviewing: number | null;
   onTogglePreview: (t: ArtistTrack) => void;
   onDelete: (itunesId: number) => void;
+  onEdit: (t: ArtistTrack) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -852,7 +874,7 @@ function AlbumCard({
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
           {tracks.map((t) => (
-            <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => onTogglePreview(t)} onDelete={() => onDelete(t.itunes_id)} compact />
+            <TrackRow key={t.itunes_id} track={t} isPreviewing={nowPreviewing === t.itunes_id} onTogglePreview={() => onTogglePreview(t)} onDelete={() => onDelete(t.itunes_id)} onEdit={() => onEdit(t)} compact />
           ))}
         </div>
       )}
@@ -861,12 +883,13 @@ function AlbumCard({
 }
 
 function TrackRow({
-  track, isPreviewing, onTogglePreview, onDelete, compact,
+  track, isPreviewing, onTogglePreview, onDelete, onEdit, compact,
 }: {
   track: ArtistTrack;
   isPreviewing: boolean;
   onTogglePreview: () => void;
   onDelete: () => void;
+  onEdit: () => void;
   compact?: boolean;
 }) {
   return (
@@ -903,9 +926,16 @@ function TrackRow({
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{track.genre || 'Otros'}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span>{track.genre || 'Otros'}</span>
+          {track.mood && <span style={{ color: 'var(--accent)' }}>· {track.mood}</span>}
+          {(track.lyrics || track.lyrics_synced) && <span title="Tiene letra guardada">· 🎤</span>}
+        </div>
       </div>
       <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{formatDuration(track.duration_ms)}</span>
+      <button onClick={onEdit} title="Editar letra y metadatos" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex' }}>
+        <IconPencil />
+      </button>
       <button onClick={onDelete} title="Borrar" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 17, padding: 4, flexShrink: 0 }}>×</button>
     </div>
   );
@@ -952,6 +982,156 @@ function IconEye({ size = 14 }: { size?: number }) {
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
+  );
+}
+
+function IconPencil({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+    </svg>
+  );
+}
+
+/**
+ * Editor de letra (con o sin timestamp) y metadatos libres (mood, tags) de
+ * una canción ya publicada — señales que, además del género, alimentan el
+ * algoritmo de recomendación (ver candidateGenerator.ts / tasteProfileBuilder.ts).
+ */
+function TrackMetadataModal({
+  track, onClose, onSaved,
+}: {
+  track: ArtistTrack;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [lyrics, setLyrics] = useState(track.lyrics ?? '');
+  const [lyricsSynced, setLyricsSynced] = useState(track.lyrics_synced ?? '');
+  const [useSynced, setUseSynced] = useState(!!track.lyrics_synced);
+  const [mood, setMood] = useState(track.mood ?? '');
+  const [tags, setTags] = useState((track.tags ?? []).join(', '));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await updateArtistTrackMetadata(track.itunes_id, {
+        lyrics,
+        lyricsSynced: useSynced ? lyricsSynced : '',
+        mood,
+        tags,
+      });
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message ?? 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(5,7,12,0.75)',
+        backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: '40px 20px', overflowY: 'auto',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 560, background: 'var(--bg-elevated)', borderRadius: 20,
+          border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
+          padding: 24,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>{track.title}</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 20px' }}>
+          Esto ayuda a quienes escuchan tu música (letra) y a que KokoMusic recomiende mejor tu canción (mood y etiquetas).
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Letra</label>
+            <textarea
+              value={lyrics}
+              onChange={(e) => setLyrics(e.target.value)}
+              rows={6}
+              placeholder="Escribe aquí la letra completa de la canción..."
+              style={{ ...inputStyle, resize: 'vertical' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer' }}>
+              <input type="checkbox" checked={useSynced} onChange={(e) => setUseSynced(e.target.checked)} />
+              Letra sincronizada (opcional)
+            </label>
+            {useSynced && (
+              <>
+                <textarea
+                  value={lyricsSynced}
+                  onChange={(e) => setLyricsSynced(e.target.value)}
+                  rows={6}
+                  placeholder={'[00:12.50] Primera línea\n[00:16.20] Segunda línea\n...'}
+                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace' }}
+                />
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                  Formato LRC: una línea por verso, con el minuto y segundo en que empieza entre corchetes — <code>[mm:ss.xx] texto</code>.
+                </p>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Estado de ánimo</label>
+              <select value={mood} onChange={(e) => setMood(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                <option value="" style={{ background: '#181818' }}>Sin especificar</option>
+                {MOODS.map((m) => (
+                  <option key={m} value={m} style={{ background: '#181818' }}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Etiquetas</label>
+              <input
+                type="text"
+                placeholder="verano, fiesta, romántico..."
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '-8px 0 0' }}>
+            Separa las etiquetas con comas. Tanto el mood como las etiquetas se usan junto al género para recomendar tu canción a quien pueda gustarle.
+          </p>
+
+          {error && (
+            <div style={{ background: 'rgba(255,80,80,0.12)', border: '1px solid rgba(255,80,80,0.3)', color: '#ff7b7b', padding: '8px 12px', borderRadius: 10, fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button type="button" onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: 'none', borderRadius: 'var(--radius-full)', padding: '9px 20px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button onClick={handleSave} disabled={saving} style={pillButtonStyle(saving, false)}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

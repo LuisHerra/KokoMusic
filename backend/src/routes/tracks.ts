@@ -127,6 +127,10 @@ router.post('/history/session', async (req: Request, res: Response) => {
 // GET /api/tracks/history/stats — Detailed Stats for User Dashboard
 router.get('/history/stats', async (req: Request, res: Response) => {
   const { start, end, userId } = req.query;
+  // Ventana (en días) para el gráfico "Evolución de escucha" — independiente
+  // del filtro de periodo principal. Solo admitimos 7 o 30 para acotar los
+  // buckets que calculamos más abajo.
+  const evolutionDays = Number(req.query.evolutionDays) === 7 ? 7 : 30;
 
   // Parse time periods
   const hasDateRange = !!(start || end);
@@ -140,11 +144,15 @@ router.get('/history/stats', async (req: Request, res: Response) => {
     : new Date(0);
   const prevEndDate = hasDateRange ? startDate : new Date(0);
 
-  // Fetch from Supabase (primary) or local JSON fallback.
-  // We want to fetch the union of [prevStartDate, endDate] so both periods are covered.
+  // El fetch debe cubrir tanto [prevStartDate, endDate] (para las tarjetas de
+  // resumen) como los últimos `evolutionDays` días (para el gráfico), que
+  // pueden extenderse más atrás que prevStartDate si el periodo principal es corto.
+  const evolutionStartDate = new Date(endDate.getTime() - evolutionDays * 86400_000);
+  const fetchFromDate = prevStartDate.getTime() < evolutionStartDate.getTime() ? prevStartDate : evolutionStartDate;
+
   const history = await getHistoryForUser(
     userId as string | undefined,
-    prevStartDate,
+    fetchFromDate,
     endDate
   );
   // 1. Calculate play counts for current and previous period
@@ -437,24 +445,24 @@ router.get('/history/stats', async (req: Request, res: Response) => {
     topGenreCover = topGenreTrack?.cover || '';
   }
 
-  // Evolution of listening (X points grouped by date)
-  // Let's divide the current period into 5 intervals/ticks for rendering a nice chart
+  // Evolution of listening — últimos `evolutionDays` días, en buckets diarios
+  // (7 días) o de 3 días (30 días) para que el eje X no se sature de etiquetas.
   const listeningEvolution: { date: string; count: number }[] = [];
-  const intervalMs = periodDuration / 4;
-  for (let i = 0; i < 5; i++) {
-    const tickTime = new Date(startDate.getTime() + i * intervalMs);
+  const bucketDays = evolutionDays === 7 ? 1 : 3;
+  const bucketMs = bucketDays * 86400_000;
+  const numBuckets = Math.round(evolutionDays / bucketDays);
+  for (let i = 0; i < numBuckets; i++) {
+    const bucketStart = evolutionStartDate.getTime() + i * bucketMs;
+    const bucketEnd = bucketStart + bucketMs;
+    const tickTime = new Date(bucketStart);
     const dateLabel = tickTime.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-    
-    // Count plays in this interval
+
     let tickCount = 0;
-    const startRange = startDate.getTime() + (i - 0.5) * intervalMs;
-    const endRange = startDate.getTime() + (i + 0.5) * intervalMs;
-    
     for (const entry of history) {
-      const plays = entry.plays || [entry.lastPlayed];
+      const plays = entry.plays || (entry.lastPlayed ? [entry.lastPlayed] : []);
       for (const p of plays) {
         const t = new Date(p).getTime();
-        if (t >= startRange && t < endRange) {
+        if (t >= bucketStart && t < bucketEnd) {
           tickCount++;
         }
       }
@@ -572,7 +580,10 @@ router.get('/history/stats', async (req: Request, res: Response) => {
               text: `Añadiste ${tr.title} a tu playlist ${pl.name}`,
               timestamp: addedTime.getTime(),
               time: formatTimeAgo(addedTime),
-              image: tr.cover
+              image: tr.cover,
+              trackId: tr.trackId,
+              title: tr.title,
+              artist: tr.artist,
             });
           }
         }
@@ -595,7 +606,10 @@ router.get('/history/stats', async (req: Request, res: Response) => {
           text: `Escuchaste ${tr.title}`,
           timestamp: playTime,
           time: formatTimeAgo(new Date(p)),
-          image: tr.cover
+          image: tr.cover,
+          trackId: tr.trackId,
+          title: tr.title,
+          artist: tr.artist,
         });
       }
     }
@@ -1100,6 +1114,29 @@ router.get('/:id/lyrics', async (req: Request, res: Response) => {
 
     if (!trackMeta) {
       return res.status(404).json({ error: 'Track no encontrado para obtener letras' });
+    }
+
+    // 1b. Letra propia subida por el artista (canciones autopublicadas que
+    // lrclib.net no puede tener) — tiene prioridad sobre la búsqueda externa.
+    const numericId = Number(id);
+    if (!isNaN(numericId)) {
+      const { getTrackFromDB } = await import('../services/supabaseService');
+      const dbTrack = await getTrackFromDB(numericId);
+      if (dbTrack?.lyrics || dbTrack?.lyrics_synced) {
+        const custom = {
+          id: numericId,
+          name: trackMeta.title,
+          trackName: trackMeta.title,
+          artistName: trackMeta.artist,
+          albumName: trackMeta.album || '',
+          duration: Math.round((trackMeta.duration || 0) / 1000),
+          instrumental: false,
+          plainLyrics: dbTrack.lyrics || null,
+          syncedLyrics: dbTrack.lyrics_synced || null,
+        };
+        cache.setex(cacheKey, 604800, JSON.stringify(custom));
+        return res.json(custom);
+      }
     }
 
     // 2. Limpiar artista y título

@@ -76,7 +76,8 @@ function computeAffinity(
   artistName: string,
   profile: TasteProfile,
   language?: string | null,
-  releaseDate?: string | null
+  releaseDate?: string | null,
+  mood?: string | null
 ): number {
   const genreScore = profile.genreAffinity[genre] || 0;
   const artistEntry = profile.topArtists.find(
@@ -97,7 +98,17 @@ function computeAffinity(
     }
   }
 
-  // Si hay señales de idioma o década, integramos en el peso
+  let moodScore = 0;
+  if (mood && profile.moodAffinity) {
+    moodScore = profile.moodAffinity[mood.toLowerCase().trim()] || 0;
+  }
+
+  // Con mood disponible (canciones con metadatos de artista) integramos las
+  // cinco señales; sin él, caemos al blend de idioma/década, y sin ninguna
+  // señal extra, al blend estándar género/artista.
+  if (profile.moodAffinity) {
+    return Math.min(1, genreScore * 0.45 + artistScore * 0.28 + langScore * 0.08 + decadeScore * 0.08 + moodScore * 0.11);
+  }
   if (profile.languageAffinity || profile.decadeAffinity) {
     return Math.min(1, genreScore * 0.50 + artistScore * 0.30 + langScore * 0.10 + decadeScore * 0.10);
   }
@@ -125,7 +136,7 @@ async function fetchTasteCandidates(
   const { data, error } = await supabase
     .schema('kokomusic')
     .from('tracks_meta')
-    .select('itunes_id, title, artist, artist_id, cover_url, duration_ms, genre, release_date, language')
+    .select('itunes_id, title, artist, artist_id, cover_url, duration_ms, genre, release_date, language, mood')
     .in('genre', topGenres)
     .not('cover_url', 'is', null)
     .neq('cover_url', '')
@@ -142,6 +153,7 @@ async function fetchTasteCandidates(
       const genre = (row.genre as string) || 'Otros';
       const releaseDate = (row.release_date as string) || null;
       const language = (row.language as string) || null;
+      const mood = (row.mood as string) || null;
       return {
         trackId,
         title,
@@ -152,7 +164,7 @@ async function fetchTasteCandidates(
         genre,
         releaseDate,
         language,
-        affinityScore: computeAffinity(genre, artist, profile, language, releaseDate),
+        affinityScore: computeAffinity(genre, artist, profile, language, releaseDate, mood),
         isNewFromFollowedArtist: false,
         source: 'taste' as const,
         bpmEstimate: estimateBpm(title, artist),
@@ -185,7 +197,7 @@ async function fetchFollowCandidates(
   const { data, error } = await supabase
     .schema('kokomusic')
     .from('tracks_meta')
-    .select('itunes_id, title, artist, artist_id, cover_url, duration_ms, genre, release_date, language')
+    .select('itunes_id, title, artist, artist_id, cover_url, duration_ms, genre, release_date, language, mood')
     .in('artist_id', artistIds)
     .not('cover_url', 'is', null)
     .neq('cover_url', '')
@@ -206,6 +218,7 @@ async function fetchFollowCandidates(
       const isNew = !!releaseDate && releaseDate >= thirtyDaysAgo;
       const genre = (row.genre as string) || 'Otros';
       const language = (row.language as string) || null;
+      const mood = (row.mood as string) || null;
       return {
         trackId,
         title,
@@ -216,7 +229,7 @@ async function fetchFollowCandidates(
         genre,
         releaseDate,
         language,
-        affinityScore: computeAffinity(genre, artist, profile, language, releaseDate),
+        affinityScore: computeAffinity(genre, artist, profile, language, releaseDate, mood),
         isNewFromFollowedArtist: isNew,
         source: 'follow' as const,
         bpmEstimate: estimateBpm(title, artist),

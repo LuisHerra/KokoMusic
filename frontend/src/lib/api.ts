@@ -353,14 +353,18 @@ export interface StatsData {
     text: string;
     time: string;
     image: string;
+    trackId?: string;
+    title?: string;
+    artist?: string;
   }[];
 }
 
-export const getStats = (start?: string, end?: string, userId?: string) => {
+export const getStats = (start?: string, end?: string, userId?: string, evolutionDays?: number) => {
   const params = new URLSearchParams();
   if (start) params.append('start', start);
   if (end) params.append('end', end);
   if (userId) params.append('userId', userId);
+  if (evolutionDays) params.append('evolutionDays', String(evolutionDays));
   const q = params.toString();
   return apiFetch<StatsData>(`/tracks/history/stats${q ? `?${q}` : ''}`);
 };
@@ -678,6 +682,10 @@ export interface ArtistTrack {
   genre: string | null;
   duration_ms: number | null;
   release_date: string | null;
+  mood?: string | null;
+  tags?: string[] | null;
+  lyrics?: string | null;
+  lyrics_synced?: string | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -857,6 +865,15 @@ export const uploadArtistTrack = async (formData: FormData): Promise<{ success: 
 
 export const deleteArtistTrack = (itunesId: number) =>
   apiFetch<{ success: boolean }>(`/artist/tracks/${itunesId}`, { method: 'DELETE' });
+
+export const updateArtistTrackMetadata = (
+  itunesId: number,
+  data: { lyrics?: string; lyricsSynced?: string; mood?: string; tags?: string }
+) =>
+  apiFetch<{ success: boolean }>(`/artist/tracks/${itunesId}/metadata`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 
 export const inviteFriendsToCollab = (code: string, senderId: string, senderName: string, friendIds: string[]) =>
   apiFetch<{ success: boolean }>(`/collab/playlists/${code}/invite`, {

@@ -13,13 +13,6 @@ function formatDuration(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function getSimulatedPlays(track: any, index: number) {
-  let hash = 0;
-  const str = track.title || '';
-  for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
-  return Math.floor((track.popularity || 0) * 15) + (Math.abs(hash) % 40000000) + ((10 - index) * 18000000);
-}
-
 function ArtistTrackRow({
   track,
   index,
@@ -27,10 +20,8 @@ function ArtistTrackRow({
   setTrack,
   addToQueue,
   setError,
-  realPlays,
 }: {
   track: any; index: number; displayedTracks: any[]; setTrack: any; addToQueue: any; setError: any;
-  realPlays: Record<string, number>;
 }) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   
@@ -93,11 +84,6 @@ function ArtistTrackRow({
             />
           )}
         </div>
-      </div>
-      <div className="track-row-plays">
-        {realPlays[track.id] && realPlays[track.id] !== -1
-          ? Intl.NumberFormat('es-ES').format(realPlays[track.id])
-          : Intl.NumberFormat('es-ES').format(getSimulatedPlays(track, index))}
       </div>
       <div className="track-row-duration" style={{ fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
         <button 
@@ -482,7 +468,6 @@ export default function Artist() {
   );
 
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
-  const [realPlays, setRealPlays] = useState<Record<string, number>>({});
   const [showAllTracks, setShowAllTracks] = useState(false);
   const [showAllCollabs, setShowAllCollabs] = useState(false);
   const [albumFilter, setAlbumFilter] = useState<'All' | 'Álbum' | 'Single/EP'>('All');
@@ -491,22 +476,6 @@ export default function Artist() {
 
   const displayedTracks = data?.topTracks ? (showAllTracks ? data.topTracks.slice(0, 10) : data.topTracks.slice(0, 5)) : [];
   const displayedCollabs = data?.collaborations ? (showAllCollabs ? data.collaborations.slice(0, 10) : data.collaborations.slice(0, 5)) : [];
-
-  // Use simulated play counts based on popularity score
-  useEffect(() => {
-    const simulated: Record<string, number> = {};
-    if (data?.topTracks) {
-      data.topTracks.forEach((track: any, index: number) => {
-        simulated[track.id] = getSimulatedPlays(track, index);
-      });
-    }
-    if (data?.collaborations) {
-      data.collaborations.forEach((track: any, index: number) => {
-        simulated[track.id] = getSimulatedPlays(track, index);
-      });
-    }
-    setRealPlays(simulated);
-  }, [data?.topTracks, data?.collaborations]);
 
   if (isLoading) {
     return (
@@ -539,11 +508,6 @@ export default function Artist() {
   }
 
   const { name, bio, image, genre, topTracks, albums = [], musicVideos = [], livePerformances = [] } = data;
-
-  const globalRank = data.monthlyListeners && data.monthlyListeners > 500000
-    ? Math.max(1, Math.floor(150000000 / data.monthlyListeners))
-    : 0;
-  const isGlobalRanked = globalRank > 0 && globalRank <= 500;
 
   return (
     <div style={{ paddingBottom: 120, maxWidth: '100%', overflowX: 'clip' }}>
@@ -613,34 +577,18 @@ export default function Artist() {
                 </>
               )}
               {genre ? (data.isVerified ? ` · ${genre}` : genre) : ''}
-              <span style={{ margin: '0 4px' }}>•</span>
-              {data.playcount ? (
-                <>
-                  <span style={{ color: 'var(--accent)' }}>{Intl.NumberFormat('es-ES').format(data.playcount)}</span> reproducciones
-                  <span style={{ margin: '0 4px' }}>•</span>
-                  {Intl.NumberFormat('es-ES').format(data.monthlyListeners)} oyentes mensuales
-                </>
-              ) : (
-                <>{Intl.NumberFormat('es-ES').format(data.monthlyListeners || (topTracks.reduce((acc: number, t: any) => acc + (t.popularity || 0), 0) * 2 + 1500000))} oyentes mensuales</>
-              )}
-              {isGlobalRanked && (
+              {(data.playcount > 0 || data.monthlyListeners > 0) && (
                 <>
                   <span style={{ margin: '0 4px' }}>•</span>
-                  <Link
-                    to="/top-artists"
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      background: 'rgba(255,255,255,0.1)', padding: '4px 10px',
-                      borderRadius: 20, color: 'var(--accent)', textDecoration: 'none',
-                      transition: 'background 0.2s',
-                    }}
-                    className="hover-card"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.5 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-                    </svg>
-                    #{globalRank} del mundo
-                  </Link>
+                  {data.playcount > 0 && (
+                    <>
+                      <span style={{ color: 'var(--accent)' }}>{Intl.NumberFormat('es-ES').format(data.playcount)}</span> reproducciones
+                      {data.monthlyListeners > 0 && <span style={{ margin: '0 4px' }}>•</span>}
+                    </>
+                  )}
+                  {data.monthlyListeners > 0 && (
+                    <>{Intl.NumberFormat('es-ES').format(data.monthlyListeners)} oyentes mensuales</>
+                  )}
                 </>
               )}
             </div>
@@ -784,7 +732,6 @@ export default function Artist() {
                     setTrack={setTrack}
                     addToQueue={addToQueue}
                     setError={setError}
-                    realPlays={realPlays}
                   />
                 ))}
                 {topTracks.length > 5 && (
@@ -1234,7 +1181,6 @@ export default function Artist() {
                 setTrack={setTrack}
                 addToQueue={addToQueue}
                 setError={setError}
-                realPlays={realPlays}
               />
             ))}
           </div>

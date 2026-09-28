@@ -228,7 +228,9 @@ router.post('/tracks/upload', uploadTrack.fields([{ name: 'audio', maxCount: 1 }
   const audioFile = files?.audio?.[0];
   if (!audioFile) return res.status(400).json({ error: 'Falta el archivo de audio' });
 
-  const { title, album, genre, durationMs } = req.body as { title?: string; album?: string; genre?: string; durationMs?: string };
+  const { title, album, genre, durationMs, mood, tags } = req.body as {
+    title?: string; album?: string; genre?: string; durationMs?: string; mood?: string; tags?: string;
+  };
   if (!title?.trim()) {
     fs.unlink(audioFile.path, () => {});
     return res.status(400).json({ error: 'El título es obligatorio' });
@@ -259,6 +261,10 @@ router.post('/tracks/upload', uploadTrack.fields([{ name: 'audio', maxCount: 1 }
     const artistName: string = (profile as any)?.display_name || (profile as any)?.username || 'Artista Koko';
     const coverUrl: string | null = uploadedCover ?? ((profile as any)?.avatar_url ?? null);
 
+    const tagsArray = tags?.trim()
+      ? tags.split(',').map((t) => t.trim()).filter(Boolean)
+      : null;
+
     await upsertTracks([{
       itunes_id: trackId,
       title: title.trim(),
@@ -269,6 +275,8 @@ router.post('/tracks/upload', uploadTrack.fields([{ name: 'audio', maxCount: 1 }
       duration_ms: durationMs ? Number(durationMs) : null,
       genre: genre?.trim() || 'Otros',
       release_date: new Date().toISOString().slice(0, 10),
+      mood: mood?.trim() || null,
+      tags: tagsArray,
     }]);
     invalidateKokoArtistCatalog();
 
@@ -291,7 +299,7 @@ router.get('/tracks/mine', async (req: Request, res: Response) => {
     const { data, error } = await supabase!
       .schema('kokomusic')
       .from('tracks_meta')
-      .select('itunes_id, title, artist, album, cover_url, genre, duration_ms, release_date')
+      .select('itunes_id, title, artist, album, cover_url, genre, duration_ms, release_date, mood, tags, lyrics, lyrics_synced')
       .eq('artist_id', artistId)
       .order('release_date', { ascending: false });
 
@@ -333,6 +341,61 @@ router.delete('/tracks/:itunesId', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Artist] Error borrando track:', err);
     return res.status(500).json({ error: 'Error al borrar la canción' });
+  }
+});
+
+// ── PUT /api/artist/tracks/:itunesId/metadata — letras + metadatos ────────────
+// Permite añadir letra (con o sin timestamp) y señales extra (mood, tags) que
+// alimentan el algoritmo de recomendación además del género.
+router.put('/tracks/:itunesId/metadata', async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] || req.body.userId) as string;
+  if (!userId) return res.status(400).json({ error: 'x-user-id header requerido' });
+
+  const itunesId = Number(req.params.itunesId);
+  if (isNaN(itunesId)) return res.status(400).json({ error: 'itunesId inválido' });
+
+  const artistId = await getUserArtistId(userId);
+  if (!artistId) return res.status(403).json({ error: 'No eres artista' });
+
+  const { lyrics, lyricsSynced, mood, tags } = req.body as {
+    lyrics?: string; lyricsSynced?: string; mood?: string; tags?: string | string[];
+  };
+
+  try {
+    const { data: track } = await supabase!
+      .schema('kokomusic')
+      .from('tracks_meta')
+      .select('artist_id')
+      .eq('itunes_id', itunesId)
+      .maybeSingle();
+
+    if (!track) return res.status(404).json({ error: 'Canción no encontrada' });
+    if ((track as any).artist_id !== artistId) return res.status(403).json({ error: 'Esta canción no es tuya' });
+
+    const tagsArray = Array.isArray(tags)
+      ? tags.map((t) => t.trim()).filter(Boolean)
+      : tags?.trim()
+        ? tags.split(',').map((t) => t.trim()).filter(Boolean)
+        : null;
+
+    const { error } = await supabase!
+      .schema('kokomusic')
+      .from('tracks_meta')
+      .update({
+        lyrics: lyrics?.trim() || null,
+        lyrics_synced: lyricsSynced?.trim() || null,
+        mood: mood?.trim() || null,
+        tags: tagsArray,
+      })
+      .eq('itunes_id', itunesId);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    cache.del(`lyrics:${itunesId}`);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[Artist] Error actualizando metadatos:', err);
+    return res.status(500).json({ error: 'Error al actualizar la canción' });
   }
 });
 

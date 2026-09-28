@@ -36,8 +36,8 @@ export default function Stats() {
   const myId = localStorage.getItem('koko_device_id') ?? '';
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['stats', period, myId],
-    queryFn: () => getStats(start, end, myId),
+    queryKey: ['stats', period, myId, evolutionPeriod],
+    queryFn: () => getStats(start, end, myId, Number(evolutionPeriod)),
   });
 
   const setTrack = usePlayerStore((s) => s.setTrack);
@@ -1041,12 +1041,37 @@ export default function Stats() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {stats.recentActivity.slice(0, 3).map((act, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <img
-                  src={act.image}
-                  alt=""
-                  style={{ width: 36, height: 36, borderRadius: 'var(--radius-sm)', objectFit: 'cover', flexShrink: 0 }}
-                />
+              <div
+                key={idx}
+                onClick={act.trackId ? async () => {
+                  const trackData = await getTrack(act.trackId!);
+                  if (trackData) setTrack(trackData);
+                } : undefined}
+                style={{ display: 'flex', gap: 12, alignItems: 'center', cursor: act.trackId ? 'pointer' : 'default' }}
+                className={act.trackId ? 'activity-row-hover' : undefined}
+                title={act.trackId ? `Reproducir ${act.title ?? ''}` : undefined}
+              >
+                <div style={{ position: 'relative', width: 36, height: 36, borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0 }} className={act.trackId ? 'cover-wrap' : undefined}>
+                  <img
+                    src={act.image}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  {act.trackId && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      background: 'rgba(0,0,0,0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0,
+                      transition: 'opacity 0.2s'
+                    }} className="play-overlay">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
+                    </div>
+                  )}
+                </div>
                 <div style={{ minWidth: 0 }}>
                   <p style={{
                     fontSize: 12,
@@ -1262,60 +1287,6 @@ export default function Stats() {
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                 </svg>
                 Copiar enlace de estadísticas
-              </button>
-
-              <button
-                onClick={() => alert('Compartiendo en Instagram Stories (simulado)...')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  width: '100%',
-                  background: 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '12px',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-                </svg>
-                Compartir en Instagram Stories
-              </button>
-
-              <button
-                onClick={() => alert('Descargando imagen de perfil (simulado)...')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.06)',
-                  color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '12px',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'background var(--duration-fast)'
-                }}
-                className="btn-share-option"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                Descargar imagen para compartir
               </button>
             </div>
           </div>

@@ -36,6 +36,14 @@ export interface TrackRow {
   language?:   string | null;
   label?:      string | null;
   source_preference?: string | null;
+  /** Letra sin sincronizar (texto plano). */
+  lyrics?:     string | null;
+  /** Letra en formato LRC ("[mm:ss.xx] línea"), opcional. */
+  lyrics_synced?: string | null;
+  /** Estado de ánimo libre (p.ej. "Enérgico", "Chill") — señal para recomendaciones. */
+  mood?:       string | null;
+  /** Etiquetas libres definidas por el artista — señal para recomendaciones. */
+  tags?:       string[] | null;
 }
 
 export interface ArtistRow {
