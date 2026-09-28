@@ -786,6 +786,40 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
   const cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
+  if (idStr.startsWith('lfm:')) {
+    // Candidato "cold start" de las cartas de Last.fm (recomendaciones sin
+    // historial todavía, ver backgroundJobRunner.ts) — el id solo lleva
+    // artista+título codificados, nunca se resolvió a un vídeo de YouTube
+    // real. Sin este caso, Number("lfm:...") daba NaN y el track nunca se
+    // encontraba: la canción quedaba en bucle de reintentos y nunca sonaba.
+    const rest = idStr.slice(4);
+    const sepIdx = rest.includes('|') ? rest.indexOf('|') : rest.lastIndexOf('_');
+    const rawArtist = sepIdx !== -1 ? rest.slice(0, sepIdx) : '';
+    const rawTitle = sepIdx !== -1 ? rest.slice(sepIdx + 1) : rest;
+    let decodedArtist = '';
+    let decodedTitle = '';
+    try { decodedArtist = decodeURIComponent(rawArtist); } catch { decodedArtist = rawArtist; }
+    try { decodedTitle = decodeURIComponent(rawTitle); } catch { decodedTitle = rawTitle; }
+    if (!decodedTitle) return null;
+
+    // IDs viejos (antes de este fix) podían llevar el mbid del artista en vez
+    // de su nombre — un UUID no sirve como término de búsqueda, así que en
+    // ese caso buscamos solo por título.
+    const looksLikeMbid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedArtist);
+    const query = decodedArtist && !looksLikeMbid ? `${decodedArtist} ${decodedTitle}` : decodedTitle;
+
+    try {
+      const results = await searchYouTube(query, 1);
+      const found = results[0];
+      if (!found) return null;
+      cache.setex(cacheKey, 86400, JSON.stringify(found));
+      return found;
+    } catch (err) {
+      console.error('[Metadata] Error resolviendo track lfm: vía búsqueda de YouTube:', err);
+      return null;
+    }
+  }
+
   if (idStr.startsWith('custom_')) {
     const { getCustomTrackById: localGetCustom } = await import('./customTracksService');
     const custom = localGetCustom(idStr);

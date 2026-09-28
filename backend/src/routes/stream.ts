@@ -186,6 +186,18 @@ async function resolveYoutubeIdForTrack(itunesId: string): Promise<{
         title = trackMeta.title;
         durationSeconds = Math.round((trackMeta.duration || 0) / 1000);
       }
+    } else if (itunesId.startsWith('lfm:')) {
+      // Candidato "cold start" de Last.fm (ver backgroundJobRunner.ts) — no
+      // tiene itunesId real, así que Number(itunesId) daría NaN. getTrackById
+      // ya sabe resolver este prefijo con una búsqueda en vivo de YouTube.
+      const track = await getTrackById(itunesId);
+      if (track) {
+        artist = track.artist;
+        title = track.title;
+        durationSeconds = Math.round((track.duration || 0) / 1000);
+        youtubeId = track.id;
+        isDirectYouTube = true;
+      }
     } else {
       const itunesIdNum = Number(itunesId);
       const track = await getTrackById(itunesIdNum);

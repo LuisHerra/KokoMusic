@@ -287,7 +287,10 @@ async function fetchLastFmGeoTopTracks(region = LFM_GEO_REGION): Promise<ChartTr
           genre = itunes.genre;
         }
         results[i] = {
-          trackId: `lfm:${encodeURIComponent(t.artist?.mbid || artist || '')}_${encodeURIComponent(title)}`,
+          // Nombre legible, no el mbid: metadataService.ts hace una búsqueda
+          // en vivo de YouTube con esto cuando se reproduce el track por
+          // primera vez, y un UUID no es una consulta de búsqueda útil.
+          trackId: `lfm:${encodeURIComponent(artist)}|${encodeURIComponent(title)}`,
           title,
           artist,
           artistId: 0,
