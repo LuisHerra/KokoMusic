@@ -1022,5 +1022,48 @@ export const syncSpotifyTaste = (accessToken: string, userId?: string) =>
     body: JSON.stringify({ accessToken, userId }),
   });
 
+// ── Sincronización entre dispositivos ("Spotify Connect") ──────────────────────
+
+export interface PlaybackDeviceState {
+  user_id: string;
+  device_id: string;
+  device_name: string | null;
+  track_id: string | null;
+  title: string | null;
+  artist: string | null;
+  cover: string | null;
+  position_s: number;
+  duration_s: number;
+  is_playing: boolean;
+  is_active: boolean;
+  updated_at: string;
+}
+
+export const pushPlaybackState = (data: {
+  deviceId: string;
+  deviceName: string;
+  trackId: string | null;
+  title: string | null;
+  artist: string | null;
+  cover: string | null;
+  positionS: number;
+  durationS: number;
+  isPlaying: boolean;
+}) =>
+  apiFetch<{ success: boolean }>('/playback/state', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+
+export const getPlaybackState = (deviceId: string) =>
+  apiFetch<{ mine: PlaybackDeviceState | null; others: PlaybackDeviceState[] }>(
+    `/playback/state?deviceId=${encodeURIComponent(deviceId)}`
+  );
+
+export const activatePlaybackDevice = (deviceId: string) =>
+  apiFetch<{ success: boolean }>('/playback/activate', {
+    method: 'POST',
+    body: JSON.stringify({ deviceId }),
+  });
 
 

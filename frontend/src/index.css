@@ -1262,6 +1262,23 @@ html, body, #root {
   color: #ff5252;
 }
 
+.device-sync-toast {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  white-space: nowrap;
+  background: var(--bg-card-hover);
+  border: 1px solid #ffffff1a;
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 32px rgba(0,0,0,0.5);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  z-index: 100;
+  animation: fade-in 0.2s ease;
+}
+
 /* ── Repeat Dot ─────────────────────────────────────────────────────────────── */
 .repeat-dot {
   position: absolute;

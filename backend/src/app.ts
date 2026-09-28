@@ -31,6 +31,7 @@ import { checkHealth as checkKokoLiteHealth } from './services/kokoLiteClient';
 
 import spotifyRouter from './routes/spotify';
 import shazamRouter from './routes/shazam';
+import playbackRouter from './routes/playback';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -150,6 +151,7 @@ app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/spotify', spotifyRouter);
 app.use('/api/shazam', shazamRouter);
 app.use('/api/eureka', shazamRouter);
+app.use('/api/playback', playbackRouter);
 
 // ── Remote logging from frontend for mobile debugging ──────────────────────────
 app.post('/api/log', (req, res) => {

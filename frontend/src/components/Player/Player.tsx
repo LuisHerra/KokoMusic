@@ -14,6 +14,7 @@ import { seekAudio, recordEarlySkip } from '../../hooks/useAudioPlayer';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
 import { sendRecommendationFeedback, triggerRecommendationEvent } from '../../lib/api';
 import SleepTimer from './SleepTimer';
+import DeviceSyncButton from './DeviceSyncButton';
 import PlaylistModal from './PlaylistModal';
 import JamModal from './JamModal';
 import EqualizerPanel from './EqualizerPanel';
@@ -437,6 +438,7 @@ export default function Player() {
         </button>
 
         <SleepTimer />
+        <DeviceSyncButton />
 
         {/* EQ Button */}
         <button
