@@ -13,10 +13,11 @@ import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
 import SongCreditsModal from './SongCreditsModal';
+import JamModal from './JamModal';
 import {
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
   IconLyrics, IconRadio, IconVideo, IconChevronDown,
-  IconCheck, IconLoadingSpinner, IconCloudDownload, IconUser, IconQueue,
+  IconCheck, IconLoadingSpinner, IconCloudDownload, IconUser, IconQueue, IconGroupListen,
 } from './PlayerIcons';
 
 function formatTime(secs: number): string {
@@ -42,9 +43,11 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     isEmbedMode, embedYoutubeId,
     manualVideoId, setManualVideo,
     queue, queueIndex, removeFromQueue, jumpToQueueIndex,
+    activeJamCode,
   } = usePlayerStore();
 
   const { isLiked, toggleLike } = useLikedSongs();
+  const [showJamModal, setShowJamModal] = useState(false);
 
   // Navigation layout state — en móvil no hay otra forma de ver la cola (el
   // botón de cola de escritorio vive en .player-right, oculto en pantallas
@@ -767,11 +770,22 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           <IconQueue />
           <span>Cola</span>
         </button>
+
+        <button
+          className="mfp-extra-btn"
+          onClick={() => setShowJamModal(true)}
+          style={{ color: activeJamCode ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+        >
+          <IconGroupListen />
+          <span>Sinfonía</span>
+        </button>
       </div>
 
       {showCreditsModal && currentTrack && (
         <SongCreditsModal track={currentTrack} onClose={() => setShowCreditsModal(false)} />
       )}
+
+      <JamModal isOpen={showJamModal} onClose={() => setShowJamModal(false)} />
     </div>
   );
 }

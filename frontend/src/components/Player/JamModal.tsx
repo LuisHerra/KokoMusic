@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { startJam, getJam, joinJam, getJamQueue, addToJamQueue, removeFromJamQueue, voteJamQueueItem } from '../../lib/api';
-import type { JamSession, JamMember, JamQueueItem } from '../../lib/api';
+import { startJam, getJam, joinJam, getJamQueue, addToJamQueue, removeFromJamQueue, voteJamQueueItem, getFriends, sendMessage } from '../../lib/api';
+import type { JamSession, JamMember, JamQueueItem, Friendship } from '../../lib/api';
 import { useJamSession } from '../../hooks/useJamSession';
 import { usePlayerStore } from '../../store/playerStore';
 
@@ -61,13 +61,16 @@ export default function JamModal({ isOpen, onClose }: Props) {
 
   const [addingTrack, setAddingTrack] = useState(false);
 
-  // Mock online friends list
-  const [onlineFriends, setOnlineFriends] = useState([
-    { id: 'friend_laura', name: 'Laura Gómez', avatar: 'L', status: 'online' },
-    { id: 'friend_carlos', name: 'Carlos Díaz', avatar: 'C', status: 'online' },
-    { id: 'friend_sofia', name: 'Sofía Rivas', avatar: 'S', status: 'online' },
-    { id: 'friend_mateo', name: 'Mateo Torres', avatar: 'M', status: 'online' }
-  ]);
+  // Amigos reales del usuario (para invitar a la Sinfonía) — antes era una
+  // lista de 4 nombres inventados con "estado online" simulado.
+  const [friends, setFriends] = useState<Friendship[]>([]);
+  const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set());
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tab !== 'session') return;
+    getFriends(userId).then((r) => setFriends(r.friends)).catch(() => {});
+  }, [tab, userId]);
 
   // Sync state whenever modal opens
   useEffect(() => { 
@@ -240,28 +243,19 @@ export default function JamModal({ isOpen, onClose }: Props) {
     } catch { /* silent */ }
   }
 
-  const handleInviteFriendSim = (friendId: string, name: string) => {
-    // Show inviting state in list
-    setOnlineFriends(prev => prev.map(f => f.id === friendId ? { ...f, status: 'inviting' } : f));
-    
-    // Simulate accepting invite in 1 second
-    setTimeout(() => {
-      setOnlineFriends(prev => prev.map(f => f.id === friendId ? { ...f, status: 'joined' } : f));
-      
-      const newSimMember: JamMember = {
-        user_id: `simulated-${friendId}-${Date.now()}`,
-        display_name: name,
-        joined_at: new Date().toISOString()
-      };
-      
-      setMembers(prev => {
-        if (prev.find(m => m.display_name === name)) return prev;
-        return [...prev, newSimMember];
-      });
-
-      setError(`¡${name} se ha unido a la Sinfonía!`);
+  const handleInviteFriend = async (friend: Friendship) => {
+    if (!jam) return;
+    setInvitingId(friend.id);
+    try {
+      const link = `${window.location.origin}/?join_jam=${jam.jam_code}`;
+      await sendMessage(userId, friend.id, `¡Únete a mi Sinfonía en KokoMusic! Código: ${jam.jam_code} — ${link}`);
+      setInvitedIds(prev => new Set(prev).add(friend.id));
+    } catch (e: any) {
+      setError(e.message ?? 'Error al enviar la invitación');
       setTimeout(() => setError(''), 3000);
-    }, 1200);
+    } finally {
+      setInvitingId(null);
+    }
   };
 
   function getAvatarColor(name: string) {
@@ -763,72 +757,69 @@ export default function JamModal({ isOpen, onClose }: Props) {
               </div>
             </div>
 
-            {/* Online Friends Invite list (Simulated) */}
-            <div style={{ 
-              background: 'rgba(255, 255, 255, 0.01)', 
-              borderRadius: '12px', 
-              border: '1px solid rgba(255, 255, 255, 0.04)',
-              padding: '14px 16px'
-            }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>
-                Invitar amigos en línea
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {onlineFriends.map(friend => {
-                  const inSession = members.some(m => m.display_name === friend.name);
-                  return (
-                    <div key={friend.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ 
-                          width: '28px', 
-                          height: '28px', 
-                          borderRadius: '50%', 
-                          background: '#282828', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          color: '#fff',
-                          position: 'relative'
-                        }}>
-                          {friend.avatar}
-                          <span style={{
-                            position: 'absolute',
-                            bottom: '0',
-                            right: '0',
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            background: 'var(--accent)',
-                            border: '1.5px solid #0c0c0d'
-                          }} />
+            {/* Invitar amigos — les manda el código/enlace por chat de Koko */}
+            {friends.length > 0 && (
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.01)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.04)',
+                padding: '14px 16px'
+              }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>
+                  Invitar amigos
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {friends.map(friend => {
+                    const inSession = members.some(m => m.user_id === friend.id);
+                    const invited = invitedIds.has(friend.id);
+                    const name = friend.display_name || friend.username || 'Kokoer';
+                    return (
+                      <div key={friend.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {friend.avatar_url ? (
+                            <img src={friend.avatar_url} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '50%',
+                              background: getAvatarColor(name),
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: '#fff',
+                            }}>
+                              {name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{name}</span>
                         </div>
-                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{friend.name}</span>
-                      </div>
 
-                      <button
-                        onClick={() => handleInviteFriendSim(friend.id, friend.name)}
-                        disabled={inSession || friend.status === 'inviting'}
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: '14px',
-                          border: 'none',
-                          background: inSession ? 'rgba(255,255,255,0.04)' : friend.status === 'inviting' ? 'rgba(255,255,255,0.08)' : 'var(--accent)',
-                          color: inSession ? 'var(--text-secondary)' : friend.status === 'inviting' ? '#fff' : '#000',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          cursor: inSession || friend.status === 'inviting' ? 'default' : 'pointer',
-                          transition: 'opacity 0.2s'
-                        }}
-                      >
-                        {inSession ? 'En la Jam' : friend.status === 'inviting' ? 'Enviando...' : 'Invitar'}
-                      </button>
-                    </div>
-                  );
-                })}
+                        <button
+                          onClick={() => handleInviteFriend(friend)}
+                          disabled={inSession || invited || invitingId === friend.id}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '14px',
+                            border: 'none',
+                            background: inSession || invited ? 'rgba(255,255,255,0.04)' : 'var(--accent)',
+                            color: inSession || invited ? 'var(--text-secondary)' : '#000',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: inSession || invited || invitingId === friend.id ? 'default' : 'pointer',
+                            transition: 'opacity 0.2s'
+                          }}
+                        >
+                          {inSession ? 'En la Jam' : invited ? 'Invitado ✓' : invitingId === friend.id ? 'Enviando...' : 'Invitar'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             {error && <div style={{ color: 'var(--accent)', fontSize: '12px', textAlign: 'center', fontWeight: 600 }}>{error}</div>}
 
