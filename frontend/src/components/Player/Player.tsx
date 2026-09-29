@@ -8,7 +8,7 @@ import {
   IconCloudDownload, IconCheck, IconLoadingSpinner,
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
   IconVolumeHigh, IconVolumeMute, IconMusic, IconQueue, IconVideo, IconLyrics, IconVoice,
-  IconRadio, IconEqualizer, IconGroupListen, IconGamepad, IconAddCircle, IconHeart,
+  IconRadio, IconEqualizer, IconGroupListen, IconGamepad, IconAddCircle, IconHeart, IconDevices,
 } from './PlayerIcons';
 import { seekAudio, recordEarlySkip } from '../../hooks/useAudioPlayer';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
@@ -44,7 +44,8 @@ export default function Player() {
     isShuffle, toggleShuffle,
     repeatMode, cycleRepeat,
     activeJamCode, activeJamHostName, isJamHost,
-    isGamerMode, toggleGamerMode
+    isGamerMode, toggleGamerMode,
+    remoteDeviceId, remoteDeviceName,
   } = usePlayerStore();
 
   const { isLiked, toggleLike } = useLikedSongs();
@@ -190,6 +191,11 @@ export default function Player() {
 
   return (
     <div className="player" style={playerStyle} onClick={handlePlayerBarClick}>
+      {remoteDeviceId && !activeJamCode && (
+        <div className="remote-output-strip player-remote-strip" onClick={(e) => e.stopPropagation()}>
+          <IconDevices size={13} /> Sonando en {remoteDeviceName || 'otro dispositivo'} — controlando desde aquí
+        </div>
+      )}
       {activeJamCode && (
         <div 
           onClick={(e) => { e.stopPropagation(); setShowJamModal(true); }}

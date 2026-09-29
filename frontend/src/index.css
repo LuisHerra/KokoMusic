@@ -1279,6 +1279,43 @@ html, body, #root {
   animation: fade-in 0.2s ease;
 }
 
+/* ── Barra "Sonando en X" (modo mando, sync entre dispositivos) ──────────────── */
+.remote-output-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--accent);
+  color: #000;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+}
+.player-remote-strip {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  right: 0;
+  height: 24px;
+  z-index: 5;
+}
+.mfp-remote-strip {
+  position: relative;
+  z-index: 1;
+  margin: 0 16px 8px;
+  padding: 7px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.device-list-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
 /* ── Device List (sincronización entre dispositivos) ─────────────────────────── */
 .device-list-items {
   display: flex;

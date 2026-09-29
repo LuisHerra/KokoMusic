@@ -23,6 +23,7 @@ import DjMode from './pages/DjMode';
 import KaraokeStudioPage from './pages/KaraokeStudio';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useListeningSession } from './hooks/useListeningSession';
+import { useDeviceSyncEngine } from './hooks/useDeviceSync';
 import { usePlayerStore } from './store/playerStore';
 import VideoPanel from './components/Player/VideoPanel';
 import MobileFullPlayer from './components/Player/MobileFullPlayer';
@@ -77,6 +78,12 @@ function AudioEngine() {
 // Acumula minutos escuchados y los envía al backend solo al salir de la app
 function ListeningSessionTracker() {
   useListeningSession();
+  return null;
+}
+
+// Sincronización entre dispositivos (Spotify Connect) — una sola instancia
+function DeviceSyncEngine() {
+  useDeviceSyncEngine();
   return null;
 }
 
@@ -572,6 +579,7 @@ export default function App() {
       <BrowserRouter basename={basename}>
         <AudioEngine />
         <ListeningSessionTracker />
+        <DeviceSyncEngine />
         <NotificationPoller />
         <AppShell />
         {/* Banner de instalación PWA — solo aparece si Chrome lo ofrece */}

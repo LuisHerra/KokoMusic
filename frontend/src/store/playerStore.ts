@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import { getTrackRadio, type Track } from '../lib/api';
+import { getTrackRadio, type Track, type RemoteCommand } from '../lib/api';
 import { markTrackPlayed, pickRecommendations } from '../lib/recommendationPicker';
 import { logToServer } from '../lib/logger';
 
@@ -14,6 +14,24 @@ let queueReplenishLock = false; // prevent concurrent replenishment fetches
 
 export function registerUnlockHandler(handler: () => void) {
   globalUnlockHandler = handler;
+}
+
+// ── Salida remota (sync entre dispositivos, ver lib/deviceSync.ts) ────────────
+// Mientras remoteDeviceId no es null, este dispositivo es un "mando": las
+// acciones de reproducción no se ejecutan aquí sino que se reenvían al
+// dispositivo principal, que es el único que suena. El sender lo registra
+// lib/deviceSync.ts (registro en vez de import para evitar un ciclo).
+let remoteCommandSender: ((cmd: RemoteCommand) => void) | null = null;
+
+export function registerRemoteCommandSender(sender: (cmd: RemoteCommand) => void) {
+  remoteCommandSender = sender;
+}
+
+/** Reenvía `cmd` al dispositivo principal si estamos conectados como mando. Devuelve true si lo hizo. */
+export function sendRemoteCommandIfConnected(cmd: RemoteCommand): boolean {
+  if (!usePlayerStore.getState().remoteDeviceId || !remoteCommandSender) return false;
+  remoteCommandSender(cmd);
+  return true;
 }
 
 type RepeatMode = 'off' | 'all' | 'one';
@@ -166,6 +184,13 @@ interface PlayerState {
   // YouTube ID resuelto del track actual (guardado al cargar, reutilizado en fallback embed)
   currentYoutubeId: string | null;
   setCurrentYoutubeId: (id: string | null) => void;
+
+  // Salida remota — ver registerRemoteCommandSender más arriba.
+  remoteDeviceId: string | null;
+  remoteDeviceName: string | null;
+  setRemoteDevice: (id: string | null, name: string | null) => void;
+  /** Refleja el estado del principal en este mando, sin reenviar nada (solo pinta). */
+  applyRemoteMirror: (partial: Partial<Pick<PlayerState, 'currentTrack' | 'queue' | 'originalQueue' | 'queueIndex' | 'isPlaying' | 'progress' | 'duration'>>) => void;
 }
 
 // Fisher-Yates shuffle — retorna un nuevo array con el track actual primero
@@ -311,6 +336,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentYoutubeId: null,
   setCurrentYoutubeId: (id) => set({ currentYoutubeId: id }),
 
+  remoteDeviceId: null,
+  remoteDeviceName: null,
+  setRemoteDevice: (id, name) => set({ remoteDeviceId: id, remoteDeviceName: id ? name : null }),
+  applyRemoteMirror: (partial) => set(partial),
+
   setIsShuffle: (val) => set({ isShuffle: val }),
 
   eqBands: JSON.parse(localStorage.getItem('koko_eq_bands') || '[0,0,0,0,0]'),
@@ -334,6 +364,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setTrack: (track, queue) => {
     logToServer('INFO', `[playerStore] setTrack: ${track.title} - ${track.artist} (${track.id})`);
+    if (sendRemoteCommandIfConnected({ type: 'play_track', track, queue: queue ?? [track] })) {
+      // Solo pintamos el cambio ya (el principal confirmará en su siguiente
+      // heartbeat); aquí no se carga audio.
+      const q = queue ?? [track];
+      const i = q.findIndex((t) => t.id === track.id);
+      set({ currentTrack: track, queue: q, originalQueue: q, queueIndex: i >= 0 ? i : 0, isPlaying: true, progress: 0 });
+      return;
+    }
     if (globalUnlockHandler) globalUnlockHandler();
     const { isShuffle } = get();
     // Si no se pasa una cola explícita (ej. clic individual en búsqueda o home), iniciar cola nueva con solo esta pista
@@ -367,13 +405,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   togglePlay: () => {
     logToServer('INFO', `[playerStore] togglePlay. Current playing: ${get().isPlaying} -> ${!get().isPlaying}`);
+    if (sendRemoteCommandIfConnected({ type: 'set_playing', isPlaying: !get().isPlaying })) {
+      set((s) => ({ isPlaying: !s.isPlaying }));
+      return;
+    }
     if (globalUnlockHandler) globalUnlockHandler();
     set((s) => ({ isPlaying: !s.isPlaying }));
   },
+  // Sin reenvío remoto a propósito: lo llaman también los eventos nativos del
+  // <audio> (p.ej. el 'pause' al silenciar este dispositivo al conectarse), y
+  // reenviarlos pausaría el principal sin que nadie lo haya pedido.
   setIsPlaying: (v) => set({ isPlaying: v }),
 
   nextTrack: async () => {
     logToServer('INFO', `[playerStore] nextTrack`);
+    if (sendRemoteCommandIfConnected({ type: 'next' })) return;
     if (globalUnlockHandler) globalUnlockHandler();
     const { queue, queueIndex, repeatMode, currentTrack } = get();
 
@@ -470,6 +516,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   prevTrack: () => {
     logToServer('INFO', `[playerStore] prevTrack`);
+    if (sendRemoteCommandIfConnected({ type: 'prev' })) return;
     if (globalUnlockHandler) globalUnlockHandler();
     const { queue, queueIndex, progress } = get();
     // Si llevamos >3s en la canción → volver al inicio; si no → track anterior
@@ -533,6 +580,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   removeFromQueue: (index) => {
+    // En modo mando se reenvía y además se aplica aquí para que se vea al
+    // instante (la cola mostrada ES la del principal, mismo índice).
+    const target = get().queue[index];
+    if (target) sendRemoteCommandIfConnected({ type: 'remove_from_queue', index, trackId: target.id });
     const { queue, queueIndex } = get();
     if (index <= queueIndex || index >= queue.length) return; // no remover track actual o anteriores
     const newQueue = [...queue];
@@ -541,6 +592,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   addToQueue: (track) => {
+    if (sendRemoteCommandIfConnected({ type: 'add_to_queue', track })) {
+      // Pintado optimista: justo detrás de la canción actual, igual que hará el principal.
+      const { queue, queueIndex } = get();
+      if (queue.some((t) => t.id === track.id)) return;
+      const q = [...queue];
+      q.splice(queueIndex + 1, 0, track);
+      set({ queue: q, originalQueue: q });
+      return;
+    }
     const { queue, originalQueue, currentTrack, queueIndex } = get();
     // Si no hay nada reproduciéndose → reproducir directamente
     if (!currentTrack) {
@@ -596,9 +656,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   jumpToQueueIndex: (index) => {
     logToServer('INFO', `[playerStore] jumpToQueueIndex to: ${index}`);
-    if (globalUnlockHandler) globalUnlockHandler();
     const { queue } = get();
     if (index < 0 || index >= queue.length) return;
+    if (sendRemoteCommandIfConnected({ type: 'jump', index, trackId: queue[index].id })) {
+      set({ currentTrack: queue[index], queueIndex: index, progress: 0, isPlaying: true });
+      return;
+    }
+    if (globalUnlockHandler) globalUnlockHandler();
     set({
       currentTrack: queue[index],
       queueIndex: index,

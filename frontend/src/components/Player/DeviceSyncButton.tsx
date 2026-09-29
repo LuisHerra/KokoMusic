@@ -1,13 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { useDeviceSync } from '../../hooks/useDeviceSync';
+import { usePlayerStore } from '../../store/playerStore';
+import { useDeviceSyncStore } from '../../store/deviceSyncStore';
 import { IconDevices } from './PlayerIcons';
 import DeviceList from './DeviceList';
 
-/** Botón "Dispositivos" del reproductor — ver y conectarte a la reproducción de otro dispositivo de la misma cuenta (tipo Spotify Connect). */
+/** Botón "Dispositivos" del reproductor de escritorio (tipo Spotify Connect). */
 export default function DeviceSyncButton() {
-  const { otherDevices, connectedDeviceId, connectedDevice, connectTo, disconnect, banner } = useDeviceSync();
+  const otherDevices = useDeviceSyncStore((s) => s.otherDevices);
+  const banner = useDeviceSyncStore((s) => s.banner);
+  const remoteDeviceId = usePlayerStore((s) => s.remoteDeviceId);
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const connectableCount = otherDevices.filter((d) => d.track_id).length;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -23,26 +28,20 @@ export default function DeviceSyncButton() {
       <button
         className="ctrl-btn"
         onClick={() => setIsOpen((v) => !v)}
-        title="Dispositivos conectados"
-        style={connectedDeviceId || otherDevices.length > 0 ? { color: 'var(--accent)' } : undefined}
+        title="Dispositivos"
+        style={remoteDeviceId || connectableCount > 0 ? { color: 'var(--accent)' } : undefined}
       >
         <IconDevices size={16} />
       </button>
 
-      {!connectedDeviceId && otherDevices.length > 0 && <span className="sleep-timer-badge">{otherDevices.length}</span>}
+      {!remoteDeviceId && connectableCount > 0 && <span className="sleep-timer-badge">{connectableCount}</span>}
 
       {banner && <div className="device-sync-toast">{banner}</div>}
 
       {isOpen && (
-        <div className="sleep-timer-menu" style={{ width: 280 }}>
+        <div className="sleep-timer-menu" style={{ width: 290 }}>
           <div className="sleep-timer-menu-header">Dispositivos</div>
-          <DeviceList
-            otherDevices={otherDevices}
-            connectedDeviceId={connectedDeviceId}
-            connectedDevice={connectedDevice}
-            onConnect={connectTo}
-            onDisconnect={disconnect}
-          />
+          <DeviceList />
         </div>
       )}
     </div>

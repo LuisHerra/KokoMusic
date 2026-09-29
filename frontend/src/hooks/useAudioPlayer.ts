@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler } from '../store/playerStore';
+import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, sendRemoteCommandIfConnected } from '../store/playerStore';
 import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
@@ -368,6 +368,11 @@ registerUnlockHandler(unlockAudio);
  * Función global de seek — úsala en cualquier componente sin instanciar el hook.
  */
 export function seekAudio(seconds: number) {
+  // Modo mando (sync entre dispositivos): el salto se ejecuta en el principal.
+  if (sendRemoteCommandIfConnected({ type: 'seek', positionS: seconds })) {
+    usePlayerStore.getState().setProgress(seconds);
+    return;
+  }
   // En isEmbedMode, useVideoSync detecta el salto de progreso (>1.5s) y envía
   // el comando seekTo al iframe de YouTube automáticamente.
   if (!usePlayerStore.getState().isEmbedMode) {
@@ -417,6 +422,7 @@ export function useAudioPlayer() {
     isPlaying,
     volume,
     isMuted,
+    remoteDeviceId,
     setProgress,
     setDuration,
     setLoading,
@@ -668,6 +674,9 @@ export function useAudioPlayer() {
         // on what was the active audio at that moment. This must NOT set isPlaying=false
         // because the new track is about to start playing.
         if (isLoadingNewTrackRef.current) return;
+        // Modo mando: esta pausa es el silenciado al conectarse; isPlaying
+        // refleja al principal y no debe tocarse aquí.
+        if (usePlayerStore.getState().remoteDeviceId) return;
         if (!usePlayerStore.getState().isEmbedMode) {
           setIsPlaying(false);
         }
@@ -811,6 +820,13 @@ export function useAudioPlayer() {
   }, [handleEnded, setDuration, setError, setIsPlaying, setLoading, setProgress, nextTrack, repeatMode]);
 
   useEffect(() => {
+    // Modo mando: aquí no suena nada, así que no se carga ningún stream. Se
+    // olvida el último track cargado para que, al dejar de ser mando
+    // ("Escuchar aquí"), se cargue de cero y arranque en el progreso actual.
+    if (remoteDeviceId) {
+      globalLastLoadedTrackId = null;
+      return;
+    }
     if (!currentTrack || !currentTrack.id) return;
     if (globalLastLoadedTrackId === currentTrack.id) return;
 
@@ -1138,10 +1154,19 @@ export function useAudioPlayer() {
         fadeOutIntervalRef.current = null;
       }
     };
-  }, [currentTrack, setLoading, setIsPlaying, volume, isMuted]);
+  }, [currentTrack, setLoading, setIsPlaying, volume, isMuted, remoteDeviceId]);
 
   useEffect(() => {
     const audio = getActiveAudio();
+
+    // Modo mando: isPlaying refleja el del principal (solo para pintar); este
+    // dispositivo se queda siempre en silencio.
+    if (remoteDeviceId) {
+      audio.pause();
+      getInactiveAudio().pause();
+      return;
+    }
+
     if (!currentTrack) return;
 
     // En isEmbedMode, useVideoSync (registrado sobre el iframe de YouTube)
@@ -1223,7 +1248,7 @@ export function useAudioPlayer() {
         fadeOutIntervalRef.current = null;
       }
     }
-  }, [isPlaying, currentTrack, setIsPlaying]);
+  }, [isPlaying, currentTrack, setIsPlaying, remoteDeviceId]);
 
   // Volume: apply immediately, respecting crossfade
   useEffect(() => {
@@ -1241,6 +1266,8 @@ export function useAudioPlayer() {
 
   useEffect(() => {
     if (!currentTrack || lastLoggedTrackId.current === currentTrack.id) return;
+    // En modo mando el progreso es un reflejo del principal, que ya registra la escucha.
+    if (remoteDeviceId) return;
     if (progress >= 10) {
       lastLoggedTrackId.current = currentTrack.id;
       const myId = localStorage.getItem('koko_device_id') ?? '';
@@ -1314,7 +1341,7 @@ export function useAudioPlayer() {
         });
       }
     }
-  }, [progress, currentTrack]);
+  }, [progress, currentTrack, remoteDeviceId]);
 
   useEffect(() => {
     if (!sleepTimerEndTime) return;

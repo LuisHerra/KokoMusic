@@ -32,9 +32,11 @@ export function useListeningSession() {
     let trackStartTime: string | null = null; // ISO timestamp when current track started
 
     const unsubscribe = usePlayerStore.subscribe((state) => {
-      const { currentTrack, isPlaying, progress } = state;
+      const { currentTrack, isPlaying, progress, remoteDeviceId } = state;
 
-      if (!currentTrack || !isPlaying) {
+      // En modo mando (sync entre dispositivos) el audio suena en el principal,
+      // que ya cuenta esos minutos — aquí no se acumula nada.
+      if (!currentTrack || !isPlaying || remoteDeviceId) {
         lastProgress = progress;
         return;
       }

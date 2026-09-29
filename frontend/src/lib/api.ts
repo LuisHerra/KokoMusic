@@ -1035,9 +1035,27 @@ export interface PlaybackDeviceState {
   position_s: number;
   duration_s: number;
   is_playing: boolean;
-  is_active: boolean;
   updated_at: string;
+  track: Track | null;
+  queue: Track[] | null;
+  queue_index: number;
+  controlling_device_id: string | null;
+  command: RemoteCommand | null;
+  command_id: string | null;
+  command_at: string | null;
 }
+
+export type RemoteCommand =
+  | { type: 'play_track'; track: Track; queue: Track[] }
+  | { type: 'set_playing'; isPlaying: boolean }
+  | { type: 'next' }
+  | { type: 'prev' }
+  | { type: 'seek'; positionS: number }
+  // trackId además del índice: el principal solo publica una ventana de su
+  // cola (no entera), así que resuelve por id en su cola real.
+  | { type: 'jump'; index: number; trackId: string }
+  | { type: 'add_to_queue'; track: Track }
+  | { type: 'remove_from_queue'; index: number; trackId: string };
 
 export const pushPlaybackState = (data: {
   deviceId: string;
@@ -1049,6 +1067,10 @@ export const pushPlaybackState = (data: {
   positionS: number;
   durationS: number;
   isPlaying: boolean;
+  track: Track | null;
+  queue: Track[] | null;
+  queueIndex: number;
+  controllingDeviceId: string | null;
 }) =>
   apiFetch<{ success: boolean }>('/playback/state', {
     method: 'PUT',
@@ -1056,10 +1078,16 @@ export const pushPlaybackState = (data: {
   });
 
 export const getPlaybackState = (deviceId: string) =>
-  apiFetch<{ mine: PlaybackDeviceState | null; others: PlaybackDeviceState[] }>(
+  apiFetch<{ mine: PlaybackDeviceState | null; others: PlaybackDeviceState[]; serverNow: string }>(
     `/playback/state?deviceId=${encodeURIComponent(deviceId)}`,
     { cache: 'no-store' }
   );
+
+export const sendPlaybackCommand = (targetDeviceId: string, command: RemoteCommand) =>
+  apiFetch<{ success: boolean }>('/playback/command', {
+    method: 'POST',
+    body: JSON.stringify({ targetDeviceId, command }),
+  });
 
 
 

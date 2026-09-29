@@ -12,7 +12,7 @@ import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
-import { useDeviceSync } from '../../hooks/useDeviceSync';
+import { useDeviceSyncStore } from '../../store/deviceSyncStore';
 import SongCreditsModal from './SongCreditsModal';
 import JamModal from './JamModal';
 import DeviceList from './DeviceList';
@@ -50,7 +50,11 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
   const { isLiked, toggleLike } = useLikedSongs();
   const [showJamModal, setShowJamModal] = useState(false);
-  const { otherDevices, connectedDeviceId, connectedDevice, connectTo, disconnect, banner } = useDeviceSync();
+  const otherDevices = useDeviceSyncStore((s) => s.otherDevices);
+  const banner = useDeviceSyncStore((s) => s.banner);
+  const remoteDeviceId = usePlayerStore((s) => s.remoteDeviceId);
+  const remoteDeviceName = usePlayerStore((s) => s.remoteDeviceName);
+  const hasConnectableDevices = otherDevices.some((d) => d.track_id);
 
   // Navigation layout state — en móvil no hay otra forma de ver la cola (el
   // botón de cola de escritorio vive en .player-right, oculto en pantallas
@@ -510,13 +514,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           /* ── Devices view — único acceso a la sincronización entre dispositivos en móvil ── */
           <div className="mfp-queue-wrap">
             <span className="mfp-queue-section-label">Dispositivos</span>
-            <DeviceList
-              otherDevices={otherDevices}
-              connectedDeviceId={connectedDeviceId}
-              connectedDevice={connectedDevice}
-              onConnect={connectTo}
-              onDisconnect={disconnect}
-            />
+            <DeviceList />
           </div>
         ) : playerView === 'queue' ? (
           /* ── Queue view — único acceso a la cola en móvil ── */
@@ -748,6 +746,12 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         </button>
       </div>
 
+      {remoteDeviceId && (
+        <button className="remote-output-strip mfp-remote-strip" onClick={() => setPlayerView('devices')}>
+          <IconDevices size={14} /> Sonando en {remoteDeviceName || 'otro dispositivo'}
+        </button>
+      )}
+
       {/* Extra actions row */}
       <div className="mfp-extras">
         <button
@@ -798,7 +802,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         <button
           className="mfp-extra-btn"
           onClick={() => setPlayerView(prev => prev === 'devices' ? 'cover' : 'devices')}
-          style={{ color: playerView === 'devices' || connectedDeviceId || otherDevices.length > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+          style={{ color: playerView === 'devices' || remoteDeviceId || hasConnectableDevices ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconDevices />
           <span>Dispositivos</span>
