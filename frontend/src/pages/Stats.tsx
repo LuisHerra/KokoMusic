@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { getStats, getTrack } from '../lib/api';
 import { usePlayerStore } from '../store/playerStore';
+import { useScreenTour } from '../components/GuidedTour';
 
 export default function Stats() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -41,6 +42,8 @@ export default function Stats() {
   });
 
   const setTrack = usePlayerStore((s) => s.setTrack);
+  // Antes de los returns tempranos (carga/sin datos): se pide cuando hay datos que enseñar.
+  useScreenTour('stats', !!stats);
 
   const closeShareModal = () => {
     const params = new URLSearchParams(searchParams);
@@ -189,7 +192,7 @@ export default function Stats() {
       </div>
 
       {/* Row 1: Summary Cards Grid */}
-      <div style={{
+      <div data-tour="stats-summary" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
         gap: 20,
@@ -437,7 +440,7 @@ export default function Stats() {
       }} className="stats-row-responsive">
         
         {/* Left Box: Tu Perfil Musical */}
-        <div style={{
+        <div data-tour="stats-profile" style={{
           background: 'var(--bg-elevated)',
           borderRadius: 'var(--radius-lg)',
           padding: 24,
@@ -1026,7 +1029,7 @@ export default function Stats() {
         </div>
 
         {/* Right Box: Actividad reciente */}
-        <div style={{
+        <div data-tour="stats-recent" style={{
           background: 'var(--bg-elevated)',
           borderRadius: 'var(--radius-lg)',
           padding: 24,

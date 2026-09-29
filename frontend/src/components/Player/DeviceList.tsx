@@ -3,6 +3,7 @@ import { resolveImageUrl, type PlaybackDeviceState } from '../../lib/api';
 import { usePlayerStore } from '../../store/playerStore';
 import { useDeviceSyncStore } from '../../store/deviceSyncStore';
 import { THIS_DEVICE_ID, connectTo, disconnect, playHere } from '../../lib/deviceSync';
+import { useScreenTour } from '../GuidedTour';
 
 function timeAgo(iso: string): string {
   const diffSec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -23,6 +24,7 @@ export default function DeviceList() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const [pendingConfirm, setPendingConfirm] = useState<PlaybackDeviceState | null>(null);
+  useScreenTour('devices');
 
   const connectable = otherDevices.filter((d) => d.track_id);
   const controllingMe = otherDevices.filter((d) => d.controlling_device_id === THIS_DEVICE_ID);

@@ -147,7 +147,7 @@ export default function BottomNav() {
           <span>Tu Biblioteca</span>
         </NavLink>
         
-        <NavLink to="/friends" data-tour="friends-mobile" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink to="/friends" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
           <IconFriends />
           <span>Amigos</span>
         </NavLink>

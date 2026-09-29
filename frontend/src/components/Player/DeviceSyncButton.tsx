@@ -17,6 +17,8 @@ export default function DeviceSyncButton() {
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
+      // Los clics en la guía (portal fuera de este árbol) no cuentan como "fuera".
+      if ((e.target as HTMLElement).closest?.('.guided-tour')) return;
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setIsOpen(false);
     };
     document.addEventListener('mousedown', handler);
@@ -40,7 +42,7 @@ export default function DeviceSyncButton() {
       {banner && <div className="device-sync-toast">{banner}</div>}
 
       {isOpen && (
-        <div className="sleep-timer-menu" style={{ width: 290 }}>
+        <div className="sleep-timer-menu" data-tour="devices-list" style={{ width: 290 }}>
           <div className="sleep-timer-menu-header">Dispositivos</div>
           <DeviceList />
         </div>

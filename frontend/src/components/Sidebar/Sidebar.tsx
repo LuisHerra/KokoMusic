@@ -285,7 +285,7 @@ export default function Sidebar() {
       </NavLink>
 
       {/* Main nav */}
-      <ul className="sidebar-nav">
+      <ul className="sidebar-nav" data-tour="nav">
         <li className="sidebar-nav-item">
           <NavLink to="/" end style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Inicio" : undefined}>
             <IconHome /> {!isCollapsed && "Inicio"}
@@ -302,22 +302,22 @@ export default function Sidebar() {
           </NavLink>
         </li>
         <li className="sidebar-nav-item">
-          <NavLink to="/stats" data-tour="stats" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Estadísticas" : undefined}>
+          <NavLink to="/stats" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Estadísticas" : undefined}>
             <IconStats /> {!isCollapsed && "Estadísticas"}
           </NavLink>
         </li>
         <li className="sidebar-nav-item">
-          <NavLink to="/friends" data-tour="friends" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Amigos" : undefined}>
+          <NavLink to="/friends" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Amigos" : undefined}>
             <IconFriends /> {!isCollapsed && "Amigos"}
           </NavLink>
         </li>
         <li className="sidebar-nav-item">
-          <NavLink to="/dj" data-tour="dj" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Modo DJ" : undefined}>
+          <NavLink to="/dj" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Modo DJ" : undefined}>
             <IconDj /> {!isCollapsed && "Modo DJ"}
           </NavLink>
         </li>
         <li className="sidebar-nav-item">
-          <NavLink to="/karaoke" data-tour="karaoke" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Estudio Karaoke" : undefined}>
+          <NavLink to="/karaoke" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Estudio Karaoke" : undefined}>
             <IconKaraoke /> {!isCollapsed && "Estudio Karaoke"}
           </NavLink>
         </li>

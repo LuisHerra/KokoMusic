@@ -15,6 +15,7 @@ import { useLikedSongs } from '../../hooks/useLikedSongs';
 import { sendRecommendationFeedback, triggerRecommendationEvent } from '../../lib/api';
 import SleepTimer from './SleepTimer';
 import DeviceSyncButton from './DeviceSyncButton';
+import { useScreenTour } from '../GuidedTour';
 import PlaylistModal from './PlaylistModal';
 import JamModal from './JamModal';
 import EqualizerPanel from './EqualizerPanel';
@@ -47,6 +48,10 @@ export default function Player() {
     isGamerMode, toggleGamerMode,
     remoteDeviceId, remoteDeviceName,
   } = usePlayerStore();
+
+  // Guía del reproductor de escritorio: cuando suena la primera canción (en
+  // móvil estos botones están ocultos; allí se explica MobileFullPlayer).
+  useScreenTour('player', !!currentTrack && window.matchMedia('(min-width: 769px)').matches);
 
   const { isLiked, toggleLike } = useLikedSongs();
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
@@ -190,7 +195,7 @@ export default function Player() {
   };
 
   return (
-    <div className="player" data-tour="player" style={playerStyle} onClick={handlePlayerBarClick}>
+    <div className="player" style={playerStyle} onClick={handlePlayerBarClick}>
       {remoteDeviceId && !activeJamCode && (
         <div className="remote-output-strip player-remote-strip" onClick={(e) => e.stopPropagation()}>
           <IconDevices size={13} /> Sonando en {remoteDeviceName || 'otro dispositivo'} — controlando desde aquí

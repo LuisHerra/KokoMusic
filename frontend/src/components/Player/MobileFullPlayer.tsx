@@ -16,6 +16,7 @@ import { useDeviceSyncStore } from '../../store/deviceSyncStore';
 import SongCreditsModal from './SongCreditsModal';
 import JamModal from './JamModal';
 import DeviceList from './DeviceList';
+import { useScreenTour } from '../GuidedTour';
 import {
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
   IconLyrics, IconRadio, IconVideo, IconChevronDown,
@@ -49,6 +50,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
   const { isLiked, toggleLike } = useLikedSongs();
   const [showJamModal, setShowJamModal] = useState(false);
+  useScreenTour('mobile-player', isOpen);
   const otherDevices = useDeviceSyncStore((s) => s.otherDevices);
   const banner = useDeviceSyncStore((s) => s.banner);
   const remoteDeviceId = usePlayerStore((s) => s.remoteDeviceId);
@@ -519,7 +521,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           </div>
         ) : playerView === 'devices' ? (
           /* ── Devices view — único acceso a la sincronización entre dispositivos en móvil ── */
-          <div className="mfp-queue-wrap">
+          <div className="mfp-queue-wrap" data-tour="devices-list">
             <span className="mfp-queue-section-label">Dispositivos</span>
             <DeviceList />
           </div>
@@ -764,6 +766,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         <button
           className="mfp-extra-btn"
           onClick={openLyrics}
+          data-tour="mfp-lyrics"
           style={{ color: isLyricsOpen ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconLyrics />
@@ -782,6 +785,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         <button
           className="mfp-extra-btn"
           onClick={() => setPlayerView(prev => prev === 'video' ? 'cover' : 'video')}
+          data-tour="mfp-video"
           style={{ color: playerView === 'video' ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconVideo />
@@ -800,6 +804,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         <button
           className="mfp-extra-btn"
           onClick={() => setShowJamModal(true)}
+          data-tour="mfp-sinfonia"
           style={{ color: activeJamCode ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconGroupListen />
@@ -809,6 +814,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         <button
           className="mfp-extra-btn"
           onClick={() => setPlayerView(prev => prev === 'devices' ? 'cover' : 'devices')}
+          data-tour="mfp-devices"
           style={{ color: playerView === 'devices' || remoteDeviceId || hasConnectableDevices ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconDevices />

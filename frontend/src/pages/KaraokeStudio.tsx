@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { getLyrics, resolveImageUrl, getStreamUrl } from '../lib/api';
 import { parseSyncedLyrics, type LyricsLine } from '../lib/lyricsParser';
+import { useScreenTour } from '../components/GuidedTour';
 
 const DB_NAME = 'KokoKaraokeDB';
 const STORE_NAME = 'recordings';
@@ -88,6 +89,7 @@ async function deleteStudioRecording(id: string): Promise<void> {
 
 export default function KaraokeStudioPage() {
   const navigate = useNavigate();
+  useScreenTour('karaoke');
   const { currentTrack } = usePlayerStore();
 
   const [isRecording, setIsRecording] = useState(false);
@@ -587,7 +589,7 @@ export default function KaraokeStudioPage() {
         </div>
 
         {/* Record Control Button */}
-        <div>
+        <div data-tour="karaoke-record">
           {isRecording ? (
             <button
               onClick={stopStudioRecording}
@@ -646,7 +648,7 @@ export default function KaraokeStudioPage() {
 
       {/* MOBILE TAB SWITCHER (For mobile phones) */}
       {isMobile && (
-        <div style={{
+        <div data-tour="karaoke-tabs" style={{
           position: 'relative',
           zIndex: 10,
           display: 'flex',
@@ -695,7 +697,7 @@ export default function KaraokeStudioPage() {
         
         {/* TELEPROMPTER SYNCED LYRICS */}
         {(!isMobile || mobileTab === 'lyrics') && (
-          <div style={{
+          <div data-tour="karaoke-lyrics" style={{
             flex: 1,
             background: 'rgba(15, 12, 25, 0.5)',
             backdropFilter: 'blur(24px)',
@@ -795,7 +797,7 @@ export default function KaraokeStudioPage() {
 
       {/* 4. BOTTOM AUTO-TUNE & SCALE SELECTION RACK */}
       {(!isMobile || mobileTab === 'fx') && (
-        <div style={{
+        <div data-tour="karaoke-fx" style={{
           position: 'relative',
           zIndex: 10,
           background: 'rgba(10, 8, 18, 0.7)',

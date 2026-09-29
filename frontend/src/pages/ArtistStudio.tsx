@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, type ChangeEvent, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useScreenTour } from '../components/GuidedTour';
 import { useQuery } from '@tanstack/react-query';
 import {
   getMyProfile,
@@ -77,6 +78,7 @@ export default function ArtistStudio() {
     enabled: !!savedId && !!profile?.is_artist,
   });
   const artistTracks: ArtistTrack[] = artistTracksData?.tracks ?? [];
+  useScreenTour('artist-studio', !!profile?.is_artist);
 
   useEffect(() => {
     if (profileData && !profile?.is_artist) {
@@ -386,7 +388,7 @@ export default function ArtistStudio() {
         {/* Columna derecha */}
         <div>
       {/* Subida */}
-      <div style={cardStyle}>
+      <div style={cardStyle} data-tour="studio-upload">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <SectionHeading
             title={uploadMode === 'single' ? 'Subir canción' : 'Crear álbum'}
@@ -950,7 +952,7 @@ function TrackRow({
         </div>
       </div>
       <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{formatDuration(track.duration_ms)}</span>
-      <button onClick={onEditMetadata} title="Editar letra y metadatos" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex' }}>
+      <button onClick={onEditMetadata} data-tour="studio-track-metadata" title="Editar letra y metadatos" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex' }}>
         <IconPencil />
       </button>
       <button onClick={onEdit} title="Editar nombre y portada" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex' }}>

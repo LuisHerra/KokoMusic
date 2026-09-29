@@ -3,6 +3,7 @@ import { startJam, getJam, joinJam, getJamQueue, addToJamQueue, removeFromJamQue
 import type { JamSession, JamMember, JamQueueItem, Friendship } from '../../lib/api';
 import { useJamSession } from '../../hooks/useJamSession';
 import { usePlayerStore } from '../../store/playerStore';
+import { useScreenTour } from '../GuidedTour';
 
 function getUserId(): string {
   let id = localStorage.getItem('koko_device_id');
@@ -34,6 +35,8 @@ export default function JamModal({ isOpen, onClose }: Props) {
   const [userName, setUserName] = useState(getUserName());
 
   const [tab, setTab] = useState<'lobby'|'session'|'queue'>('lobby');
+  useScreenTour('sinfonia', isOpen && tab === 'lobby');
+  useScreenTour('sinfonia-session', isOpen && tab === 'session');
   const [inputCode, setInputCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -359,6 +362,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
             </button>
             <button 
               onClick={() => { setTab('queue'); if (jam) refreshQueue(jam.jam_code); }}
+              data-tour="jam-queue-tab"
               style={{
                 flex: 1,
                 padding: '12px 0',
@@ -427,6 +431,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
 
             <button 
               onClick={handleStartJam} 
+              data-tour="jam-start"
               disabled={loading} 
               style={{ 
                 width: '100%', 
@@ -475,6 +480,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
                 onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
                 value={inputCode}
                 onChange={e => setInputCode(e.target.value.toUpperCase().slice(0, 4))}
+                data-tour="jam-join"
                 placeholder="CÓDIGO"
                 maxLength={4}
               />
@@ -506,7 +512,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             
             {/* Sync Switch */}
-            <div style={{ 
+            <div data-tour="jam-sync" style={{ 
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'space-between', 
@@ -598,7 +604,7 @@ export default function JamModal({ isOpen, onClose }: Props) {
             )}
 
             {/* QR Code & Invite area */}
-            <div style={{ 
+            <div data-tour="jam-code" style={{ 
               background: 'rgba(255, 255, 255, 0.02)', 
               borderRadius: '12px', 
               border: '1px solid rgba(255, 255, 255, 0.05)',

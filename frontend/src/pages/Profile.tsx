@@ -5,7 +5,7 @@ import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount
 import { startSpotifyAuth, isSpotifyConnected, disconnectSpotify } from '../lib/spotifyAuth';
 import { usePlayerStore } from '../store/playerStore';
 import { getRecommendationMode, setRecommendationMode } from '../lib/recommendationPicker';
-import { markTourPending, startGuidedTour } from '../components/GuidedTour';
+import { enableTours, resetTours, useScreenTour } from '../components/GuidedTour';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -168,6 +168,7 @@ function Section({ id, title, icon, children }: { id?: string; title: string; ic
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  useScreenTour('profile');
   const queryClient = useQueryClient();
   const { isGamerMode, toggleGamerMode, autoApplySavedTransitions, setAutoApplySavedTransitions } = usePlayerStore();
   const rawId = localStorage.getItem('koko_device_id') ?? '';
@@ -330,7 +331,7 @@ export default function ProfilePage() {
       if (res.success && res.userId) {
         // Assign clean isolated session
         localStorage.setItem('koko_device_id', res.userId);
-        markTourPending();
+        enableTours();
         // Clear local history to avoid biasing the new account
         localStorage.removeItem('koko_play_history');
         localStorage.removeItem('koko_recent_searches');
@@ -1401,19 +1402,20 @@ export default function ProfilePage() {
               flexWrap: 'wrap',
             }}>
               <div style={{ paddingRight: 8, flex: 1, minWidth: 180 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Guía de KokoMusic</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Guías de KokoMusic</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
-                  Repasa las funciones que KokoMusic tiene y Spotify no: Sinfonía, Dispositivos, Modo DJ, letras…
+                  Cada sección vuelve a explicarse la primera vez que la abras (Modo DJ, Sinfonía, letras…).
                 </div>
               </div>
               <button
-                onClick={() => { navigate('/'); window.setTimeout(startGuidedTour, 400); }}
+                data-tour="profile-guides"
+                onClick={() => { resetTours(); navigate('/'); }}
                 style={{
                   background: 'var(--accent)', color: '#000', border: 'none', borderRadius: 'var(--radius-full)',
                   padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
                 }}
               >
-                Ver guía
+                Ver guías de nuevo
               </button>
             </div>
             <div style={{

@@ -7,6 +7,7 @@ import { usePlayerStore } from '../store/playerStore';
 
 import { useThemeStore } from '../store/themeStore';
 import OnboardingModal from '../components/OnboardingModal';
+import { useScreenTour } from '../components/GuidedTour';
 
 // SVG icons for each filter category
 function FilterIcon({ type }: { type: string }) {
@@ -56,6 +57,7 @@ function getGreeting() {
 
 export default function Home() {
   const navigate = useNavigate();
+  useScreenTour('home');
   const { currentTrack, isPlaying, setTrack, addToQueue, setError } = usePlayerStore();
   const [activeCategory, setActiveCategory] = useState<'all' | 'music' | 'podcasts'>('all');
   const [selectedMood, setSelectedMood] = useState<string | null>(null);

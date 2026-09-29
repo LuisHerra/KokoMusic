@@ -4,6 +4,7 @@ import { seekAudio, getActiveAudio, setDjFxParams, setAudioPlaybackRate } from '
 import { resolveImageUrl, getTrack, type Track } from '../lib/api';
 import { IconPlay, IconPause, IconNext, IconMusic } from '../components/Player/PlayerIcons';
 import DjMixerModal from '../components/Player/DjMixerModal';
+import { useScreenTour } from '../components/GuidedTour';
 import { computeAutoMix, startCrossfadePreview, estimateBpm, type CrossfadePreviewHandle } from '../lib/djTransition';
 
 const BPM_COMPATIBLE_RANGE = 6;
@@ -71,6 +72,7 @@ function CoverThumb({ cover, className, iconSize = 20 }: { cover?: string; class
 }
 
 export default function DjMode() {
+  useScreenTour('dj');
   const {
     currentTrack,
     queue,
@@ -288,7 +290,7 @@ export default function DjMode() {
 
   return (
     <div className="dj-page">
-      <div className="dj-decks">
+      <div className="dj-decks" data-tour="dj-decks">
         {/* Deck A — pista actual, real */}
         <div className="dj-deck" style={{ boxShadow: `0 8px 40px ${deckAColor}4d` }}>
           <span className="dj-deck-label">Sonando ahora</span>
@@ -317,7 +319,7 @@ export default function DjMode() {
             <span className="dj-progress-time right">{formatTime(duration)}</span>
           </div>
 
-          <div className="dj-cues-row">
+          <div className="dj-cues-row" data-tour="dj-cues">
             {[0, 1, 2, 3].map((slot) => (
               <button
                 key={slot}
@@ -348,7 +350,7 @@ export default function DjMode() {
         </div>
 
         {/* Conector — estado de la transición real entre A y B */}
-        <div className="dj-transition-connector">
+        <div className="dj-transition-connector" data-tour="dj-transition">
           <span className="dj-transition-status">
             {isAutoMixing ? 'Generando mezcla…' : currentRule ? 'Transición lista' : 'Sin transición'}
           </span>
@@ -439,7 +441,7 @@ export default function DjMode() {
         </div>
       </div>
 
-      <div className="dj-fx-panel">
+      <div className="dj-fx-panel" data-tour="dj-fx">
         <h2>Efectos en vivo</h2>
         <p className="section-subtitle" style={{ marginBottom: 14 }}>
           Se aplican solo a lo que suena ahora, y vuelven a cero al salir de Modo DJ.

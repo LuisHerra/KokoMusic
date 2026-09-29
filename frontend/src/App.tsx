@@ -126,6 +126,7 @@ function GlobalSearch({ onFocusChange }: { onFocusChange?: (focused: boolean) =>
     <motion.form
       onSubmit={handleSubmit}
       className="search-bar"
+      data-tour="search"
       initial={false}
       animate={{
         maxWidth: isFocused ? (isMobile ? 320 : 560) : (isMobile ? 200 : 420),
@@ -372,7 +373,6 @@ function AppShell() {
                   setIsVoiceModalOpen(true);
                 }}
                 title="Control por voz (Alt + V)"
-                data-tour="voice"
                 style={{
                   position: 'relative',
                   display: 'flex',
@@ -395,7 +395,6 @@ function AppShell() {
                 <Link
                   to="/profile"
                   className="header-profile-link"
-                  data-tour="profile"
                 >
                   {profileData?.profile?.avatar_url ? (
                     <img

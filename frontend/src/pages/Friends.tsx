@@ -5,6 +5,7 @@ import UserSearch from '../components/Friends/UserSearch';
 import ChatPanel from '../components/Friends/ChatPanel';
 import BeMusicFeed from '../components/Friends/BeMusicFeed';
 import type { Friendship } from '../lib/api';
+import { useScreenTour } from '../components/GuidedTour';
 
 type Tab = 'bemusic' | 'friends' | 'requests' | 'search';
 
@@ -55,6 +56,7 @@ function AccountSetup({ onSet }: { onSet: (id: string) => void }) {
 
 export default function Friends() {
   const [tab, setTab] = useState<Tab>('bemusic');
+  useScreenTour('friends');
   const [chatFriend, setChatFriend] = useState<Friendship | null>(null);
   const [userId, setUserId] = useState(() => localStorage.getItem('koko_device_id') ?? '');
 
@@ -75,7 +77,7 @@ export default function Friends() {
         </div>
 
         {/* 4 Main Tabs at Top */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div data-tour="friends-tabs" style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
           {[
             { key: 'bemusic', label: 'BeMusic (Canción del Día)' },
             { key: 'friends', label: 'Mis amigos' },
