@@ -1918,45 +1918,49 @@ select:focus {
   padding: 40px 60px;
   transition: background 0.5s ease;
   z-index: 5;
+  /* Escala del tamaño de letra guardado por el usuario (se reduce en móvil). */
+  --il-font-scale: 1;
 }
 
-.immersive-lyrics-close {
+/* Cabecera: info de la canción (izquierda) + acciones (derecha) en una fila. */
+.immersive-lyrics-header {
   position: absolute;
-  top: 32px;
+  top: 28px;
+  left: 60px;
   right: 32px;
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  border-radius: 50%;
-  padding: 8px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: background 0.2s ease, color 0.2s ease;
+  justify-content: space-between;
+  gap: 16px;
   z-index: 6;
-}
-
-.immersive-lyrics-close:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
 }
 
 .immersive-lyrics-track-info {
-  position: absolute;
-  top: 32px;
-  left: 60px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  z-index: 6;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
+}
+
+.immersive-lyrics-track-text {
+  min-width: 0;
 }
 
 .immersive-lyrics-cover {
   width: 52px;
   height: 52px;
+  flex-shrink: 0;
+  object-fit: cover;
   border-radius: var(--radius-md);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.immersive-lyrics-title,
+.immersive-lyrics-artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .immersive-lyrics-title {
@@ -1969,6 +1973,47 @@ select:focus {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.7);
   margin-top: 2px;
+}
+
+.immersive-lyrics-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.immersive-lyrics-icon-btn {
+  height: 40px;
+  min-width: 40px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.75);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.immersive-lyrics-icon-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.immersive-lyrics-icon-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.immersive-lyrics-karaoke-btn.active {
+  background: var(--accent);
+  color: #000;
 }
 
 .immersive-lyrics-content {
@@ -2003,6 +2048,7 @@ select:focus {
   max-width: 90%;
   letter-spacing: -0.5px;
   text-shadow: none;
+  overflow-wrap: anywhere;
 }
 
 .immersive-lyric-line:hover {
@@ -2092,8 +2138,8 @@ select:focus {
 
 .immersive-lyrics-settings-popover {
   position: absolute;
-  top: 80px;
-  right: 80px;
+  top: 88px;
+  right: 32px;
   z-index: 20;
   background: rgba(20, 20, 20, 0.85);
   backdrop-filter: blur(16px);
@@ -2107,10 +2153,6 @@ select:focus {
   flex-direction: column;
   gap: 20px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.5);
-}
-
-.immersive-lyrics-btn-settings {
-  right: 80px;
 }
 
 /* Fila de opciones del panel de ajustes (etiqueta + control) */
@@ -2249,6 +2291,16 @@ select:focus {
   transform: translateX(0);
 }
 
+/* Con la barra de secciones visible (escritorio), la etiqueta de la sección
+   activa siempre se muestra y pisaba las líneas: se reserva su hueco a ambos
+   lados (simétrico para que el texto centrado siga centrado). */
+@media (min-width: 769px) {
+  .immersive-lyrics-view.has-sections .immersive-lyrics-lines-container {
+    padding-left: 170px;
+    padding-right: 170px;
+  }
+}
+
 /* En móvil ocultamos la barra lateral para evitar ocupar espacio vital */
 @media (max-width: 768px) {
   .il-sections-sidebar {
@@ -2263,13 +2315,16 @@ select:focus {
     right: 16px;
     left: 16px;
     width: auto;
+    max-height: 70vh;
+    overflow-y: auto;
     padding: 20px;
   }
-  .immersive-lyrics-btn-settings {
-    right: 64px;
-  }
+  /* 20px laterales: la línea activa se amplía un 5-10% (animaciones scale/
+     kinetic) y el contenedor con scroll recorta lo que sobresale — con menos
+     margen se comían la primera y última letra. */
   .immersive-lyrics-lines-container {
-    padding: 120px 24px;
+    padding: 120px 20px;
+    gap: 20px;
   }
 }
 
@@ -2337,25 +2392,44 @@ select:focus {
   }
   
   .immersive-lyrics-view {
-    padding: 32px 24px;
+    padding: 32px 16px;
+    /* 36px (tamaño por defecto) → ~22px en móvil; respeta el A+/A- del usuario. */
+    --il-font-scale: 0.62;
   }
-  
-  .immersive-lyrics-track-info {
-    left: 24px;
+
+  .immersive-lyrics-header {
+    top: 20px;
+    left: 16px;
+    right: 12px;
+    gap: 10px;
   }
-  
+
+  .immersive-lyrics-cover {
+    width: 44px;
+    height: 44px;
+  }
+
+  .immersive-lyrics-title {
+    font-size: 15px;
+  }
+
+  .immersive-lyrics-artist {
+    font-size: 13px;
+  }
+
+  .immersive-lyrics-icon-btn {
+    height: 36px;
+    min-width: 36px;
+    padding: 0 8px;
+  }
+
   .immersive-lyrics-content {
-    margin-top: 60px;
+    margin-top: 56px;
   }
-  
+
   .immersive-lyric-line {
-    font-size: 22px;
     max-width: 100%;
-  }
-  
-  .immersive-lyrics-close {
-    top: 24px;
-    right: 24px;
+    padding-left: 0;
   }
 }
 
@@ -5594,12 +5668,16 @@ input:checked + .autoplay-slider:before {
     z-index: 1;
     display: flex;
     align-items: center;
-    justify-content: space-around;
-    padding: 10px 16px max(20px, env(safe-area-inset-bottom, 20px));
+    padding: 10px 8px max(20px, env(safe-area-inset-bottom, 20px));
     border-top: 1px solid rgba(255,255,255,0.07);
     flex-shrink: 0;
   }
+  /* Reparto a partes iguales: con padding fijo por botón, a partir de 5-6
+     botones la fila desbordaba el ancho del móvil y los últimos (Sinfonía,
+     Dispositivos) quedaban recortados fuera de pantalla. */
   .mfp-extra-btn {
+    flex: 1 1 auto;
+    min-width: 0;
     background: none;
     border: none;
     cursor: pointer;
@@ -5608,12 +5686,18 @@ input:checked + .autoplay-slider:before {
     align-items: center;
     gap: 5px;
     color: rgba(255,255,255,0.5);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    padding: 8px 20px;
+    padding: 8px 2px;
     border-radius: 10px;
     transition: color 0.2s, background 0.2s;
     font-family: inherit;
+  }
+  .mfp-extra-btn span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .mfp-extra-btn:active { background: rgba(255,255,255,0.08); }
 
