@@ -53,7 +53,7 @@ export function useDeviceSync() {
   );
   const [banner, setBanner] = useState<string | null>(null);
 
-  const { currentTrack, isPlaying, setIsPlaying } = usePlayerStore();
+  const { currentTrack, isPlaying } = usePlayerStore();
 
   const userId = localStorage.getItem('koko_device_id') || '';
 
