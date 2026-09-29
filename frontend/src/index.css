@@ -1279,6 +1279,142 @@ html, body, #root {
   animation: fade-in 0.2s ease;
 }
 
+/* ── Device List (sincronización entre dispositivos) ─────────────────────────── */
+.device-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.device-list-empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.device-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.device-list-row-clickable {
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.device-list-row-clickable:hover {
+  background: var(--bg-highlight);
+}
+
+.device-list-row img,
+.device-list-cover-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-highlight);
+  flex-shrink: 0;
+}
+
+.device-list-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.device-list-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.device-list-artist {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.device-list-status {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.device-list-confirm {
+  padding: 10px 12px;
+}
+.device-list-confirm p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.device-list-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+.device-list-btn-no, .device-list-btn-yes {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.device-list-btn-no {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-secondary);
+}
+.device-list-btn-yes {
+  background: var(--accent);
+  color: #000;
+}
+
+.device-list-connected {
+  padding: 10px 12px;
+}
+.device-list-connected-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.device-list-connected .device-list-row {
+  padding: 6px 0;
+}
+.device-list-disconnect {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: none;
+  color: #ef4444;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.device-list-disconnect:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
 /* ── Repeat Dot ─────────────────────────────────────────────────────────────── */
 .repeat-dot {
   position: absolute;

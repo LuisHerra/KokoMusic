@@ -15,6 +15,7 @@ import { useVideoSync } from '../../hooks/useVideoSync';
 import { useDeviceSync } from '../../hooks/useDeviceSync';
 import SongCreditsModal from './SongCreditsModal';
 import JamModal from './JamModal';
+import DeviceList from './DeviceList';
 import {
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
   IconLyrics, IconRadio, IconVideo, IconChevronDown,
@@ -49,8 +50,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
   const { isLiked, toggleLike } = useLikedSongs();
   const [showJamModal, setShowJamModal] = useState(false);
-  const { otherDevices, activateHere, takenOverBanner } = useDeviceSync();
-  const [activatingDeviceId, setActivatingDeviceId] = useState<string | null>(null);
+  const { otherDevices, connectedDeviceId, connectedDevice, connectTo, disconnect, banner } = useDeviceSync();
 
   // Navigation layout state — en móvil no hay otra forma de ver la cola (el
   // botón de cola de escritorio vive en .player-right, oculto en pantallas
@@ -509,35 +509,14 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         ) : playerView === 'devices' ? (
           /* ── Devices view — único acceso a la sincronización entre dispositivos en móvil ── */
           <div className="mfp-queue-wrap">
-            <span className="mfp-queue-section-label">Reproduciendo en otros dispositivos</span>
-            {otherDevices.length === 0 ? (
-              <div className="mfp-lyrics-empty"><span>No hay reproducción activa en otros dispositivos.</span></div>
-            ) : (
-              <div className="mfp-queue-list">
-                {otherDevices.map((d) => (
-                  <div key={d.device_id} className="mfp-queue-item">
-                    <div className="mfp-queue-item-main" style={{ cursor: 'default' }}>
-                      <img src={resolveImageUrl(d.cover || '') || ''} alt="" />
-                      <div className="mfp-queue-item-info">
-                        <span className="mfp-queue-item-title">{d.device_name || 'Dispositivo'} {d.is_playing ? '▶' : '⏸'}</span>
-                        <span className="mfp-queue-item-artist">{d.title} — {d.artist}</span>
-                      </div>
-                    </div>
-                    <button
-                      className="mfp-queue-item-remove"
-                      style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 700, width: 'auto', padding: '0 8px' }}
-                      disabled={activatingDeviceId === d.device_id}
-                      onClick={async () => {
-                        setActivatingDeviceId(d.device_id);
-                        try { await activateHere(d); } finally { setActivatingDeviceId(null); }
-                      }}
-                    >
-                      {activatingDeviceId === d.device_id ? '...' : 'Aquí'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <span className="mfp-queue-section-label">Dispositivos</span>
+            <DeviceList
+              otherDevices={otherDevices}
+              connectedDeviceId={connectedDeviceId}
+              connectedDevice={connectedDevice}
+              onConnect={connectTo}
+              onDisconnect={disconnect}
+            />
           </div>
         ) : playerView === 'queue' ? (
           /* ── Queue view — único acceso a la cola en móvil ── */
@@ -819,14 +798,14 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
         <button
           className="mfp-extra-btn"
           onClick={() => setPlayerView(prev => prev === 'devices' ? 'cover' : 'devices')}
-          style={{ color: playerView === 'devices' || otherDevices.length > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+          style={{ color: playerView === 'devices' || connectedDeviceId || otherDevices.length > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
         >
           <IconDevices />
           <span>Dispositivos</span>
         </button>
       </div>
 
-      {takenOverBanner && <div className="mfp-device-toast">{takenOverBanner}</div>}
+      {banner && <div className="mfp-device-toast">{banner}</div>}
 
       {showCreditsModal && currentTrack && (
         <SongCreditsModal track={currentTrack} onClose={() => setShowCreditsModal(false)} />

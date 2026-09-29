@@ -1061,10 +1061,5 @@ export const getPlaybackState = (deviceId: string) =>
     { cache: 'no-store' }
   );
 
-export const activatePlaybackDevice = (deviceId: string) =>
-  apiFetch<{ success: boolean }>('/playback/activate', {
-    method: 'POST',
-    body: JSON.stringify({ deviceId }),
-  });
 
 
