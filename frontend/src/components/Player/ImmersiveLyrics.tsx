@@ -12,7 +12,7 @@ const ACCENT_FALLBACK = 'var(--accent)';
 const ACCENT_GRADIENT_FALLBACK = 'linear-gradient(135deg, var(--accent), var(--accent-bright))';
 
 export default function ImmersiveLyrics() {
-  const { currentTrack, isLyricsOpen, toggleLyrics, progress, dominantColor, isVideoOpen, isKaraokeMode, toggleKaraoke } = usePlayerStore();
+  const { currentTrack, isLyricsOpen, toggleLyrics, progress, isVideoOpen, isKaraokeMode, toggleKaraoke } = usePlayerStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [bgIframeEl, setBgIframeEl] = useState<HTMLIFrameElement | null>(null);
 
@@ -255,7 +255,7 @@ export default function ImmersiveLyrics() {
   const gradientStyle = {
     background: isVideoOpen && videoData?.youtubeId
       ? 'rgba(10, 10, 10, 0.4)'
-      : `linear-gradient(135deg, ${dominantColor}cc 0%, var(--bg-default) 100%)`
+      : 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, transparent) 0%, var(--bg-default) 100%)'
   };
 
   return (
@@ -317,9 +317,20 @@ export default function ImmersiveLyrics() {
       </div>
 
       {/* Panel de Configuración */}
+      {/* Tocar fuera cierra el panel (en móvil era imposible salir: el panel
+          tapaba los botones de la cabecera). */}
+      {showSettings && <div className="immersive-lyrics-settings-backdrop" onClick={() => setShowSettings(false)} />}
+
       {showSettings && (
         <div className="immersive-lyrics-settings-popover">
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Apariencia de Letras</h3>
+          <div className="immersive-lyrics-setting-row">
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Apariencia de Letras</h3>
+            <button className="immersive-lyrics-icon-btn" onClick={() => setShowSettings(false)} title="Cerrar ajustes">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+            </button>
+          </div>
 
           {/* Tamaño */}
           <div className="immersive-lyrics-setting-row">

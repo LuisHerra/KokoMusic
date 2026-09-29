@@ -182,6 +182,7 @@ export default function ProfilePage() {
     return saved ? parseInt(saved) : 3;
   });
   const [useYtPlayer, setUseYtPlayer] = useState(() => localStorage.getItem('koko_use_youtube_player') === 'true');
+  const [defaultBgVideo, setDefaultBgVideo] = useState(() => localStorage.getItem('koko_default_bg_video') === 'true');
 
   // Recommendation Algorithm Settings
   const [explorationRatio, setExplorationRatio] = useState(() => localStorage.getItem('koko_algo_exploration_ratio') ?? '0.4');
@@ -461,6 +462,12 @@ export default function ProfilePage() {
   const handleToggleYtPlayer = (val: boolean) => {
     setUseYtPlayer(val);
     localStorage.setItem('koko_use_youtube_player', String(val));
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleToggleDefaultBgVideo = (val: boolean) => {
+    setDefaultBgVideo(val);
+    localStorage.setItem('koko_default_bg_video', String(val));
     window.dispatchEvent(new Event('storage'));
   };
 
@@ -1375,6 +1382,12 @@ export default function ProfilePage() {
               description="Reproduce música a través del reproductor iframe oficial si tu proveedor bloquea streams directos."
               checked={useYtPlayer}
               onChange={handleToggleYtPlayer}
+            />
+            <ToggleRow
+              label="Vídeo de fondo por defecto"
+              description="En el reproductor de móvil, muestra el vídeo musical de fondo (si existe) en lugar de la portada."
+              checked={defaultBgVideo}
+              onChange={handleToggleDefaultBgVideo}
             />
             <div style={{
               display: 'flex',

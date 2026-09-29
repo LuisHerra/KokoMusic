@@ -1932,7 +1932,9 @@ select:focus {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  z-index: 6;
+  /* Por encima del fondo que cierra el panel de ajustes, para que sus botones
+     (ajustes, cerrar) sigan funcionando con el panel abierto. */
+  z-index: 21;
 }
 
 .immersive-lyrics-track-info {
@@ -2136,6 +2138,12 @@ select:focus {
   gap: 16px;
 }
 
+.immersive-lyrics-settings-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 19;
+}
+
 .immersive-lyrics-settings-popover {
   position: absolute;
   top: 88px;
@@ -2309,13 +2317,15 @@ select:focus {
 }
 
 @media (max-width: 768px) {
+  /* Debajo de la cabecera (sus botones siguen accesibles) y sin llegar al
+     mini reproductor + barra inferior, que van fijos encima. */
   .immersive-lyrics-settings-popover {
-    top: auto;
-    bottom: 32px;
-    right: 16px;
-    left: 16px;
+    top: 68px;
+    bottom: auto;
+    right: 12px;
+    left: 12px;
     width: auto;
-    max-height: 70vh;
+    max-height: calc(100dvh - 68px - 190px);
     overflow-y: auto;
     padding: 20px;
   }

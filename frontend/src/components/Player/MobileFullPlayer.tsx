@@ -40,7 +40,6 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     togglePlay, nextTrack, prevTrack,
     isShuffle, toggleShuffle,
     repeatMode, cycleRepeat,
-    dominantColor,
     isLyricsOpen, toggleLyrics,
     isEmbedMode, embedYoutubeId,
     manualVideoId, setManualVideo,
@@ -76,7 +75,14 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
   // que el antiguo panel de escritorio, pero integrado en este player único.
   // Si el usuario eligió un vídeo a mano (pestaña "Vídeo"), ese manda siempre
   // y se muestra de fondo sin necesidad de tocar la portada.
-  const [showBackgroundVideo, setShowBackgroundVideo] = useState(false);
+  // Preferencia de Perfil ("Vídeo de fondo por defecto"): se lee en cada uso
+  // para que cambiarla surta efecto sin recargar la app.
+  const prefersBgVideo = () => localStorage.getItem('koko_default_bg_video') === 'true';
+  const [showBackgroundVideo, setShowBackgroundVideo] = useState(prefersBgVideo);
+  useEffect(() => {
+    if (isOpen && prefersBgVideo()) setShowBackgroundVideo(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
   const { data: videoData } = useQuery<VideoData>({
     queryKey: ['video', currentTrack?.id],
     queryFn: () => getTrackVideo(currentTrack!.id),
@@ -103,10 +109,12 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
   const progressPct = isDragging ? dragProgress : (duration > 0 ? (progress / duration) * 100 : 0);
 
-  // Apagar el vídeo de fondo al cambiar de canción para no arrastrar el vídeo
-  // de la anterior mientras carga el de la nueva.
+  // Al cambiar de canción: volver a la portada (para no arrastrar el vídeo de
+  // la anterior), salvo que el usuario prefiera vídeo de fondo por defecto —
+  // entonces se queda activado y aparece en cuanto se resuelva el de la nueva
+  // (backgroundYoutubeId pasa a ser el de la canción nueva).
   useEffect(() => {
-    setShowBackgroundVideo(false);
+    setShowBackgroundVideo(prefersBgVideo());
     setManualVideo(null);
     setVideoSearchQuery('');
     setVideoSearchResults([]);
@@ -335,10 +343,9 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     touchDeltaY.current = 0;
   };
 
-  // Accent color from dominant color
-  const accentBg = dominantColor
-    ? `linear-gradient(180deg, ${dominantColor}cc 0%, #0d0d0d 60%)`
-    : 'linear-gradient(180deg, #1a1a2e 0%, #0d0d0d 60%)';
+  // Fondo teñido con el acento elegido por el usuario (antes usaba
+  // dominantColor, que nadie calculaba nunca y se quedaba en el verde por defecto).
+  const accentBg = 'linear-gradient(180deg, color-mix(in srgb, var(--accent) 80%, transparent) 0%, #0d0d0d 60%)';
 
   // ImmersiveLyrics vive en el layout principal (App.tsx), por debajo de este
   // overlay fijo — si solo lo activáramos, quedaría oculto detrás hasta cerrar

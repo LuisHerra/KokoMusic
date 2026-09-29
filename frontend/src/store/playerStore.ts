@@ -71,7 +71,6 @@ interface PlayerState {
   duration: number;        // duración total en segundos
   isLoading: boolean;
   error: string | null;
-  dominantColor: string;   // color extraído de la carátula
   isLyricsOpen: boolean;
   isQueueOpen: boolean;
   isVideoOpen: boolean;
@@ -146,7 +145,6 @@ interface PlayerState {
   setDuration: (s: number) => void;
   setLoading: (v: boolean) => void;
   setError: (msg: string | null) => void;
-  setDominantColor: (color: string) => void;
   toggleLyrics: () => void;
   setIsLyricsOpen: (open: boolean) => void;
   toggleQueue: () => void;
@@ -266,7 +264,6 @@ const savedDuration = (() => {
   return d ? parseFloat(d) : 0;
 })();
 
-const savedDominantColor = localStorage.getItem('koko_dominant_color') || '#1DB954';
 
 const savedSessionPlayedTrackIds: string[] = (() => {
   try {
@@ -310,7 +307,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   duration: savedDuration,
   isLoading: false,
   error: null,
-  dominantColor: savedDominantColor,
   sessionPlayedTrackIds: savedSessionPlayedTrackIds,
   isLyricsOpen: false,
   isQueueOpen: false,
@@ -546,7 +542,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setDuration: (s) => set({ duration: s }),
   setLoading: (v) => set({ isLoading: v }),
   setError: (msg) => set({ error: msg, isLoading: false }),
-  setDominantColor: (color) => set({ dominantColor: color }),
   toggleLyrics: () => set((s) => ({ isLyricsOpen: !s.isLyricsOpen })),
   setIsLyricsOpen: (open) => set({ isLyricsOpen: open }),
   toggleQueue: () => set((s) => ({ isQueueOpen: !s.isQueueOpen, isVideoOpen: s.isQueueOpen ? s.isVideoOpen : false })),
@@ -800,7 +795,6 @@ if (typeof window !== 'undefined') {
       localStorage.setItem('koko_queue_index', String(state.queueIndex));
       localStorage.setItem('koko_volume', String(state.volume));
       localStorage.setItem('koko_duration', String(state.duration));
-      localStorage.setItem('koko_dominant_color', state.dominantColor);
       
       const now = Date.now();
       // Guardar el progreso cada 1 segundo máximo para optimizar I/O

@@ -11,7 +11,7 @@ import ArtistLinks from '../Common/ArtistLinks';
 
 export default function VideoPanel() {
   const {
-    currentTrack, isVideoOpen, toggleVideo, dominantColor, progress,
+    currentTrack, isVideoOpen, toggleVideo, progress,
     toggleLyrics, isEmbedMode, embedYoutubeId, setEmbedMode
   } = usePlayerStore();
   const { isLiked, toggleLike } = useLikedSongs();
@@ -322,7 +322,7 @@ export default function VideoPanel() {
             className="video-lyrics-card"
             onClick={() => toggleLyrics()}
             style={{
-              background: `linear-gradient(135deg, ${dominantColor ? `${dominantColor}aa` : 'rgba(255, 255, 255, 0.08)'} 0%, rgba(15, 15, 15, 0.9) 100%)`,
+              background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 67%, transparent) 0%, rgba(15, 15, 15, 0.9) 100%)',
             }}
           >
             <div className="video-lyrics-card-header">
