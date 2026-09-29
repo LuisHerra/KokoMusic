@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { loginAccount, createAccount } from '../../lib/api';
+import { markTourPending } from '../GuidedTour';
 import { startSpotifyAuth } from '../../lib/spotifyAuth';
 import { useThemeStore, ACCENT_COLORS, hexToRgba, getLogoHueFilter } from '../../store/themeStore';
 import { createClient } from '@supabase/supabase-js';
@@ -98,6 +99,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           localStorage.setItem('koko_device_id', res.userId);
           localStorage.setItem('koko_display_name', res.profile.display_name || displayName.trim());
           localStorage.setItem('koko_auth_completed', 'true');
+          markTourPending();
           window.dispatchEvent(new Event('storage'));
           if (onSuccess) onSuccess();
           onClose();

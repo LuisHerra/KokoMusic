@@ -228,7 +228,7 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
   };
 
   return (
-    <div className="onboarding-overlay" style={{
+    <div className="onboarding-overlay" data-blocks-tour style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0, 0, 0, 0.85)',

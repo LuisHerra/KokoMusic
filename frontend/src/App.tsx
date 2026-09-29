@@ -39,6 +39,7 @@ import { useVoiceControl } from './hooks/useVoiceControl';
 import VoiceControlModal, { IconMic } from './components/VoiceControlModal';
 import ThemeModal from './components/ThemeModal';
 import AuthModal from './components/Auth/AuthModal';
+import GuidedTour from './components/GuidedTour';
 import { useThemeStore } from './store/themeStore';
 
 
@@ -371,6 +372,7 @@ function AppShell() {
                   setIsVoiceModalOpen(true);
                 }}
                 title="Control por voz (Alt + V)"
+                data-tour="voice"
                 style={{
                   position: 'relative',
                   display: 'flex',
@@ -393,6 +395,7 @@ function AppShell() {
                 <Link
                   to="/profile"
                   className="header-profile-link"
+                  data-tour="profile"
                 >
                   {profileData?.profile?.avatar_url ? (
                     <img
@@ -428,6 +431,7 @@ function AppShell() {
                 onClick={() => useThemeStore.getState().toggleThemeModal()}
                 className="ctrl-btn"
                 title="Personalizar diseño y colores"
+                data-tour="theme"
                 style={{
                   background: 'rgba(255, 255, 255, 0.06)',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -561,6 +565,7 @@ function AppShell() {
       />
 
       <ThemeModal />
+      <GuidedTour />
     </div>
   );
 }

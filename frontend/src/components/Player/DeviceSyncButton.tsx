@@ -29,6 +29,7 @@ export default function DeviceSyncButton() {
         className="ctrl-btn"
         onClick={() => setIsOpen((v) => !v)}
         title="Dispositivos"
+        data-tour="devices"
         style={remoteDeviceId || connectableCount > 0 ? { color: 'var(--accent)' } : undefined}
       >
         <IconDevices size={16} />

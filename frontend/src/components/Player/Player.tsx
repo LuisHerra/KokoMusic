@@ -190,7 +190,7 @@ export default function Player() {
   };
 
   return (
-    <div className="player" style={playerStyle} onClick={handlePlayerBarClick}>
+    <div className="player" data-tour="player" style={playerStyle} onClick={handlePlayerBarClick}>
       {remoteDeviceId && !activeJamCode && (
         <div className="remote-output-strip player-remote-strip" onClick={(e) => e.stopPropagation()}>
           <IconDevices size={13} /> Sonando en {remoteDeviceName || 'otro dispositivo'} — controlando desde aquí
@@ -408,6 +408,7 @@ export default function Player() {
           className="ctrl-btn"
           onClick={() => setShowJamModal(true)}
           title="Sinfonía — Escucha con amigos"
+          data-tour="sinfonia"
           style={{ color: activeJamCode ? 'var(--accent)' : undefined }}
         >
           <IconGroupListen />
@@ -427,6 +428,7 @@ export default function Player() {
           className="ctrl-btn"
           onClick={toggleLyrics}
           title="Letras"
+          data-tour="lyrics"
           style={isLyricsOpen ? { color: 'var(--accent)' } : undefined}
           disabled={!currentTrack}
         >
@@ -451,6 +453,7 @@ export default function Player() {
           className="ctrl-btn"
           onClick={() => setShowEq((v) => !v)}
           title="Ecualizador"
+          data-tour="eq"
           style={showEq ? { color: 'var(--accent)' } : undefined}
           disabled={!currentTrack}
         >

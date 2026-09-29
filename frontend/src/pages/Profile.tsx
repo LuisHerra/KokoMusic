@@ -5,6 +5,7 @@ import { getMyProfile, updateProfile, createAccount, loginAccount, deleteAccount
 import { startSpotifyAuth, isSpotifyConnected, disconnectSpotify } from '../lib/spotifyAuth';
 import { usePlayerStore } from '../store/playerStore';
 import { getRecommendationMode, setRecommendationMode } from '../lib/recommendationPicker';
+import { markTourPending, startGuidedTour } from '../components/GuidedTour';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -329,6 +330,7 @@ export default function ProfilePage() {
       if (res.success && res.userId) {
         // Assign clean isolated session
         localStorage.setItem('koko_device_id', res.userId);
+        markTourPending();
         // Clear local history to avoid biasing the new account
         localStorage.removeItem('koko_play_history');
         localStorage.removeItem('koko_recent_searches');
@@ -1389,6 +1391,31 @@ export default function ProfilePage() {
               checked={defaultBgVideo}
               onChange={handleToggleDefaultBgVideo}
             />
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 0',
+              borderTop: '1px solid rgba(255,255,255,0.05)',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ paddingRight: 8, flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Guía de KokoMusic</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                  Repasa las funciones que KokoMusic tiene y Spotify no: Sinfonía, Dispositivos, Modo DJ, letras…
+                </div>
+              </div>
+              <button
+                onClick={() => { navigate('/'); window.setTimeout(startGuidedTour, 400); }}
+                style={{
+                  background: 'var(--accent)', color: '#000', border: 'none', borderRadius: 'var(--radius-full)',
+                  padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                Ver guía
+              </button>
+            </div>
             <div style={{
               display: 'flex',
               alignItems: 'center',
