@@ -172,6 +172,18 @@ export function IconGroupListen({ size = 18 }: IconProps) {
   );
 }
 
+export function IconDevices({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="14" height="10" rx="1.5" />
+      <line x1="6" y1="18" x2="12" y2="18" />
+      <line x1="9" y1="14" x2="9" y2="18" />
+      <path d="M19 9v9a1 1 0 0 1-1 1h-3" />
+      <path d="M19 6v.01" />
+    </svg>
+  );
+}
+
 export function IconUser({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">

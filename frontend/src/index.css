@@ -5443,6 +5443,24 @@ input:checked + .autoplay-slider:before {
     font-family: inherit;
   }
   .mfp-extra-btn:active { background: rgba(255,255,255,0.08); }
+
+  .mfp-device-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 110px;
+    transform: translateX(-50%);
+    z-index: 2;
+    white-space: nowrap;
+    background: rgba(24,24,24,0.95);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--radius-md);
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+    animation: fade-in 0.2s ease;
+  }
 }
 
 /* Custom Spotify-like UI Improvements */

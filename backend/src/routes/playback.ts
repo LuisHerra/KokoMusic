@@ -10,6 +10,14 @@ import { supabase } from '../services/supabaseService';
 
 const router = Router();
 
+// Nunca cachear estas respuestas — un dato de "reproduciendo ahora" cacheado
+// aunque sea unos segundos hace parecer que el sync está roto (se ve la
+// canción de hace un rato en vez de la actual).
+router.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 /** Ventana de "dispositivo activo" — más allá de esto, se considera desconectado. */
 const STALE_AFTER_MS = 30_000;
 

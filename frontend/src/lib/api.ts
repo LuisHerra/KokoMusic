@@ -1057,7 +1057,8 @@ export const pushPlaybackState = (data: {
 
 export const getPlaybackState = (deviceId: string) =>
   apiFetch<{ mine: PlaybackDeviceState | null; others: PlaybackDeviceState[] }>(
-    `/playback/state?deviceId=${encodeURIComponent(deviceId)}`
+    `/playback/state?deviceId=${encodeURIComponent(deviceId)}`,
+    { cache: 'no-store' }
   );
 
 export const activatePlaybackDevice = (deviceId: string) =>

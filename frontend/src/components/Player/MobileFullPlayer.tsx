@@ -12,12 +12,13 @@ import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
+import { useDeviceSync } from '../../hooks/useDeviceSync';
 import SongCreditsModal from './SongCreditsModal';
 import JamModal from './JamModal';
 import {
   IconPlay, IconPause, IconPrev, IconNext, IconShuffle, IconRepeat, IconRepeatOne,
   IconLyrics, IconRadio, IconVideo, IconChevronDown,
-  IconCheck, IconLoadingSpinner, IconCloudDownload, IconUser, IconQueue, IconGroupListen,
+  IconCheck, IconLoadingSpinner, IconCloudDownload, IconUser, IconQueue, IconGroupListen, IconDevices,
 } from './PlayerIcons';
 
 function formatTime(secs: number): string {
@@ -48,11 +49,13 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
 
   const { isLiked, toggleLike } = useLikedSongs();
   const [showJamModal, setShowJamModal] = useState(false);
+  const { otherDevices, activateHere, takenOverBanner } = useDeviceSync();
+  const [activatingDeviceId, setActivatingDeviceId] = useState<string | null>(null);
 
   // Navigation layout state — en móvil no hay otra forma de ver la cola (el
   // botón de cola de escritorio vive en .player-right, oculto en pantallas
   // pequeñas), así que aquí también hace de sustituto de QueuePanel.
-  const [playerView, setPlayerView] = useState<'cover' | 'video' | 'artist' | 'queue'>('cover');
+  const [playerView, setPlayerView] = useState<'cover' | 'video' | 'artist' | 'queue' | 'devices'>('cover');
 
   // Buscador de vídeo de YouTube para la canción (pestaña "Vídeo"): el usuario
   // elige manualmente qué vídeo de YouTube asociar, no subimos nada a un CDN.
@@ -503,6 +506,39 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
               Ver perfil completo
             </Link>
           </div>
+        ) : playerView === 'devices' ? (
+          /* ── Devices view — único acceso a la sincronización entre dispositivos en móvil ── */
+          <div className="mfp-queue-wrap">
+            <span className="mfp-queue-section-label">Reproduciendo en otros dispositivos</span>
+            {otherDevices.length === 0 ? (
+              <div className="mfp-lyrics-empty"><span>No hay reproducción activa en otros dispositivos.</span></div>
+            ) : (
+              <div className="mfp-queue-list">
+                {otherDevices.map((d) => (
+                  <div key={d.device_id} className="mfp-queue-item">
+                    <div className="mfp-queue-item-main" style={{ cursor: 'default' }}>
+                      <img src={resolveImageUrl(d.cover || '') || ''} alt="" />
+                      <div className="mfp-queue-item-info">
+                        <span className="mfp-queue-item-title">{d.device_name || 'Dispositivo'} {d.is_playing ? '▶' : '⏸'}</span>
+                        <span className="mfp-queue-item-artist">{d.title} — {d.artist}</span>
+                      </div>
+                    </div>
+                    <button
+                      className="mfp-queue-item-remove"
+                      style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 700, width: 'auto', padding: '0 8px' }}
+                      disabled={activatingDeviceId === d.device_id}
+                      onClick={async () => {
+                        setActivatingDeviceId(d.device_id);
+                        try { await activateHere(d); } finally { setActivatingDeviceId(null); }
+                      }}
+                    >
+                      {activatingDeviceId === d.device_id ? '...' : 'Aquí'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         ) : playerView === 'queue' ? (
           /* ── Queue view — único acceso a la cola en móvil ── */
           <div className="mfp-queue-wrap">
@@ -779,7 +815,18 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           <IconGroupListen />
           <span>Sinfonía</span>
         </button>
+
+        <button
+          className="mfp-extra-btn"
+          onClick={() => setPlayerView(prev => prev === 'devices' ? 'cover' : 'devices')}
+          style={{ color: playerView === 'devices' || otherDevices.length > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.5)' }}
+        >
+          <IconDevices />
+          <span>Dispositivos</span>
+        </button>
       </div>
+
+      {takenOverBanner && <div className="mfp-device-toast">{takenOverBanner}</div>}
 
       {showCreditsModal && currentTrack && (
         <SongCreditsModal track={currentTrack} onClose={() => setShowCreditsModal(false)} />

@@ -47,39 +47,46 @@ export function useDeviceSync() {
   const [otherDevices, setOtherDevices] = useState<PlaybackDeviceState[]>([]);
   const [takenOverBanner, setTakenOverBanner] = useState<string | null>(null);
 
-  const { currentTrack, isPlaying, progress, duration, setIsPlaying } = usePlayerStore();
+  const { currentTrack, isPlaying, setIsPlaying } = usePlayerStore();
 
   const userId = localStorage.getItem('koko_device_id') || '';
 
   // ── Escritura: heartbeat cada pocos segundos + al cambiar de canción/estado ──
+  // Lee SIEMPRE el estado más reciente vía getState() en vez de cerrar sobre
+  // props reactivas (progress cambia cada segundo) — si dependiera de esas
+  // props, esta función cambiaría de identidad constantemente y el
+  // setInterval de abajo (que solo se crea una vez) quedaría con una
+  // referencia vieja para siempre, reenviando canción/posición congeladas en
+  // el momento del montaje. Así, pushState en sí es estable (solo depende de
+  // userId) y cada tick del interval sigue llamando a la misma función, que
+  // internamente siempre lee el estado actual.
   const pushState = useCallback(() => {
     if (!userId) return;
+    const s = usePlayerStore.getState();
     pushPlaybackState({
       deviceId: deviceIdRef.current,
       deviceName: deviceNameRef.current,
-      trackId: currentTrack?.id ?? null,
-      title: currentTrack?.title ?? null,
-      artist: currentTrack?.artist ?? null,
-      cover: currentTrack?.cover ?? null,
-      positionS: progress,
-      durationS: duration,
-      isPlaying,
+      trackId: s.currentTrack?.id ?? null,
+      title: s.currentTrack?.title ?? null,
+      artist: s.currentTrack?.artist ?? null,
+      cover: s.currentTrack?.cover ?? null,
+      positionS: s.progress,
+      durationS: s.duration,
+      isPlaying: s.isPlaying,
     }).catch(() => {/* silencioso — un fallo de heartbeat no debe interrumpir la reproducción */});
-  }, [userId, currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.cover, progress, duration, isPlaying]);
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
     pushState();
     const id = window.setInterval(pushState, WRITE_INTERVAL_MS);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, pushState]);
 
   // Empuja de inmediato en los eventos importantes (no solo en el heartbeat).
   useEffect(() => {
     if (userId) pushState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrack?.id, isPlaying]);
+  }, [currentTrack?.id, isPlaying, userId, pushState]);
 
   // ── Lectura: sondea el estado de los demás dispositivos ─────────────────────
   useEffect(() => {
