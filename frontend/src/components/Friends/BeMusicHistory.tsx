@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { createPlaylist } from '../../lib/api';
 
+import { IconX, IconFlameSmall } from '../Common/UiIcons';
 export interface HistoryDrop {
   id: string;
   track_id: string;
@@ -17,6 +18,12 @@ export interface HistoryDrop {
   start_s?: number;
   drop_date: string; // YYYY-MM-DD
 }
+
+const IconChevron = ({ dir }: { dir: 'left' | 'right' }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d={dir === 'left' ? 'M15 18l-6-6 6-6' : 'M9 18l6-6-6-6'} />
+  </svg>
+);
 
 const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -94,16 +101,16 @@ export default function BeMusicHistory({
           <div>
             <h3>Tu historial</h3>
             <p className="bmh-stats">
-              {drops.length} {drops.length === 1 ? 'canción' : 'canciones'} · 🔥 {streak} {streak === 1 ? 'día' : 'días'} de racha
+              {drops.length} {drops.length === 1 ? 'canción' : 'canciones'} · <IconFlameSmall size={12} className="bmh-flame" /> {streak} {streak === 1 ? 'día' : 'días'} de racha
             </p>
           </div>
-          <button className="bm-icon-btn" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="bm-icon-btn" onClick={onClose} aria-label="Cerrar"><IconX size={18} /></button>
         </div>
 
         <div className="bmh-nav">
-          <button className="bm-icon-btn" onClick={() => move(-1)} disabled={!canPrev} aria-label="Mes anterior">‹</button>
+          <button className="bm-icon-btn" onClick={() => move(-1)} disabled={!canPrev} aria-label="Mes anterior"><IconChevron dir="left" /></button>
           <span className="bmh-month">{monthLabel}</span>
-          <button className="bm-icon-btn" onClick={() => move(1)} disabled={!canNext} aria-label="Mes siguiente">›</button>
+          <button className="bm-icon-btn" onClick={() => move(1)} disabled={!canNext} aria-label="Mes siguiente"><IconChevron dir="right" /></button>
         </div>
 
         <div className="bmh-grid">

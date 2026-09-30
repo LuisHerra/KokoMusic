@@ -18,7 +18,7 @@ export default function BeMusicDropButton({ track, onClose }: { track: Track; on
       // Se publica desde el momento que está sonando ahora mismo
       await postDailyDrop(userId, track, '', usePlayerStore.getState().progress);
       const p = Math.floor(usePlayerStore.getState().progress);
-      setError(`🎧 "${track.title}" es tu canción del día en BeMusic (desde ${Math.floor(p / 60)}:${String(p % 60).padStart(2, '0')})`);
+      setError(`"${track.title}" es tu canción del día en BeMusic (desde ${Math.floor(p / 60)}:${String(p % 60).padStart(2, '0')})`);
     } catch (e: any) {
       setError(e?.message || 'No se pudo publicar en BeMusic');
     } finally {

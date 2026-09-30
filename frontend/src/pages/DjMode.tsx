@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, type MouseEvent } from 'react';
-import { usePlayerStore, isNeutralFx, describeFx, type TransitionRule } from '../store/playerStore';
+import { usePlayerStore, isNeutralFx, describeRule, type TransitionRule } from '../store/playerStore';
 import { seekAudio, getActiveAudio, setDjFxParams, setAudioPlaybackRate } from '../hooks/useAudioPlayer';
 import { resolveImageUrl, getTrack, type Track } from '../lib/api';
 import { IconPlay, IconPause, IconNext, IconMusic } from '../components/Player/PlayerIcons';
@@ -7,6 +7,7 @@ import DjMixerModal from '../components/Player/DjMixerModal';
 import { useScreenTour } from '../components/GuidedTour';
 import { computeAutoMix, startCrossfadePreview, estimateBpm, type CrossfadePreviewHandle } from '../lib/djTransition';
 
+import { IconSliders, IconDot } from '../components/Common/UiIcons';
 const BPM_COMPATIBLE_RANGE = 6;
 
 function formatTime(secs: number): string {
@@ -365,7 +366,7 @@ export default function DjMode() {
               disabled={!currentTrack}
               title={hasActiveLoop ? 'Desactivar loop' : pendingLoopStart !== null ? 'Marcar fin del loop' : 'Marcar inicio del loop'}
             >
-              {hasActiveLoop ? 'Loop ●' : pendingLoopStart !== null ? 'Marcar fin' : 'Loop'}
+              {hasActiveLoop ? <>Loop <IconDot size={7} /></> : pendingLoopStart !== null ? 'Marcar fin' : 'Loop'}
             </button>
           </div>
 
@@ -540,8 +541,8 @@ export default function DjMode() {
                     <CoverThumb cover={to.cover} className="dj-transition-row-cover" iconSize={14} />
                     <span className="dj-transition-row-title">{to.title}</span>
                   </div>
-                  {describeFx(rule.fx) && (
-                    <span className="dj-transition-row-fx" title="Efectos guardados con la mezcla">🎛 {describeFx(rule.fx)}</span>
+                  {describeRule(rule) && (
+                    <span className="dj-transition-row-fx" title="Lo que lleva la mezcla"><IconSliders size={12} /> {describeRule(rule)}</span>
                   )}
                 </div>
                 <div className="dj-transition-row-actions">

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getFriends, removeFriend, getProfileNames, cleanName, type Friendship, resolveImageUrl } from '../../lib/api';
 import { Link } from 'react-router-dom';
 
+import { IconX } from '../Common/UiIcons';
 interface Props {
   userId: string;
   onChat: (f: Friendship) => void;
@@ -84,7 +85,7 @@ export default function FriendsList({ userId, onChat }: Props) {
             <Link to={`/friends/profile/${f.id}`} style={{ flex: 1, background: 'rgba(255,255,255,0.07)', color: '#fff', borderRadius: 10, padding: '8px 0', fontWeight: 600, fontSize: 13, textDecoration: 'none', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               Ver perfil
             </Link>
-            <button onClick={() => removeMut.mutate(f.id)} title="Eliminar amigo" style={{ background: 'rgba(255,60,60,0.12)', color: '#ff6b6b', border: 'none', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', fontSize: 14 }}>✕</button>
+            <button onClick={() => removeMut.mutate(f.id)} title="Eliminar amigo" style={{ background: 'rgba(255,60,60,0.12)', color: '#ff6b6b', border: 'none', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center' }} aria-label="Eliminar amigo"><IconX size={16} /></button>
           </div>
         </div>
       );

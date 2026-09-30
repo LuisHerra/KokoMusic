@@ -5,8 +5,13 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 
+import { IconCheck } from '../Common/UiIcons';
 const DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-const NOTES = ['♪', '♫', '♩', '♬'];
+// Notas musicales en SVG (una corchea y dos corcheas unidas)
+const NOTE_PATHS = [
+  'M9 18V4l9-2v3l-9 2',
+  'M8 17V5l10-2v12',
+];
 
 export function FlameIcon({ size = 24, className = '' }: { size?: number; className?: string }) {
   return (
@@ -41,7 +46,7 @@ export default function StreakCelebration({ streak, onClose }: { streak: number;
 
   const notes = useMemo(
     () => Array.from({ length: 14 }).map((_, i) => ({
-      ch: NOTES[i % NOTES.length],
+      kind: i % NOTE_PATHS.length,
       left: 6 + Math.random() * 88,
       delay: Math.random() * 2.4,
       dur: 2.6 + Math.random() * 2,
@@ -81,7 +86,11 @@ export default function StreakCelebration({ streak, onClose }: { streak: number;
               '--drift': `${n.drift}px`,
             } as React.CSSProperties}
           >
-            {n.ch}
+            <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d={NOTE_PATHS[n.kind]} />
+              <circle cx="6" cy="18" r="3" fill="currentColor" />
+              {n.kind === 1 && <circle cx="15" cy="16" r="3" fill="currentColor" />}
+            </svg>
           </span>
         ))}
       </div>
@@ -104,7 +113,7 @@ export default function StreakCelebration({ streak, onClose }: { streak: number;
             const lit = i >= litFrom && i <= todayIdx;
             return (
               <div key={d} className={`sc-day ${lit ? 'sc-day--lit' : ''} ${i === todayIdx ? 'sc-day--today' : ''}`} style={{ animationDelay: `${1 + (i - litFrom) * 0.08}s` }}>
-                <span className="sc-day-dot">{lit ? '✓' : ''}</span>
+                <span className="sc-day-dot">{lit && <IconCheck size={15} />}</span>
                 <span className="sc-day-name">{d}</span>
               </div>
             );

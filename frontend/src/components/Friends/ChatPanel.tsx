@@ -4,6 +4,7 @@ import { getMessages, sendMessage, getProfileNames, cleanName, type Friendship, 
 import { usePlayerStore } from '../../store/playerStore';
 import './ChatPanel.css';
 
+import { IconX, IconMusicNote } from '../Common/UiIcons';
 interface Props {
   userId: string;
   friend: Friendship;
@@ -104,7 +105,7 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
           <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names.primary}</div>
           {names.secondary && <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{names.secondary}</div>}
         </div>
-        <button onClick={onClose} className="chat-close" aria-label="Cerrar chat">✕</button>
+        <button onClick={onClose} className="chat-close" aria-label="Cerrar chat"><IconX size={18} /></button>
       </div>
 
       {/* Messages */}
@@ -142,8 +143,8 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
                     padding: 10,
                     color: '#fff',
                   }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: 4 }}>
-                      🎵 Canción recomendada
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <IconMusicNote size={11} /> Canción recomendada
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <img src={songData.cover} alt={songData.title} style={{ width: 42, height: 42, borderRadius: 6, objectFit: 'cover' }} />

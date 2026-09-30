@@ -3,7 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPlaylist, getTrack, getTracksBatch, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, BASE } from '../lib/api';
 import type { Track, Friendship } from '../lib/api';
-import { usePlayerStore } from '../store/playerStore';
+import { usePlayerStore, type TransitionRule } from '../store/playerStore';
 import { useLikedSongs } from '../hooks/useLikedSongs';
 import DjMixerModal from '../components/Player/DjMixerModal';
 
@@ -1096,6 +1096,7 @@ export default function Playlist() {
           ownerId: cp.owner_id,
           shareCode: cp.share_code,
           collaborators: cp.collaborators ?? [],
+          djTransitions: cp.dj_transitions ?? {},
         };
       }
       const p = await getPlaylist(id!);
@@ -1346,6 +1347,22 @@ export default function Playlist() {
     setDraggedIdx(null);
     reorderMutation.mutate(localTracks.map(t => t.trackId));
   };
+
+  // Mezclas de DJ compartidas de la playlist colaborativa → al store local,
+  // marcadas como compartidas para que suenen aunque no se tengan activadas
+  // las mezclas guardadas. Las que otro colaborador borró se quitan.
+  useEffect(() => {
+    if (!pl?._isCollab || !pl.shareCode) return;
+    const code = pl.shareCode as string;
+    const remote: Record<string, TransitionRule> = pl.djTransitions ?? {};
+    const store = usePlayerStore.getState();
+    Object.entries(remote).forEach(([, rule]) => {
+      if (rule?.fromTrackId && rule?.toTrackId) store.setTransition({ ...rule, shared: true, collabCode: code });
+    });
+    Object.values(store.transitions).forEach((r) => {
+      if (r.collabCode === code && !remote[`${r.fromTrackId}-${r.toTrackId}`]) store.removeTransition(r.fromTrackId, r.toTrackId);
+    });
+  }, [pl?._isCollab, pl?.shareCode, pl?.djTransitions]);
 
   // Load existing collab data on mount if we already have a code
   useEffect(() => {
@@ -2024,6 +2041,7 @@ export default function Playlist() {
           fromTrack={djModalTracks.from}
           toTrack={djModalTracks.to}
           onClose={() => setDjModalTracks(null)}
+          collabCode={pl?._isCollab ? pl.shareCode : undefined}
         />
       )}
 

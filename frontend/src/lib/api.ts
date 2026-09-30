@@ -466,6 +466,7 @@ export interface CollabPlaylist {
   updated_at: string;
   tracks?: CollabTrack[];
   collaborators?: CollabMember[];
+  dj_transitions?: Record<string, any>;
 }
 
 export interface CollabTrack {
@@ -1106,4 +1107,11 @@ export const postDailyDrop = (
     // Invalida la caché instantánea del feed para que BeMusic muestre la nueva canción
     try { localStorage.removeItem(`koko_bemusic_cache_${userId}`); } catch { /* noop */ }
     return r;
+  });
+
+// ── Mezclas de DJ compartidas (playlists colaborativas) ───────────────────────
+export const saveCollabTransition = (code: string, userId: string, key: string, rule: object | null) =>
+  apiFetch<{ success: boolean; transitions: Record<string, any> }>(`/collab/playlists/${encodeURIComponent(code)}/transitions`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId, key, rule }),
   });

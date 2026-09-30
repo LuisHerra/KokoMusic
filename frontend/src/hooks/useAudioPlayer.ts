@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, registerSeekHandler, consumePendingStart, isNeutralFx, NEUTRAL_DJ_FX, type DjFxSnapshot, sendRemoteCommandIfConnected } from '../store/playerStore';
+import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, registerSeekHandler, consumePendingStart, isNeutralFx, NEUTRAL_DJ_FX, type DjFxSnapshot, type TransitionRule, sendRemoteCommandIfConnected } from '../store/playerStore';
 import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
@@ -19,6 +19,7 @@ import { logToServer } from '../lib/logger';
 import { usePrefetchAudio } from './usePrefetchAudio';
 import { reportAudioStall, reportAudioHealthy } from '../lib/adaptiveBitrate';
 
+import { scheduleTransitionSfx, sfxOffset } from '../lib/djSfx';
 let currentBlobUrl: string | null = null;
 
 const isMobileDevice = () => {
@@ -330,6 +331,73 @@ let audioElementsUnlocked = false;
 // Fuera de Modo DJ, si una mezcla guardada aplicó sus efectos, hay que
 // quitarlos en cuanto suene una pista que no forma parte de ninguna mezcla.
 let mixFxAppliedOutsideDj = false;
+let appliedMixFx: DjFxSnapshot = NEUTRAL_DJ_FX;
+
+/** ¿Puede sonar sola esta mezcla ahora? */
+function mixRuleAllowed(rule: TransitionRule | undefined): boolean {
+  if (!rule) return false;
+  const st = usePlayerStore.getState();
+  if (st.isDjModeActive) return st.djAutoTransition;
+  return st.autoApplySavedTransitions || !!rule.shared;
+}
+
+/** Aplica unos efectos de mezcla a lo que suena (dentro o fuera de Modo DJ). */
+function applyMixFxNow(fx: DjFxSnapshot) {
+  const st = usePlayerStore.getState();
+  if (st.isDjModeActive) {
+    st.setDjFx(fx); // DjMode.tsx lo lleva al audio activo
+    return;
+  }
+  setDjFxParams(audio1, fx);
+  setDjFxParams(audio2, fx);
+  setAudioPlaybackRate(fx.slowedRate);
+  appliedMixFx = fx;
+  mixFxAppliedOutsideDj = !isNeutralFx(fx);
+}
+
+let fxRampTimer: ReturnType<typeof setInterval> | null = null;
+function rampMixFx(from: DjFxSnapshot, to: DjFxSnapshot, ms: number) {
+  if (fxRampTimer) clearInterval(fxRampTimer);
+  const steps = Math.max(1, Math.round(ms / 50));
+  let i = 0;
+  const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+  fxRampTimer = setInterval(() => {
+    i++;
+    const k = i / steps;
+    applyMixFxNow({
+      slowedRate: lerp(from.slowedRate, to.slowedRate, k),
+      reverbAmount: lerp(from.reverbAmount, to.reverbAmount, k),
+      filterCutoff: lerp(from.filterCutoff, to.filterCutoff, k),
+    });
+    if (i >= steps && fxRampTimer) { clearInterval(fxRampTimer); fxRampTimer = null; }
+  }, 50);
+}
+
+// Efectos de sonido / efectos temporales programados para la próxima mezcla
+let mixTimers: ReturnType<typeof setTimeout>[] = [];
+let cancelMixSfx: () => void = () => {};
+function clearMixSchedule() {
+  mixTimers.forEach(clearTimeout);
+  mixTimers = [];
+  cancelMixSfx();
+  cancelMixSfx = () => {};
+}
+
+/** Efectos que solo duran la transición: entran antes del fundido y se van después. */
+function scheduleTransitionFx(rule: TransitionRule, fadeStartIn: number) {
+  if (!rule.fx || isNeutralFx(rule.fx)) return;
+  const target = rule.fx;
+  const st = usePlayerStore.getState();
+  const baseFx: DjFxSnapshot = st.isDjModeActive ? { ...st.djFx } : appliedMixFx;
+  const lead = Math.max(0.3, rule.fxLead ?? 2);
+  const hold = Math.max(0, rule.fxHold ?? 2);
+  const rampInStart = Math.max(0, fadeStartIn - lead);
+  const rampInMs = Math.max(300, (fadeStartIn - rampInStart) * 1000);
+  mixTimers.push(setTimeout(() => rampMixFx(baseFx, target, rampInMs), rampInStart * 1000));
+  // Tras el fundido la pista entrante suena a la velocidad del efecto
+  const outAt = fadeStartIn + (rule.duration + hold) / Math.max(0.5, target.slowedRate);
+  mixTimers.push(setTimeout(() => rampMixFx(target, baseFx, 1500), outAt * 1000));
+}
 
 /**
  * Unlocks the Web Audio API AudioContext and HTML5 Audio on mobile browsers.
@@ -509,6 +577,7 @@ export function useAudioPlayer() {
 
   const cdnPreloadTriggered = useRef<string | null>(null);
   const djBufferPreloaded = useRef<string | null>(null);
+  const mixEventsArmed = useRef<string | null>(null);
 
   useEffect(() => {
     const onTimeUpdate = (e: Event) => {
@@ -566,9 +635,8 @@ export function useAudioPlayer() {
           // Ajustes (autoApplySavedTransitions, off por defecto). Sin esto,
           // cualquier pareja de tracks usada alguna vez en una mezcla DJ
           // haría crossfade "mágico" también en reproducción normal.
-          const rule = ((state.isDjModeActive && state.djAutoTransition) || (!state.isDjModeActive && state.autoApplySavedTransitions))
-            ? state.transitions[`${currentT.id}-${nextT.id}`]
-            : undefined;
+          const candidate = state.transitions[`${currentT.id}-${nextT.id}`];
+          const rule = mixRuleAllowed(candidate) ? candidate : undefined;
 
           // Precarga real del buffer de audio para transiciones DJ: sin esto, el
           // elemento <audio> del track entrante no empieza a cargar bytes hasta
@@ -593,6 +661,24 @@ export function useAudioPlayer() {
                 inactiveAudio.src = getStreamUrl(nextT.id, { forceStream: isCrossOriginArmed() });
                 inactiveAudio.load();
               }
+            }
+          }
+
+          // Efectos de sonido y efectos temporales: se programan unos segundos
+          // antes del fundido para que un riser "llegue" justo al cambio.
+          if (rule && mixEventsArmed.current !== pairKeyStr) {
+            const rate = audio.playbackRate || 1;
+            const needLead = Math.max(
+              3,
+              ...(rule.sfx ?? []).map((sx) => -sfxOffset(sx, rule.duration)),
+              rule.fxMode === 'transition' ? (rule.fxLead ?? 2) : 0
+            );
+            const until = (rule.fromTime - audio.currentTime) / rate;
+            if (until > 0 && until <= needLead + 0.5) {
+              mixEventsArmed.current = pairKeyStr;
+              clearMixSchedule();
+              cancelMixSfx = scheduleTransitionSfx(rule.sfx, rule.duration, until, rate);
+              if (rule.fxMode === 'transition') scheduleTransitionFx(rule, until);
             }
           }
 
@@ -851,6 +937,7 @@ export function useAudioPlayer() {
     const prevTrackId = globalLastLoadedTrackId;
     globalLastLoadedTrackId = currentTrack.id;
     crossfadeTriggered.current = false;
+    mixEventsArmed.current = null;
 
     // FIX: currentYoutubeId nunca se limpiaba entre tracks — solo se
     // sobrescribía si checkEmbedMode()/el status fetch de ESTA pista
@@ -901,16 +988,27 @@ export function useAudioPlayer() {
     const nextAudio = getActiveAudio();
 
     const djState = usePlayerStore.getState();
-    const rule = prevTrackId && !(djState.isDjModeActive && !djState.djAutoTransition)
-      ? djState.transitions[`${prevTrackId}-${currentTrack.id}`]
-      : undefined;
+    const inRule = prevTrackId ? djState.transitions[`${prevTrackId}-${currentTrack.id}`] : undefined;
+    const rule = mixRuleAllowed(inRule) ? inRule : undefined;
 
     // Efectos guardados con la mezcla: los de la transición que nos trajo
     // aquí, o los de la que sale de esta pista hacia la siguiente de la cola.
-    const mixAllowed = djState.isDjModeActive ? djState.djAutoTransition : djState.autoApplySavedTransitions;
     const nextInQueue = djState.queue[djState.queueIndex + 1];
-    const outRule = nextInQueue ? djState.transitions[`${currentTrack.id}-${nextInQueue.id}`] : undefined;
-    const mixFx: DjFxSnapshot | undefined = mixAllowed ? (rule?.fx ?? outRule?.fx) : undefined;
+    const outCandidate = nextInQueue ? djState.transitions[`${currentTrack.id}-${nextInQueue.id}`] : undefined;
+    const outRule = mixRuleAllowed(outCandidate) ? outCandidate : undefined;
+    const wholeTrack = (r?: TransitionRule) => (r && (r.fxMode ?? 'track') === 'track' ? r.fx : undefined);
+    const mixFx: DjFxSnapshot | undefined = wholeTrack(rule) ?? wholeTrack(outRule);
+    // Reverb/filtro necesitan la cadena de Web Audio (y crossOrigin). Si la
+    // mezcla de esta pista los usa, se prepara ya, antes de cargar el audio,
+    // para no tener que recargar la pista a mitad de canción.
+    const needsChain = [rule, outRule].some((r) => r?.fx && (r.fx.reverbAmount > 0 || r.fx.filterCutoff < 20000));
+    if (needsChain && !crossOriginArmed && !isMobileDevice()) {
+      crossOriginArmed = true;
+      audio1.crossOrigin = 'anonymous';
+      audio2.crossOrigin = 'anonymous';
+    }
+    // Un salto manual de pista cancela lo programado para la mezcla anterior
+    if (!rule) clearMixSchedule();
     if (djState.isDjModeActive && mixFx && !isNeutralFx(mixFx)) {
       // DjMode.tsx aplica djFx al audio activo en cuanto cambia
       djState.setDjFx(mixFx);

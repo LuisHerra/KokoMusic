@@ -18,7 +18,7 @@
   background: rgba(0, 0, 0, 0.2);
 }
 .chat-back { display: none; }
-.chat-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; line-height: 1; }
+.chat-close { background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; padding: 4px; }
 .chat-messages {
   flex: 1; min-height: 0; overflow-y: auto;
   padding: 16px 14px;

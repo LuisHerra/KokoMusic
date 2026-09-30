@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { searchUsers, sendFriendRequest, getFriendshipStatus, getProfileNames, cleanName, type KokoProfile, resolveImageUrl } from '../../lib/api';
 
+import { IconCheck } from '../Common/UiIcons';
 interface Props { userId: string; }
 
 function Avatar({ src, name, size = 44 }: { src?: string; name: string; size?: number }) {
@@ -33,7 +34,7 @@ function UserCard({ user, myId }: { user: KokoProfile; myId: string }) {
 
   const statusLabel = () => {
     if (!status || status.status === 'none') return null;
-    if (status.status === 'accepted') return <span style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 700 }}>✓ Amigos</span>;
+    if (status.status === 'accepted') return <span style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}><IconCheck size={13} /> Amigos</span>;
     if (status.status === 'pending' && status.isSender) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Solicitud enviada</span>;
     if (status.status === 'pending' && !status.isSender) return <span style={{ color: '#f0a500', fontSize: 12 }}>Solicitud recibida</span>;
     return null;

@@ -195,6 +195,52 @@ router.get('/playlists/:code', async (req, res) => {
   });
 });
 
+/** PUT /api/collab/playlists/:code/transitions — guarda o borra una mezcla de DJ compartida */
+router.put('/playlists/:code/transitions', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { code } = req.params;
+  const { userId, key, rule } = req.body ?? {};
+  if (!userId || typeof key !== 'string' || !/^[^\s]{1,200}-[^\s]{1,200}$/.test(key)) {
+    return err(res, 'userId y key requeridos', 400);
+  }
+
+  const { data: playlist } = await supabase!
+    .schema('kokomusic')
+    .from('collab_playlists')
+    .select('id, owner_id, dj_transitions')
+    .eq('share_code', code.toUpperCase())
+    .single();
+  if (!playlist) return err(res, 'Playlist no encontrada', 404);
+
+  const { data: collaborator } = await supabase!
+    .schema('kokomusic')
+    .from('collab_playlist_collaborators')
+    .select('user_id')
+    .eq('playlist_id', playlist.id)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!collaborator && playlist.owner_id !== userId) return err(res, 'Sin permisos', 403);
+
+  const transitions: Record<string, any> = { ...(playlist.dj_transitions ?? {}) };
+  if (rule) {
+    // Solo los campos conocidos, para no guardar basura en el JSON
+    const pick = (({ fromTrackId, toTrackId, fromTime, toTime, curve, duration, fadeOutPercent, fadeInPercent, fadeOutDuration, fadeInDuration, fx, fxMode, fxLead, fxHold, sfx }) =>
+      ({ fromTrackId, toTrackId, fromTime, toTime, curve, duration, fadeOutPercent, fadeInPercent, fadeOutDuration, fadeInDuration, fx, fxMode, fxLead, fxHold, sfx }))(rule);
+    if (Array.isArray(pick.sfx)) pick.sfx = pick.sfx.slice(0, 8);
+    transitions[key] = { ...pick, updatedBy: userId, updatedAt: new Date().toISOString() };
+  } else {
+    delete transitions[key];
+  }
+
+  const { error } = await supabase!
+    .schema('kokomusic')
+    .from('collab_playlists')
+    .update({ dj_transitions: transitions })
+    .eq('id', playlist.id);
+  if (error) return err(res, error.message);
+  res.json({ success: true, transitions });
+});
+
 /** DELETE /api/collab/playlists/:id  — delete or leave collab playlist */
 router.delete('/playlists/:id', async (req, res) => {
   if (!requireSupabase(res)) return;

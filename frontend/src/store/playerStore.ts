@@ -71,8 +71,20 @@ export interface TransitionRule {
   // Efectos de Modo DJ guardados con la mezcla (slowed / reverb / filtro).
   // Se reaplican al sonar la mezcla para que suene igual que cuando se guardó.
   fx?: DjFxSnapshot;
+  // 'track' = efectos durante ambas canciones; 'transition' = solo alrededor
+  // del fundido: entran fxLead s antes y se van fxHold s después.
+  fxMode?: 'track' | 'transition';
+  fxLead?: number;
+  fxHold?: number;
+  // Efectos de sonido de la transición (riser, boom, bocina…)
+  sfx?: TransitionSfx[];
+  // Mezcla compartida en una playlist colaborativa: suena para todos los
+  // colaboradores aunque no tengan activadas las mezclas guardadas.
+  shared?: boolean;
+  collabCode?: string;
 }
 
+import type { TransitionSfx } from '../lib/djSfx';
 export interface DjFxSnapshot { slowedRate: number; reverbAmount: number; filterCutoff: number }
 export const NEUTRAL_DJ_FX: DjFxSnapshot = { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 };
 export const isNeutralFx = (fx?: DjFxSnapshot | null) =>
@@ -83,6 +95,16 @@ export const describeFx = (fx?: DjFxSnapshot | null) => {
   if (Math.abs(fx!.slowedRate - 1) >= 0.005) parts.push(`${fx!.slowedRate.toFixed(2)}x`);
   if (fx!.reverbAmount > 0) parts.push(`Reverb ${Math.round(fx!.reverbAmount * 100)}%`);
   if (fx!.filterCutoff < 20000) parts.push(`Filtro ${(fx!.filterCutoff / 1000).toFixed(1)}kHz`);
+  return parts.join(' · ');
+};
+
+/** Resumen corto de lo que lleva una mezcla (efectos, sonidos, compartida). */
+export const describeRule = (r: TransitionRule) => {
+  const parts: string[] = [];
+  const fx = describeFx(r.fx);
+  if (fx) parts.push(r.fxMode === 'transition' ? `${fx} (en la transición)` : fx);
+  if (r.sfx?.length) parts.push(`${r.sfx.length} ${r.sfx.length === 1 ? 'sonido' : 'sonidos'}`);
+  if (r.shared) parts.push('compartida');
   return parts.join(' · ');
 };
 

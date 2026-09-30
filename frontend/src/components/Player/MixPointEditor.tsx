@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { LyricSection, LyricsLine } from '../../lib/lyricsParser';
+import { IconDot, IconPlay, IconStop } from '../Common/UiIcons';
 import './MixPointEditor.css';
 
 export const fmtTime = (s: number, decimals = true) => {
@@ -91,9 +92,7 @@ export default function MixPointEditor({
           <div className="mpe-sub">{side === 'out' ? 'Punto de salida · empieza a fundirse' : 'Punto de entrada · empieza a sonar'}</div>
         </div>
         <button className={`mpe-audition ${auditioning ? 'mpe-audition--on' : ''}`} onClick={onAudition} title="Escuchar este punto">
-          {auditioning
-            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
-            : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>}
+          {auditioning ? <IconStop size={13} /> : <IconPlay size={13} />}
           Oír
         </button>
       </div>
@@ -159,7 +158,7 @@ export default function MixPointEditor({
       {/* Atajos: ahora, secciones, hot cues */}
       <div className="mpe-chips">
         {livePosition != null && (
-          <button className="mpe-chip mpe-chip--live" onClick={() => set(livePosition)}>● Ahora ({fmtTime(livePosition, false)})</button>
+          <button className="mpe-chip mpe-chip--live" onClick={() => set(livePosition)}><IconDot size={7} /> Ahora ({fmtTime(livePosition, false)})</button>
         )}
         {cues.map((c, i) => c !== null && (
           <button key={`cc${i}`} className={`mpe-chip mpe-chip--cue ${Math.abs(value - c) < 0.15 ? 'active' : ''}`} onClick={() => set(c)}>

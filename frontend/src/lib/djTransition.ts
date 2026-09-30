@@ -1,5 +1,6 @@
 import type { CrossfadeCurve, TransitionRule } from '../store/playerStore';
 import { getLyrics, getStreamUrl, type Track } from './api';
+import { scheduleTransitionSfx, sfxOffset } from './djSfx';
 import { parseSyncedLyrics } from './lyricsParser';
 
 /**
@@ -79,7 +80,7 @@ export interface CrossfadePreviewHandle {
 export function startCrossfadePreview(
   fromTrack: Track,
   toTrack: Track,
-  rule: Pick<TransitionRule, 'fromTime' | 'toTime' | 'curve' | 'duration' | 'fx'>,
+  rule: Pick<TransitionRule, 'fromTime' | 'toTime' | 'curve' | 'duration' | 'fx' | 'sfx'>,
   onEnd: () => void
 ): CrossfadePreviewHandle {
   const a1 = new Audio(getStreamUrl(fromTrack.id));
@@ -88,6 +89,7 @@ export function startCrossfadePreview(
   let timeout: ReturnType<typeof setTimeout> | null = null;
   let interval: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
+  let cancelSfx: () => void = () => {};
 
   const stop = () => {
     if (stopped) return;
@@ -95,6 +97,7 @@ export function startCrossfadePreview(
     a1.pause();
     a2.pause();
     if (timeout) clearTimeout(timeout);
+    cancelSfx();
     if (interval) clearInterval(interval);
     a1.src = '';
     a2.src = '';
@@ -108,7 +111,8 @@ export function startCrossfadePreview(
     a.preservesPitch = Math.abs(rate - 1) < 0.01;
   }
 
-  const preRoll = 3;
+  // Si algún efecto suena antes del fundido (riser…), empezamos antes
+  const preRoll = Math.max(3, ...(rule.sfx ?? []).map((sx) => -sfxOffset(sx, rule.duration)));
   const startA1 = Math.max(0, rule.fromTime - preRoll);
   a1.currentTime = startA1;
   a1.volume = 1;
@@ -118,6 +122,7 @@ export function startCrossfadePreview(
   const begin = () => {
     a1.play().catch(() => stop());
     const actualPreRoll = rule.fromTime - startA1;
+    cancelSfx = scheduleTransitionSfx(rule.sfx, rule.duration, actualPreRoll / rate, rate);
 
     timeout = setTimeout(() => {
       if (stopped) return;

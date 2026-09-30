@@ -43,12 +43,12 @@
 /* Ajuste fino */
 .mpe-fine { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
 .mpe-fine button {
-  flex: 1; min-width: 0; padding: 8px 0; border-radius: 8px; border: none; cursor: pointer;
+  flex: 1 1 0; min-width: 0; width: auto; padding: 8px 0; border-radius: 8px; border: none; cursor: pointer;
   background: rgba(255, 255, 255, 0.07); color: #fff; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
 }
 .mpe-fine button:active { background: rgba(255, 255, 255, 0.16); }
 .mpe-time {
-  flex: 0 0 84px; text-align: center; padding: 7px 4px; border-radius: 8px;
+  flex: 0 0 84px; width: 84px !important; min-width: 0; box-sizing: border-box; text-align: center; padding: 7px 4px; border-radius: 8px; margin: 0;
   background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.14); color: #fff;
   font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; outline: none;
 }
@@ -63,7 +63,7 @@
 .mpe-chip.active { background: var(--accent); color: #000; }
 .mpe-chip--cue { background: rgba(255, 122, 0, 0.18); color: #ffb366; }
 .mpe-chip--cue.active { background: #ff7a00; color: #000; }
-.mpe-chip--live { background: rgba(255, 77, 109, 0.18); color: #ff8fa3; }
+.mpe-chip--live { display: inline-flex; align-items: center; gap: 5px; background: rgba(255, 77, 109, 0.18); color: #ff8fa3; }
 
 .mpe-lyrics { margin-top: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; overflow: hidden; }
 .mpe-lyrics summary { padding: 8px 12px; font-size: 12px; font-weight: 700; cursor: pointer; user-select: none; }
@@ -74,12 +74,3 @@
 }
 .mpe-lyrics-list button span { display: inline-block; width: 40px; opacity: 0.6; font-variant-numeric: tabular-nums; }
 .mpe-lyrics-list button.active { background: var(--accent); color: #000; font-weight: 700; }
-
-/* Resumen de la transición (entre los dos editores) */
-.mix-summary {
-  display: flex; flex-direction: column; gap: 4px; align-items: center; text-align: center;
-  font-size: 12px; color: var(--text-secondary); padding: 2px 8px;
-}
-.mix-summary strong { color: #fff; font-variant-numeric: tabular-nums; }
-.mix-summary-arrow { color: var(--accent); font-weight: 800; }
-.mix-summary-warn { color: #ff8a8a; margin-top: 2px; }

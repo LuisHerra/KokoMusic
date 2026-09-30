@@ -7,6 +7,7 @@ import BeMusicHistory from './BeMusicHistory';
 import StreakCelebration, { FlameIcon } from './StreakCelebration';
 import './BeMusicFeed.css';
 
+import { IconHeadphones, IconPlay } from '../Common/UiIcons';
 interface DailyDropComment {
   id: string;
   content: string;
@@ -359,7 +360,7 @@ export default function BeMusicFeed({ userId }: BeMusicFeedProps) {
         </section>
       ) : friendDrops.length === 0 ? (
         <section className="bm-empty">
-          <span className="bm-empty-emoji">🎧</span>
+          <span className="bm-empty-icon"><IconHeadphones size={30} /></span>
           Tus amigos aún no han publicado su canción de hoy. ¡Has sido el primero!
         </section>
       ) : (
@@ -399,7 +400,7 @@ export default function BeMusicFeed({ userId }: BeMusicFeedProps) {
                         ? <span className="bm-eq"><i /><i /><i /></span>
                         : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>}
                     </span>
-                    {start > 0 && <span className="bm-start-chip">▶ {fmt(start)}</span>}
+                    {start > 0 && <span className="bm-start-chip"><IconPlay size={10} /> {fmt(start)}</span>}
                   </button>
 
                   <div className="bm-track-title">{drop.title}</div>

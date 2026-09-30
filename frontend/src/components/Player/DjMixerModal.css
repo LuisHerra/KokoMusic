@@ -1,0 +1,158 @@
+/* ── Mezclador de transición ────────────────────────────────────────────
+   Cabecera fija (pistas + pestañas), panel con scroll y pie fijo con el
+   resumen y las acciones. En móvil ocupa la pantalla como hoja inferior. */
+.mix-overlay {
+  position: fixed; inset: 0; z-index: 100000;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(12px);
+  animation: fadeIn 0.18s ease-out;
+}
+.mix-sheet {
+  width: 100%; max-width: 620px; height: min(820px, 92vh);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg-elevated, #151517);
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+  color: #fff;
+}
+
+/* Cabecera */
+.mix-head { flex-shrink: 0; padding: 16px 18px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+.mix-head-row { display: flex; align-items: center; gap: 10px; }
+.mix-head h2 { margin: 0; flex: 1; font-size: 19px; font-weight: 900; letter-spacing: -0.4px; }
+.mix-auto {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 999px; border: none; cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent);
+  font-size: 13px; font-weight: 800;
+}
+.mix-auto:disabled { opacity: 0.5; cursor: default; }
+.mix-icon-btn {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: none; color: var(--text-secondary);
+}
+.mix-icon-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+
+.mix-pair { display: flex; align-items: center; gap: 10px; margin: 12px 0 12px; }
+.mix-pair-track { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+.mix-pair-track img, .mix-pair-ph { width: 30px; height: 30px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: rgba(255, 255, 255, 0.08); }
+.mix-pair-track span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mix-pair-track:last-child { justify-content: flex-end; flex-direction: row-reverse; text-align: right; }
+.mix-pair-arrow { color: var(--accent); flex-shrink: 0; }
+
+.mix-tabs { display: flex; gap: 2px; }
+.mix-tabs button {
+  position: relative; flex: 1; min-width: 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 4px 12px; border: none; background: none; cursor: pointer;
+  color: var(--text-muted); font-size: 13px; font-weight: 700;
+  border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s;
+}
+.mix-tabs button.active { color: #fff; border-bottom-color: var(--accent); }
+.mix-tabs button.active svg:first-child { color: var(--accent); }
+.mix-tab-dot { color: var(--accent); }
+.mix-tab-dot--warn { color: #ff6b6b; }
+.mix-tab-count {
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #000; font-size: 10px; font-weight: 900;
+}
+
+/* Panel */
+.mix-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.mix-panel { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 20px; animation: fadeIn 0.15s ease-out; }
+.mix-loading { padding: 60px 0; text-align: center; color: var(--text-muted); }
+.mix-card { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.mix-card h3 { margin: 0 0 4px; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: rgba(255, 255, 255, 0.85); }
+.mix-card-head { display: flex; align-items: center; justify-content: space-between; }
+.mix-link { background: none; border: none; color: var(--text-muted); font-size: 12px; font-weight: 700; cursor: pointer; }
+.mix-link:hover { color: #fff; }
+.mix-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); }
+.mix-row strong { color: #fff; font-variant-numeric: tabular-nums; }
+.mix-range { width: 100%; accent-color: var(--accent); margin: 0 0 4px; }
+.mix-range:disabled { opacity: 0.35; }
+.mix-note { margin: 0; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.mix-empty { margin: 4px 0 0; text-align: center; font-size: 13px; color: var(--text-muted); }
+
+.mix-curves { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 6px; }
+.mix-curves button {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 4px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary); font-size: 11px; font-weight: 700;
+}
+.mix-curves button.active { border-color: var(--accent); color: #fff; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.mix-curves button.active svg { color: var(--accent); }
+
+.mix-seg { display: flex; gap: 4px; background: rgba(0, 0, 0, 0.3); border-radius: 10px; padding: 3px; }
+.mix-seg button { flex: 1; border: none; border-radius: 8px; padding: 8px 6px; cursor: pointer; background: none; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.mix-seg button.active { background: var(--accent); color: #000; }
+.mix-seg--sm button { padding: 5px 3px; font-size: 11px; }
+
+/* Sonidos */
+.mix-sfx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.mix-sfx-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 4px 10px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04); color: #fff; font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: transform 0.1s, background 0.15s, color 0.15s;
+}
+.mix-sfx-btn svg { color: var(--accent); }
+.mix-sfx-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.mix-sfx-btn:active { transform: scale(0.94); background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.mix-sfx-btn:disabled { opacity: 0.4; }
+.mix-sfx-list { display: flex; flex-direction: column; gap: 8px; }
+.mix-sfx-item { display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.25); border-radius: 12px; padding: 10px; }
+.mix-sfx-play {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent);
+}
+.mix-sfx-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.mix-sfx-name { font-size: 13px; font-weight: 800; }
+.mix-sfx-vol { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.mix-sfx-vol .mix-range { margin: 0; }
+
+/* Pie */
+.mix-foot {
+  flex-shrink: 0; padding: 12px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.mix-summary {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+  min-width: 0; white-space: nowrap; overflow: hidden;
+}
+.mix-summary strong { color: #fff; font-size: 13px; }
+.mix-summary svg { color: var(--accent); flex-shrink: 0; }
+.mix-summary span { overflow: hidden; text-overflow: ellipsis; }
+.mix-warn { margin: 0; text-align: center; font-size: 12px; color: #ff8a8a; }
+.mix-foot-note { margin: 0; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+.mix-actions { display: flex; gap: 8px; }
+.mix-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px 16px; border-radius: 12px; border: none; cursor: pointer;
+  font-size: 14px; font-weight: 800;
+}
+.mix-btn:disabled { opacity: 0.5; cursor: default; }
+.mix-btn--ghost { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.mix-btn--ghost.on { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.mix-btn--danger { background: rgba(255, 70, 70, 0.14); color: #ff6b6b; padding: 12px 14px; }
+.mix-btn--primary { flex: 1; background: var(--accent); color: #000; }
+
+@media (max-width: 640px) {
+  .mix-overlay { padding: 0; align-items: flex-end; }
+  .mix-sheet {
+    max-width: none; height: 100dvh; border-radius: 0; border: none;
+    animation: mix-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .mix-head { padding-top: calc(12px + env(safe-area-inset-top)); padding-left: 14px; padding-right: 14px; }
+  .mix-panel { padding: 14px 12px 18px; }
+  .mix-foot { padding-left: 12px; padding-right: 12px; }
+  .mix-tabs button { font-size: 12px; gap: 4px; }
+  .mix-curves button { font-size: 10px; }
+}
+@keyframes mix-up { from { transform: translateY(40px); opacity: 0; } }
