@@ -1091,3 +1091,19 @@ export const sendPlaybackCommand = (targetDeviceId: string, command: RemoteComma
 
 
 
+
+// ── BeMusic (canción del día) ─────────────────────────────────────────────────
+export const postDailyDrop = (
+  userId: string,
+  track: Pick<Track, 'id' | 'title' | 'artist' | 'cover'>,
+  caption = '',
+  startS = 0
+) =>
+  apiFetch<{ success: boolean; streak: number; drop: any }>('/friends/daily-drop', {
+    method: 'POST',
+    body: JSON.stringify({ userId, trackId: track.id, title: track.title, artist: track.artist, cover: track.cover, caption, startS: Math.floor(startS) }),
+  }).then((r) => {
+    // Invalida la caché instantánea del feed para que BeMusic muestre la nueva canción
+    try { localStorage.removeItem(`koko_bemusic_cache_${userId}`); } catch { /* noop */ }
+    return r;
+  });

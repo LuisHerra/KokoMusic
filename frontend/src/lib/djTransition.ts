@@ -79,7 +79,7 @@ export interface CrossfadePreviewHandle {
 export function startCrossfadePreview(
   fromTrack: Track,
   toTrack: Track,
-  rule: Pick<TransitionRule, 'fromTime' | 'toTime' | 'curve' | 'duration'>,
+  rule: Pick<TransitionRule, 'fromTime' | 'toTime' | 'curve' | 'duration' | 'fx'>,
   onEnd: () => void
 ): CrossfadePreviewHandle {
   const a1 = new Audio(getStreamUrl(fromTrack.id));
@@ -99,6 +99,14 @@ export function startCrossfadePreview(
     a1.src = '';
     a2.src = '';
   };
+
+  // El preview no pasa por la cadena de Web Audio (reverb/filtro), pero sí
+  // respeta el slowed guardado con la mezcla.
+  const rate = rule.fx?.slowedRate ?? 1;
+  for (const a of [a1, a2]) {
+    a.playbackRate = rate;
+    a.preservesPitch = Math.abs(rate - 1) < 0.01;
+  }
 
   const preRoll = 3;
   const startA1 = Math.max(0, rule.fromTime - preRoll);

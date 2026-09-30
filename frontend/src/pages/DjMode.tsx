@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, type MouseEvent } from 'react';
-import { usePlayerStore, type TransitionRule } from '../store/playerStore';
+import { usePlayerStore, isNeutralFx, describeFx, type TransitionRule } from '../store/playerStore';
 import { seekAudio, getActiveAudio, setDjFxParams, setAudioPlaybackRate } from '../hooks/useAudioPlayer';
 import { resolveImageUrl, getTrack, type Track } from '../lib/api';
 import { IconPlay, IconPause, IconNext, IconMusic } from '../components/Player/PlayerIcons';
@@ -174,10 +174,12 @@ export default function DjMode() {
     setIsAutoMixing(true);
     computeAutoMix(currentTrack, deckBTrack)
       .then((result) => {
+        const liveFx = usePlayerStore.getState().djFx;
         setTransition({
           fromTrackId: currentTrack.id,
           toTrackId: deckBTrack.id,
           ...result,
+          fx: isNeutralFx(liveFx) ? undefined : liveFx,
         });
       })
       .catch(() => {})
@@ -467,7 +469,7 @@ export default function DjMode() {
       <div className="dj-fx-panel" data-tour="dj-fx">
         <h2>Efectos en vivo</h2>
         <p className="section-subtitle" style={{ marginBottom: 14 }}>
-          Se aplican solo a lo que suena ahora, y vuelven a cero al salir de Modo DJ.
+          Se aplican a lo que suena ahora y vuelven a cero al salir de Modo DJ. Al guardar una mezcla se guardan con ella.
         </p>
 
         <div className="dj-fx-row">
@@ -538,6 +540,9 @@ export default function DjMode() {
                     <CoverThumb cover={to.cover} className="dj-transition-row-cover" iconSize={14} />
                     <span className="dj-transition-row-title">{to.title}</span>
                   </div>
+                  {describeFx(rule.fx) && (
+                    <span className="dj-transition-row-fx" title="Efectos guardados con la mezcla">🎛 {describeFx(rule.fx)}</span>
+                  )}
                 </div>
                 <div className="dj-transition-row-actions">
                   <button

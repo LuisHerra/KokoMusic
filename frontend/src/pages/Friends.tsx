@@ -1,13 +1,36 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import FriendsList from '../components/Friends/FriendsList';
 import FriendRequests from '../components/Friends/FriendRequests';
 import UserSearch from '../components/Friends/UserSearch';
 import ChatPanel from '../components/Friends/ChatPanel';
 import BeMusicFeed from '../components/Friends/BeMusicFeed';
-import type { Friendship } from '../lib/api';
+import { getFriendRequests, type Friendship } from '../lib/api';
 import { useScreenTour } from '../components/GuidedTour';
 
-type Tab = 'bemusic' | 'friends' | 'requests' | 'search';
+export type FriendsSection = 'bemusic' | 'amigos';
+type SubTab = 'friends' | 'requests' | 'search';
+
+/** Selector principal BeMusic | Amigos. Se usa dentro de la página (escritorio)
+ *  y en la cabecera global en móvil, en lugar del buscador. La sección vive en
+ *  la URL (?s=amigos) para que ambos sitios estén sincronizados. */
+export function FriendsSectionSwitch({ compact = false }: { compact?: boolean }) {
+  const [params, setParams] = useSearchParams();
+  const section: FriendsSection = params.get('s') === 'amigos' ? 'amigos' : 'bemusic';
+  const go = (s: FriendsSection) => {
+    const next = new URLSearchParams(params);
+    if (s === 'bemusic') next.delete('s'); else next.set('s', s);
+    setParams(next, { replace: true });
+  };
+  return (
+    <div className={`friends-switch ${compact ? 'friends-switch--compact' : ''}`} role="tablist">
+      <span className="friends-switch-pill" style={{ transform: section === 'amigos' ? 'translateX(100%)' : 'none' }} />
+      <button role="tab" aria-selected={section === 'bemusic'} className={section === 'bemusic' ? 'active' : ''} onClick={() => go('bemusic')}>BeMusic</button>
+      <button role="tab" aria-selected={section === 'amigos'} className={section === 'amigos' ? 'active' : ''} onClick={() => go('amigos')}>Amigos</button>
+    </div>
+  );
+}
 
 // UUID validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -55,10 +78,21 @@ function AccountSetup({ onSet }: { onSet: (id: string) => void }) {
 }
 
 export default function Friends() {
-  const [tab, setTab] = useState<Tab>('bemusic');
+  const [params] = useSearchParams();
+  const section: FriendsSection = params.get('s') === 'amigos' ? 'amigos' : 'bemusic';
+  const [subTab, setSubTab] = useState<SubTab>('friends');
   useScreenTour('friends');
   const [chatFriend, setChatFriend] = useState<Friendship | null>(null);
   const [userId, setUserId] = useState(() => localStorage.getItem('koko_device_id') ?? '');
+
+  const { data: reqData } = useQuery({
+    queryKey: ['friend-requests', userId],
+    queryFn: () => getFriendRequests(userId),
+    enabled: isKokoUUID(userId),
+    staleTime: 60000,
+    refetchInterval: 15000,
+  });
+  const pendingCount = reqData?.requests?.length ?? 0;
 
   if (!isKokoUUID(userId)) {
     return (
@@ -69,35 +103,38 @@ export default function Friends() {
   }
 
   return (
-    <div className="main-body" style={{ paddingTop: 24, paddingBottom: 140, display: 'flex', gap: 0, height: '100%' }}>
+    <div className="main-body friends-page" style={{ display: 'flex', gap: 0 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ marginBottom: 20 }}>
-          <h1 className="section-title" style={{ margin: '0 0 6px' }}>Amigos</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Conecta con otros Kokoers y comparte tu música diaria.</p>
+        {/* En móvil el selector va en la cabecera global (App.tsx) */}
+        <div className="friends-page-head hide-on-mobile" data-tour="friends-tabs">
+          <FriendsSectionSwitch />
         </div>
 
-        {/* 4 Main Tabs at Top */}
-        <div data-tour="friends-tabs" style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-          {[
-            { key: 'bemusic', label: 'BeMusic (Canción del Día)' },
-            { key: 'friends', label: 'Mis amigos' },
-            { key: 'requests', label: 'Solicitudes' },
-            { key: 'search', label: 'Buscar usuarios' },
-          ].map(t => (
-            <button
-              key={t.key}
-              className={`tab-btn ${tab === t.key ? 'active' : ''}`}
-              onClick={() => setTab(t.key as Tab)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {tab === 'bemusic' && <BeMusicFeed userId={userId} />}
-        {tab === 'friends' && <FriendsList userId={userId} onChat={setChatFriend} />}
-        {tab === 'requests' && <FriendRequests userId={userId} />}
-        {tab === 'search' && <UserSearch userId={userId} />}
+        {section === 'bemusic' ? (
+          <BeMusicFeed userId={userId} />
+        ) : (
+          <>
+            <div className="friends-subtabs">
+              {([
+                { key: 'friends', label: 'Mis amigos' },
+                { key: 'requests', label: 'Solicitudes' },
+                { key: 'search', label: 'Buscar' },
+              ] as const).map(t => (
+                <button
+                  key={t.key}
+                  className={`tab-btn ${subTab === t.key ? 'active' : ''}`}
+                  onClick={() => setSubTab(t.key)}
+                >
+                  {t.label}
+                  {t.key === 'requests' && pendingCount > 0 && <span className="friends-badge">{pendingCount}</span>}
+                </button>
+              ))}
+            </div>
+            {subTab === 'friends' && <FriendsList userId={userId} onChat={setChatFriend} />}
+            {subTab === 'requests' && <FriendRequests userId={userId} />}
+            {subTab === 'search' && <UserSearch userId={userId} />}
+          </>
+        )}
       </div>
 
       {chatFriend && (

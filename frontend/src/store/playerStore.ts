@@ -12,6 +12,18 @@ import { logToServer } from '../lib/logger';
 let globalUnlockHandler: (() => void) | null = null;
 let queueReplenishLock = false; // prevent concurrent replenishment fetches
 
+// Segundo en el que debe arrancar la próxima pista que se cargue (p. ej. un
+// BeMusic publicado desde un momento concreto). Se consume una sola vez.
+let pendingStartSeconds: number | null = null;
+export function setPendingStart(seconds: number | null) {
+  pendingStartSeconds = seconds && seconds > 0 ? seconds : null;
+}
+export function consumePendingStart(): number | null {
+  const v = pendingStartSeconds;
+  pendingStartSeconds = null;
+  return v;
+}
+
 let globalSeekHandler: ((seconds: number) => void) | null = null;
 /** El hook de audio registra aquí cómo mover el <audio> real (el store solo guarda `progress`). */
 export function registerSeekHandler(handler: (seconds: number) => void) {
@@ -56,7 +68,23 @@ export interface TransitionRule {
   fadeInPercent?: number;    // 0-100: % de boost al inicio del track entrante  
   fadeOutDuration?: number;  // segundos del fade out
   fadeInDuration?: number;   // segundos del fade in
+  // Efectos de Modo DJ guardados con la mezcla (slowed / reverb / filtro).
+  // Se reaplican al sonar la mezcla para que suene igual que cuando se guardó.
+  fx?: DjFxSnapshot;
 }
+
+export interface DjFxSnapshot { slowedRate: number; reverbAmount: number; filterCutoff: number }
+export const NEUTRAL_DJ_FX: DjFxSnapshot = { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 };
+export const isNeutralFx = (fx?: DjFxSnapshot | null) =>
+  !fx || (Math.abs(fx.slowedRate - 1) < 0.005 && fx.reverbAmount <= 0 && fx.filterCutoff >= 20000);
+export const describeFx = (fx?: DjFxSnapshot | null) => {
+  if (isNeutralFx(fx)) return '';
+  const parts: string[] = [];
+  if (Math.abs(fx!.slowedRate - 1) >= 0.005) parts.push(`${fx!.slowedRate.toFixed(2)}x`);
+  if (fx!.reverbAmount > 0) parts.push(`Reverb ${Math.round(fx!.reverbAmount * 100)}%`);
+  if (fx!.filterCutoff < 20000) parts.push(`Filtro ${(fx!.filterCutoff / 1000).toFixed(1)}kHz`);
+  return parts.join(' · ');
+};
 
 /** Hot cues (hasta 4 puntos marcados) + loop opcional, guardados por trackId. */
 export interface TrackCues {
@@ -100,7 +128,7 @@ interface PlayerState {
   clearLoop: (trackId: string) => void;
 
   // DJ Efectos en vivo — no persistido, vuelve a neutro al salir de Modo DJ
-  djFx: { slowedRate: number; reverbAmount: number; filterCutoff: number };
+  djFx: DjFxSnapshot;
   setDjFx: (partial: Partial<PlayerState['djFx']>) => void;
   resetDjFx: () => void;
 

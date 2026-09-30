@@ -15,7 +15,7 @@ import Album from './pages/Album';
 import TopArtists from './pages/TopArtists';
 import Events from './pages/Events';
 import Following from './pages/Following';
-import Friends from './pages/Friends';
+import Friends, { FriendsSectionSwitch } from './pages/Friends';
 import FriendProfile from './pages/FriendProfile';
 import Profile from './pages/Profile';
 import ArtistStudio from './pages/ArtistStudio';
@@ -334,7 +334,7 @@ function AppShell() {
       {isLyricsOpen ? (
         <ImmersiveLyrics />
       ) : (
-        <main className="main-content">
+        <main className={`main-content ${location.pathname === '/friends' ? 'main-content--friends' : ''}`}>
           <header className="main-header" style={{ justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', flex: 1 }}>
               {/* Back/forward */}
@@ -361,7 +361,9 @@ function AppShell() {
                 </button>
               </div>
 
-              {location.pathname !== '/search' && <GlobalSearch onFocusChange={setIsHeaderSearchFocused} />}
+              {isMobile && location.pathname === '/friends'
+                ? <FriendsSectionSwitch compact />
+                : location.pathname !== '/search' && <GlobalSearch onFocusChange={setIsHeaderSearchFocused} />}
             </div>
 
             {/* Right side header actions */}

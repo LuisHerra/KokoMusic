@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { usePlayerStore, type CrossfadeCurve } from '../../store/playerStore';
+import { usePlayerStore, type CrossfadeCurve, NEUTRAL_DJ_FX, isNeutralFx, type DjFxSnapshot } from '../../store/playerStore';
 import { useRef } from 'react';
-import { getLyrics, type Track } from '../../lib/api';
+import { getLyrics, getStreamUrl, type Track } from '../../lib/api';
+import MixPointEditor, { fmtTime } from './MixPointEditor';
 import { parseSyncedLyrics, detectLyricSections, type LyricSection, type LyricsLine } from '../../lib/lyricsParser';
-import { startCrossfadePreview, type CrossfadePreviewHandle } from '../../lib/djTransition';
+import { startCrossfadePreview, computeAutoMix, type CrossfadePreviewHandle } from '../../lib/djTransition';
 
 interface DjMixerModalProps {
   fromTrack: Track;
@@ -12,7 +13,10 @@ interface DjMixerModalProps {
 }
 
 export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerModalProps) {
-  const { transitions, setTransition, removeTransition } = usePlayerStore();
+  const { transitions, setTransition, removeTransition, djFx, isDjModeActive, setDjFx, cuesByTrack } = usePlayerStore();
+  const currentId = usePlayerStore((st) => st.currentTrack?.id);
+  const liveProgress = usePlayerStore((st) => st.progress);
+  const liveDuration = usePlayerStore((st) => st.duration);
   const existingRule = transitions[`${fromTrack.id}-${toTrack.id}`];
 
   const [loading, setLoading] = useState(true);
@@ -29,9 +33,77 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
   const [fadeOutDuration, setFadeOutDuration] = useState<number>(existingRule?.fadeOutDuration ?? 2);
   const [fadeInPercent, setFadeInPercent] = useState<number>(existingRule?.fadeInPercent ?? 0);
   const [fadeInDuration, setFadeInDuration] = useState<number>(existingRule?.fadeInDuration ?? 2);
+  // Efectos de la mezcla: los guardados, o los que suenan ahora en Modo DJ
+  const [fx, setFx] = useState<DjFxSnapshot>(existingRule?.fx ?? (isDjModeActive ? djFx : NEUTRAL_DJ_FX));
+  const updateFx = (partial: Partial<DjFxSnapshot>) => {
+    const next = { ...fx, ...partial };
+    setFx(next);
+    // En Modo DJ se oye al momento sobre lo que suena
+    if (isDjModeActive) setDjFx(partial);
+  };
 
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
   const previewRef = useRef<CrossfadePreviewHandle | null>(null);
+
+  // La duración de Track llega en ms o en s según el origen; si la pista es
+  // la que suena, la del reproductor es la fiable. Si no se sabe, se mide.
+  const guessLen = (t: Track) => {
+    if (t.id === currentId && liveDuration > 0) return liveDuration;
+    if (!t.duration) return 0;
+    return t.duration > 10000 ? t.duration / 1000 : t.duration;
+  };
+  const [lenA, setLenA] = useState(() => guessLen(fromTrack));
+  const [lenB, setLenB] = useState(() => guessLen(toTrack));
+  useEffect(() => {
+    const probes: HTMLAudioElement[] = [];
+    const probe = (t: Track, setLen: (n: number) => void) => {
+      const a = new Audio();
+      a.preload = 'metadata';
+      a.onloadedmetadata = () => { if (isFinite(a.duration) && a.duration > 0) setLen(a.duration); a.src = ''; };
+      a.src = getStreamUrl(t.id);
+      probes.push(a);
+    };
+    if (!lenA) probe(fromTrack, setLenA);
+    if (!lenB) probe(toTrack, setLenB);
+    return () => probes.forEach((a) => { a.onloadedmetadata = null; a.src = ''; });
+  }, [fromTrack.id, toTrack.id]);
+  const lengthA = lenA || 300;
+  const lengthB = lenB || 300;
+
+  const auditionRef = useRef<{ audio: HTMLAudioElement; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const [auditioning, setAuditioning] = useState<'out' | 'in' | null>(null);
+  const stopAudition = () => {
+    if (auditionRef.current) {
+      clearTimeout(auditionRef.current.timer);
+      auditionRef.current.audio.pause();
+      auditionRef.current.audio.src = '';
+      auditionRef.current = null;
+    }
+    setAuditioning(null);
+  };
+  const audition = (side: 'out' | 'in') => {
+    const same = auditioning === side;
+    stopAudition();
+    stopPreview();
+    if (same) return;
+    usePlayerStore.getState().setIsPlaying(false);
+    const t = side === 'out' ? fromTrack : toTrack;
+    // Salida: se oye un poco antes para notar el corte; entrada: desde el punto
+    const start = side === 'out' ? Math.max(0, fromTime - 4) : toTime;
+    const secs = side === 'out' ? 4 + Math.min(duration, 6) : 7;
+    const a = new Audio(getStreamUrl(t.id));
+    a.playbackRate = fx.slowedRate;
+    a.preservesPitch = Math.abs(fx.slowedRate - 1) < 0.01;
+    a.onloadedmetadata = () => {
+      if (isFinite(a.duration) && a.duration > 0) (side === 'out' ? setLenA : setLenB)(a.duration);
+      a.currentTime = start;
+      a.play().catch(() => stopAudition());
+    };
+    auditionRef.current = { audio: a, timer: setTimeout(stopAudition, (secs / fx.slowedRate) * 1000 + 1500) };
+    setAuditioning(side);
+  };
+  useEffect(() => () => stopAudition(), []);
 
   const stopPreview = () => {
     previewRef.current?.stop();
@@ -51,9 +123,10 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
 
     // Pause main player if it was playing to avoid cacophony
     usePlayerStore.getState().setIsPlaying(false);
+    stopAudition();
 
     setIsPreviewing(true);
-    previewRef.current = startCrossfadePreview(fromTrack, toTrack, { fromTime, toTime, curve, duration }, () => {
+    previewRef.current = startCrossfadePreview(fromTrack, toTrack, { fromTime, toTime, curve, duration, fx }, () => {
       previewRef.current = null;
       setIsPreviewing(false);
     });
@@ -97,18 +170,21 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
     load();
   }, [fromTrack.id, toTrack.id, existingRule]);
 
+  const fadeOverflows = fromTime + duration > lengthA + 0.05;
   const handleSave = () => {
+    const safeFrom = lenA ? Math.max(0, Math.min(fromTime, lenA - duration)) : fromTime;
     setTransition({
       fromTrackId: fromTrack.id,
       toTrackId: toTrack.id,
-      fromTime,
-      toTime,
+      fromTime: Math.round(safeFrom * 10) / 10,
+      toTime: Math.round(Math.min(toTime, Math.max(0, lengthB - 1)) * 10) / 10,
       curve,
       duration,
       fadeOutPercent: fadeOutPercent > 0 ? fadeOutPercent : undefined,
-      fadeOutDuration: fadeOutPercent > 0 ? fadeOutDuration : undefined,
+      fadeOutDuration: fadeOutPercent > 0 ? Math.min(fadeOutDuration, duration) : undefined,
       fadeInPercent: fadeInPercent > 0 ? fadeInPercent : undefined,
-      fadeInDuration: fadeInPercent > 0 ? fadeInDuration : undefined,
+      fadeInDuration: fadeInPercent > 0 ? Math.min(fadeInDuration, duration) : undefined,
+      fx: isNeutralFx(fx) ? undefined : fx,
     });
     onClose();
   };
@@ -130,23 +206,26 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Mezcla de DJ (Transición)</h2>
           <button 
-            onClick={() => {
-               if (fromSections.length > 0) setFromTime(fromSections[fromSections.length - 1].startTime);
-               else setFromTime((fromTrack.duration || 180000) / 1000 - 10);
-               
-               if (toSections.length > 0) setToTime(toSections[0].startTime);
-               else setToTime(0);
-               
-               setCurve('s-curve');
-               setDuration(8);
+            onClick={async () => {
+               setAutoBusy(true);
+               try {
+                 const r = await computeAutoMix({ ...fromTrack, duration: lengthA * 1000 }, toTrack);
+                 setFromTime(Math.round(r.fromTime * 10) / 10);
+                 setToTime(Math.round(r.toTime * 10) / 10);
+                 setCurve(r.curve);
+                 setDuration(r.duration);
+               } finally {
+                 setAutoBusy(false);
+               }
             }}
+            disabled={autoBusy}
             style={{ padding: '8px 16px', borderRadius: 'var(--radius-full)', background: 'linear-gradient(135deg, var(--accent), var(--accent-bright))', color: '#000', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(29, 185, 84, 0.3)' }}
             title="Ajustar tiempos automáticamente basándose en las secciones detectadas"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M21 3H3v18h18V3zm-10 8H9V9H7v2H5v2h2v2h2v-2h2v-2zM15 15h-2v2h-2v-2H9v-2h2v-2h2v2h2v2z"/>
             </svg>
-            Auto-Mix Perfecto
+            {autoBusy ? 'Calculando…' : 'Auto-Mix Perfecto'}
           </button>
         </div>
 
@@ -154,124 +233,45 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
           <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>Analizando secciones musicales...</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {/* Track 1 */}
-            <div>
-               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                  <img src={fromTrack.cover} alt="" style={{ width: 40, height: 40, borderRadius: 4 }} />
-                  <div>
-                     <div style={{ fontSize: 14, fontWeight: 600 }}>{fromTrack.title}</div>
-                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Punto de salida (Fade Out)</div>
-                  </div>
-               </div>
-               
-               {fromSections.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                     {fromSections.map((sec, i) => (
-                        <button 
-                          key={i} 
-                          onClick={() => setFromTime(sec.startTime)}
-                          style={{ 
-                             background: fromTime === sec.startTime ? 'var(--accent)' : 'rgba(255,255,255,0.1)', 
-                             color: fromTime === sec.startTime ? '#000' : '#fff',
-                             border: 'none', borderRadius: 16, padding: '6px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 600
-                          }}
-                        >
-                           {sec.type} ({formatSecs(sec.startTime)})
-                        </button>
-                     ))}
-                  </div>
-               )}
-               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-                  <input type="range" min="0" max={fromTrack.duration ? fromTrack.duration / 1000 : 300} step="0.1" value={fromTime} onChange={e => setFromTime(Number(e.target.value))} style={{ flex: 1 }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, width: 48, textAlign: 'right' }}>{formatSecs(fromTime)}</span>
-               </div>
-               
-               {fromLyrics.length > 0 && (
-                  <details style={{ marginTop: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8, overflow: 'hidden' }}>
-                     <summary style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none', userSelect: 'none' }}>Ver todas las letras para seleccionar con precisión</summary>
-                     <div style={{ maxHeight: 150, overflowY: 'auto', padding: '0 8px 8px 8px' }}>
-                        {fromLyrics.map((line, i) => (
-                           <div 
-                              key={i} 
-                              onClick={() => setFromTime(line.time)}
-                              style={{ 
-                                 padding: '6px 8px', cursor: 'pointer', borderRadius: 4, fontSize: 13,
-                                 background: Math.abs(fromTime - line.time) < 0.2 ? 'var(--accent)' : 'transparent',
-                                 color: Math.abs(fromTime - line.time) < 0.2 ? '#000' : 'var(--text-secondary)',
-                                 fontWeight: Math.abs(fromTime - line.time) < 0.2 ? 600 : 400
-                              }}
-                           >
-                              <span style={{ opacity: 0.6, marginRight: 12, display: 'inline-block', width: 36 }}>{formatSecs(line.time)}</span>
-                              {line.text}
-                           </div>
-                        ))}
-                     </div>
-                  </details>
-               )}
+            <MixPointEditor
+              side="out"
+              title={fromTrack.title}
+              cover={fromTrack.cover}
+              value={fromTime}
+              onChange={setFromTime}
+              length={lengthA}
+              fadeLength={duration}
+              sections={fromSections}
+              lyrics={fromLyrics}
+              cues={cuesByTrack[fromTrack.id]?.hotCues ?? []}
+              livePosition={currentId === fromTrack.id ? liveProgress : null}
+              onAudition={() => audition('out')}
+              auditioning={auditioning === 'out'}
+            />
+
+            {/* Resumen de la transición */}
+            <div className="mix-summary">
+              <div><strong>{fmtTime(fromTime)}</strong> {fromTrack.title} empieza a desaparecer</div>
+              <div className="mix-summary-arrow">⇣ fundido de {duration}s{fx && Math.abs(fx.slowedRate - 1) >= 0.005 ? ` · ${fx.slowedRate.toFixed(2)}x` : ''}</div>
+              <div><strong>{fmtTime(toTime)}</strong> {toTrack.title} entra y queda sola en <strong>{fmtTime(toTime + duration)}</strong></div>
+              {fadeOverflows && <div className="mix-summary-warn">Al guardar, la salida se adelantará a {fmtTime(Math.max(0, lengthA - duration))} para que el fundido quepa.</div>}
             </div>
 
-            {/* Icono Conector */}
-            <div style={{ display: 'flex', justifyContent: 'center', opacity: 0.5 }}>
-               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M16 1l-1.5 1.5 5 5H2v2h17.5l-5 5L16 16l8-7.5L16 1zM8 23l1.5-1.5-5-5H22v-2H4.5l5-5L8 8l-8 7.5L8 23z"/>
-               </svg>
-            </div>
-
-            {/* Track 2 */}
-            <div>
-               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                  <img src={toTrack.cover} alt="" style={{ width: 40, height: 40, borderRadius: 4 }} />
-                  <div>
-                     <div style={{ fontSize: 14, fontWeight: 600 }}>{toTrack.title}</div>
-                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Punto de entrada (Fade In)</div>
-                  </div>
-               </div>
-               
-               {toSections.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                     {toSections.map((sec, i) => (
-                        <button 
-                          key={i} 
-                          onClick={() => setToTime(sec.startTime)}
-                          style={{ 
-                             background: toTime === sec.startTime ? 'var(--accent)' : 'rgba(255,255,255,0.1)', 
-                             color: toTime === sec.startTime ? '#000' : '#fff',
-                             border: 'none', borderRadius: 16, padding: '6px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 600
-                          }}
-                        >
-                           {sec.type} ({formatSecs(sec.startTime)})
-                        </button>
-                     ))}
-                  </div>
-               )}
-               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-                  <input type="range" min="0" max={toTrack.duration ? toTrack.duration / 1000 : 300} step="0.1" value={toTime} onChange={e => setToTime(Number(e.target.value))} style={{ flex: 1 }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, width: 48, textAlign: 'right' }}>{formatSecs(toTime)}</span>
-               </div>
-               
-               {toLyrics.length > 0 && (
-                  <details style={{ marginTop: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8, overflow: 'hidden' }}>
-                     <summary style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none', userSelect: 'none' }}>Ver todas las letras para seleccionar con precisión</summary>
-                     <div style={{ maxHeight: 150, overflowY: 'auto', padding: '0 8px 8px 8px' }}>
-                        {toLyrics.map((line, i) => (
-                           <div 
-                              key={i} 
-                              onClick={() => setToTime(line.time)}
-                              style={{ 
-                                 padding: '6px 8px', cursor: 'pointer', borderRadius: 4, fontSize: 13,
-                                 background: Math.abs(toTime - line.time) < 0.2 ? 'var(--accent)' : 'transparent',
-                                 color: Math.abs(toTime - line.time) < 0.2 ? '#000' : 'var(--text-secondary)',
-                                 fontWeight: Math.abs(toTime - line.time) < 0.2 ? 600 : 400
-                              }}
-                           >
-                              <span style={{ opacity: 0.6, marginRight: 12, display: 'inline-block', width: 36 }}>{formatSecs(line.time)}</span>
-                              {line.text}
-                           </div>
-                        ))}
-                     </div>
-                  </details>
-               )}
-            </div>
+            <MixPointEditor
+              side="in"
+              title={toTrack.title}
+              cover={toTrack.cover}
+              value={toTime}
+              onChange={setToTime}
+              length={lengthB}
+              fadeLength={duration}
+              sections={toSections}
+              lyrics={toLyrics}
+              cues={cuesByTrack[toTrack.id]?.hotCues ?? []}
+              livePosition={currentId === toTrack.id ? liveProgress : null}
+              onAudition={() => audition('in')}
+              auditioning={auditioning === 'in'}
+            />
 
             {/* Controles de Curva */}
             <div style={{ background: 'rgba(255,255,255,0.05)', padding: 16, borderRadius: 12, marginTop: 8 }}>
@@ -317,9 +317,9 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
                      <input type="range" min="0" max="80" step="5" value={fadeOutPercent}
                        onChange={e => setFadeOutPercent(Number(e.target.value))} style={{ width: '100%', marginBottom: 8 }} />
                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                       <span>Durante</span><span style={{ fontWeight: 700, color: '#fff' }}>{fadeOutDuration}s</span>
+                       <span>Durante</span><span style={{ fontWeight: 700, color: '#fff' }}>{Math.min(fadeOutDuration, duration)}s</span>
                      </div>
-                     <input type="range" min="0.5" max="10" step="0.5" value={fadeOutDuration}
+                     <input type="range" min="0.5" max={Math.max(0.5, duration)} step="0.5" value={Math.min(fadeOutDuration, duration)}
                        onChange={e => setFadeOutDuration(Number(e.target.value))} style={{ width: '100%' }}
                        disabled={fadeOutPercent === 0} />
                    </div>
@@ -333,11 +333,39 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose }: DjMixerMod
                      <input type="range" min="0" max="80" step="5" value={fadeInPercent}
                        onChange={e => setFadeInPercent(Number(e.target.value))} style={{ width: '100%', marginBottom: 8 }} />
                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                       <span>Durante</span><span style={{ fontWeight: 700, color: '#fff' }}>{fadeInDuration}s</span>
+                       <span>Durante</span><span style={{ fontWeight: 700, color: '#fff' }}>{Math.min(fadeInDuration, duration)}s</span>
                      </div>
-                     <input type="range" min="0.5" max="10" step="0.5" value={fadeInDuration}
+                     <input type="range" min="0.5" max={Math.max(0.5, duration)} step="0.5" value={Math.min(fadeInDuration, duration)}
                        onChange={e => setFadeInDuration(Number(e.target.value))} style={{ width: '100%' }}
                        disabled={fadeInPercent === 0} />
+                   </div>
+                 </div>
+               </div>
+
+               {/* Efectos guardados con la mezcla */}
+               <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 16, marginTop: 16 }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Efectos de la mezcla</span>
+                   {!isNeutralFx(fx) && (
+                     <button onClick={() => updateFx(NEUTRAL_DJ_FX)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer' }}>Quitar efectos</button>
+                   )}
+                 </div>
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '10px 12px' }}>
+                   {[
+                     { key: 'slowedRate' as const, label: 'Slowed', min: 0.7, max: 1.15, step: 0.01, fmt: (v: number) => `${v.toFixed(2)}x` },
+                     { key: 'reverbAmount' as const, label: 'Reverb / Eco', min: 0, max: 1, step: 0.01, fmt: (v: number) => `${Math.round(v * 100)}%` },
+                     { key: 'filterCutoff' as const, label: 'Filtro', min: 200, max: 20000, step: 100, fmt: (v: number) => (v >= 20000 ? 'Off' : `${(v / 1000).toFixed(1)}kHz`) },
+                   ].map(c => (
+                     <div key={c.key}>
+                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                         <span>{c.label}</span><span style={{ fontWeight: 700, color: '#fff' }}>{c.fmt(fx[c.key])}</span>
+                       </div>
+                       <input type="range" min={c.min} max={c.max} step={c.step} value={fx[c.key]}
+                         onChange={e => updateFx({ [c.key]: Number(e.target.value) })} style={{ width: '100%' }} />
+                     </div>
+                   ))}
+                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                     Se guardan con la mezcla y se aplican cada vez que suene. {isDjModeActive ? 'Parten de los efectos que tienes puestos ahora.' : ''}
                    </div>
                  </div>
                </div>

@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, registerSeekHandler, sendRemoteCommandIfConnected } from '../store/playerStore';
+import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, registerSeekHandler, consumePendingStart, isNeutralFx, NEUTRAL_DJ_FX, type DjFxSnapshot, sendRemoteCommandIfConnected } from '../store/playerStore';
 import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
@@ -326,6 +326,10 @@ export function setAudioPlaybackRate(rate: number) {
 }
 
 let audioElementsUnlocked = false;
+
+// Fuera de Modo DJ, si una mezcla guardada aplicó sus efectos, hay que
+// quitarlos en cuanto suene una pista que no forma parte de ninguna mezcla.
+let mixFxAppliedOutsideDj = false;
 
 /**
  * Unlocks the Web Audio API AudioContext and HTML5 Audio on mobile browsers.
@@ -901,6 +905,17 @@ export function useAudioPlayer() {
       ? djState.transitions[`${prevTrackId}-${currentTrack.id}`]
       : undefined;
 
+    // Efectos guardados con la mezcla: los de la transición que nos trajo
+    // aquí, o los de la que sale de esta pista hacia la siguiente de la cola.
+    const mixAllowed = djState.isDjModeActive ? djState.djAutoTransition : djState.autoApplySavedTransitions;
+    const nextInQueue = djState.queue[djState.queueIndex + 1];
+    const outRule = nextInQueue ? djState.transitions[`${currentTrack.id}-${nextInQueue.id}`] : undefined;
+    const mixFx: DjFxSnapshot | undefined = mixAllowed ? (rule?.fx ?? outRule?.fx) : undefined;
+    if (djState.isDjModeActive && mixFx && !isNeutralFx(mixFx)) {
+      // DjMode.tsx aplica djFx al audio activo en cuanto cambia
+      djState.setDjFx(mixFx);
+    }
+
     // FIX: Always stop prevAudio immediately when changing track — even if
     // crossfade was triggered. The crossfade path (shouldCrossfade in onTimeUpdate)
     // can leave prevAudio running. We stop it here unconditionally unless there
@@ -1012,8 +1027,11 @@ export function useAudioPlayer() {
           nextAudio.currentTime = savedProg;
         }
 
+        const pendingStart = consumePendingStart();
         if (shouldPlay) {
-          if (rule) {
+          if (pendingStart) {
+            nextAudio.currentTime = pendingStart;
+          } else if (rule) {
             nextAudio.currentTime = rule.toTime;
           } else if (savedProg > 0) {
             nextAudio.currentTime = savedProg;
@@ -1025,6 +1043,17 @@ export function useAudioPlayer() {
               audioCtx.resume();
             }
             applyEqBands(nextAudio, currentEqBands);
+            if (!usePlayerStore.getState().isDjModeActive) {
+              if (mixFx && !isNeutralFx(mixFx)) {
+                setDjFxParams(nextAudio, mixFx);
+                setAudioPlaybackRate(mixFx.slowedRate);
+                mixFxAppliedOutsideDj = true;
+              } else if (mixFxAppliedOutsideDj) {
+                setDjFxParams(nextAudio, NEUTRAL_DJ_FX);
+                setAudioPlaybackRate(1);
+                mixFxAppliedOutsideDj = false;
+              }
+            }
           } catch (e) {
             logToServer('WARN', `[useAudioPlayer] playWhenReady: error resuming ctx or applying EQ`, e);
           }

@@ -1,0 +1,85 @@
+.mpe { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 14px; padding: 14px; }
+.mpe-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.mpe-head img, .mpe-cover-ph { width: 42px; height: 42px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: rgba(255, 255, 255, 0.08); }
+.mpe-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mpe-sub { font-size: 11px; color: var(--text-muted); }
+.mpe-audition {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.mpe-audition--on { background: var(--accent); color: #000; border-color: transparent; }
+
+/* Línea de tiempo */
+.mpe-bar {
+  position: relative; height: 38px; border-radius: 8px; cursor: pointer; touch-action: none;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.07) 0 2px, transparent 2px 5px), rgba(255, 255, 255, 0.04);
+  outline: none;
+}
+.mpe-bar:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.mpe-played, .mpe-skipped { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 8px 0 0 8px; pointer-events: none; }
+.mpe-played { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.mpe-skipped { background: rgba(0, 0, 0, 0.45); }
+.mpe-fade {
+  position: absolute; top: 0; bottom: 0; pointer-events: none; min-width: 3px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, transparent), color-mix(in srgb, var(--accent) 15%, transparent));
+}
+.mpe--in .mpe-fade { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 15%, transparent), color-mix(in srgb, var(--accent) 70%, transparent)); }
+.mpe-fade--bad { background: repeating-linear-gradient(45deg, rgba(255, 90, 90, 0.55) 0 6px, rgba(255, 90, 90, 0.2) 6px 12px) !important; }
+.mpe-sec { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255, 255, 255, 0.28); pointer-events: none; }
+.mpe-sec--chorus { background: rgba(255, 200, 0, 0.7); }
+.mpe-cue {
+  position: absolute; top: -8px; width: 16px; height: 16px; margin-left: -8px; border-radius: 4px;
+  background: #ff7a00; color: #000; font-size: 10px; font-weight: 900; line-height: 16px; text-align: center; pointer-events: none;
+}
+.mpe-live { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; background: #ff4d6d; box-shadow: 0 0 6px #ff4d6d; pointer-events: none; }
+.mpe-thumb {
+  position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; border-radius: 2px;
+  background: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent), 0 2px 8px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.mpe-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+/* Ajuste fino */
+.mpe-fine { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
+.mpe-fine button {
+  flex: 1; min-width: 0; padding: 8px 0; border-radius: 8px; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.07); color: #fff; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.mpe-fine button:active { background: rgba(255, 255, 255, 0.16); }
+.mpe-time {
+  flex: 0 0 84px; text-align: center; padding: 7px 4px; border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.14); color: #fff;
+  font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; outline: none;
+}
+.mpe-time:focus { border-color: var(--accent); }
+.mpe-warn { margin: 8px 0 0; font-size: 12px; color: #ff8a8a; }
+
+.mpe-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.mpe-chip {
+  padding: 5px 10px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 12px; font-weight: 600;
+}
+.mpe-chip.active { background: var(--accent); color: #000; }
+.mpe-chip--cue { background: rgba(255, 122, 0, 0.18); color: #ffb366; }
+.mpe-chip--cue.active { background: #ff7a00; color: #000; }
+.mpe-chip--live { background: rgba(255, 77, 109, 0.18); color: #ff8fa3; }
+
+.mpe-lyrics { margin-top: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; overflow: hidden; }
+.mpe-lyrics summary { padding: 8px 12px; font-size: 12px; font-weight: 700; cursor: pointer; user-select: none; }
+.mpe-lyrics-list { max-height: 160px; overflow-y: auto; padding: 0 6px 6px; display: flex; flex-direction: column; }
+.mpe-lyrics-list button {
+  text-align: left; background: none; border: none; color: var(--text-secondary); cursor: pointer;
+  padding: 6px 8px; border-radius: 6px; font-size: 13px;
+}
+.mpe-lyrics-list button span { display: inline-block; width: 40px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.mpe-lyrics-list button.active { background: var(--accent); color: #000; font-weight: 700; }
+
+/* Resumen de la transición (entre los dos editores) */
+.mix-summary {
+  display: flex; flex-direction: column; gap: 4px; align-items: center; text-align: center;
+  font-size: 12px; color: var(--text-secondary); padding: 2px 8px;
+}
+.mix-summary strong { color: #fff; font-variant-numeric: tabular-nums; }
+.mix-summary-arrow { color: var(--accent); font-weight: 800; }
+.mix-summary-warn { color: #ff8a8a; margin-top: 2px; }

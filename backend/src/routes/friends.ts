@@ -1125,6 +1125,7 @@ async function getDailyDropStreak(userId: string): Promise<number> {
 router.post('/daily-drop', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { userId, trackId, title, artist, cover, caption } = req.body;
+  const startS = Math.max(0, Math.floor(Number(req.body.startS) || 0));
   if (!userId || !trackId || !title || !artist) {
     return err(res, 'userId, trackId, title y artist requeridos', 400);
   }
@@ -1152,6 +1153,7 @@ router.post('/daily-drop', async (req, res) => {
           artist,
           cover,
           caption: caption || '',
+          start_s: startS,
         })
         .eq('id', existing.id)
         .select()
@@ -1170,6 +1172,7 @@ router.post('/daily-drop', async (req, res) => {
           artist,
           cover,
           caption: caption || '',
+          start_s: startS,
           drop_date: todayStr,
         })
         .select()

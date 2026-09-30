@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getMessages, sendMessage, getProfileNames, cleanName, type Friendship, type KokoMessage, resolveImageUrl, type Track } from '../../lib/api';
 import { usePlayerStore } from '../../store/playerStore';
+import './ChatPanel.css';
 
 interface Props {
   userId: string;
@@ -22,6 +23,7 @@ function Avatar({ src, name, size = 36 }: { src?: string; name: string; size?: n
 export default function ChatPanel({ userId, friend, onClose }: Props) {
   const [text, setText] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const qc = useQueryClient();
 
   const { data } = useQuery({
@@ -34,6 +36,7 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
     mutationFn: () => sendMessage(userId, friend.id, text.trim()),
     onSuccess: () => {
       setText('');
+      if (inputRef.current) inputRef.current.style.height = 'auto';
       qc.invalidateQueries({ queryKey: ['messages', userId, friend.id] });
       qc.invalidateQueries({ queryKey: ['friends', userId] });
     },
@@ -41,9 +44,42 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
 
   const messages: KokoMessage[] = data?.messages ?? [];
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const firstScroll = useRef(true);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Al abrir, salto directo al último mensaje; después, desplazamiento suave
+    bottomRef.current?.scrollIntoView({ behavior: firstScroll.current ? 'auto' : 'smooth', block: 'end' });
+    if (messages.length) firstScroll.current = false;
   }, [messages.length]);
+
+  // Móvil: el chat ocupa la pantalla y se ajusta al teclado usando el
+  // viewport visual (el layout viewport no encoge al abrir el teclado).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = panelRef.current;
+    if (!vv || !el) return;
+    const sync = () => {
+      el.style.setProperty('--chat-h', `${vv.height}px`);
+      el.style.setProperty('--chat-top', `${vv.offsetTop}px`);
+      bottomRef.current?.scrollIntoView({ block: 'end' });
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+    };
+  }, []);
+
+  // Móvil: bloquea el scroll de la página de detrás mientras el chat está abierto
+  useEffect(() => {
+    if (!window.matchMedia('(max-width: 768px)').matches) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && text.trim()) {
@@ -57,19 +93,22 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
   const names = getProfileNames(friend, 'Amigo Koko');
 
   return (
-    <div style={{ width: 340, display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', borderLeft: '1px solid rgba(255,255,255,0.07)', height: 'calc(100vh - 200px)', position: 'sticky', top: 0, borderRadius: '0 16px 16px 0', overflow: 'hidden', flexShrink: 0 }}>
+    <div ref={panelRef} className="chat-panel" role="dialog" aria-label={`Chat con ${names.primary}`}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(0,0,0,0.2)' }}>
+      <div className="chat-header">
+        <button onClick={onClose} className="chat-back" aria-label="Volver">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 16.59 10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg>
+        </button>
         <Avatar src={friend.avatar_url} name={cleanName(friend.display_name || friend.username || 'Amigo Koko')} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names.primary}</div>
           {names.secondary && <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{names.secondary}</div>}
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>✕</button>
+        <button onClick={onClose} className="chat-close" aria-label="Cerrar chat">✕</button>
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="chat-messages">
         {messages.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginTop: 'auto', paddingBottom: 20 }}>
             <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
@@ -94,7 +133,7 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
           return (
             <div key={m.id} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', gap: 6, alignItems: 'flex-end' }}>
               {!isMe && <Avatar src={friend.avatar_url} name={cleanName(friend.display_name || friend.username || 'Amigo Koko')} size={24} />}
-              <div style={{ maxWidth: '82%' }}>
+              <div className="chat-bubble-wrap">
                 {isSongShare && songData ? (
                   <div style={{
                     background: isMe ? 'var(--accent-glow)' : 'rgba(255,255,255,0.08)',
@@ -159,19 +198,27 @@ export default function ChatPanel({ userId, friend, onClose }: Props) {
       </div>
 
       {/* Input */}
-      <div style={{ padding: '10px 14px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+      <div className="chat-input-bar">
         <textarea
+          ref={inputRef}
+          className="chat-input"
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={e => {
+            setText(e.target.value);
+            // Crece con el texto hasta un máximo
+            e.target.style.height = 'auto';
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+          }}
           onKeyDown={handleKey}
           placeholder="Escribe un mensaje..."
           rows={1}
-          style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#fff', fontSize: 13, padding: '9px 12px', resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.4, maxHeight: 100, overflowY: 'auto' }}
+          enterKeyHint="send"
         />
         <button
           onClick={() => text.trim() && sendMut.mutate()}
           disabled={!text.trim() || sendMut.isPending}
-          style={{ background: text.trim() ? 'var(--accent)' : 'rgba(255,255,255,0.1)', color: text.trim() ? '#000' : 'var(--text-muted)', border: 'none', borderRadius: 12, padding: '9px 14px', fontWeight: 700, fontSize: 13, cursor: text.trim() ? 'pointer' : 'default', transition: 'all 0.2s', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          className={`chat-send ${text.trim() ? 'chat-send--on' : ''}`}
+          aria-label="Enviar"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
