@@ -6,6 +6,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { getMyProfile } from '../lib/api';
 import { IconKaraoke } from './Icons/NavIcons';
 
+import { ANDROID_APK_URL, canOfferAndroidApp } from '../lib/androidApp';
 function IconHome() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -226,6 +227,15 @@ export default function BottomNav() {
               </div>
               <span>Mi Perfil</span>
             </button>
+
+            {canOfferAndroidApp() && (
+              <a href={ANDROID_APK_URL} className="bottom-sheet-item" onClick={() => setIsOpen(false)} rel="noopener" style={{ textDecoration: 'none' }}>
+                <div className="bottom-sheet-icon-wrap">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 7v7M9 11l3 3 3-3M10 18h4" /></svg>
+                </div>
+                <span>App Android</span>
+              </a>
+            )}
           </div>
         </div>
       </div>

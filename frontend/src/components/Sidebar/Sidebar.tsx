@@ -9,6 +9,7 @@ import { useResizableSidebar } from '../../hooks/useResizable';
 import kokoLogo from '../../assets/koko-logo.png';
 import { IconKaraoke } from '../Icons/NavIcons';
 
+import { ANDROID_APK_URL, canOfferAndroidApp } from '../../lib/androidApp';
 function IconHome() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -379,6 +380,14 @@ export default function Sidebar() {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
               {!isCollapsed && "Eventos"}
             </NavLink>
+          </li>
+        )}
+        {canOfferAndroidApp() && (
+          <li className="sidebar-nav-item">
+            <a href={ANDROID_APK_URL} rel="noopener" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Descargar app Android" : "Descarga la APK para Android"}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 7v7M9 11l3 3 3-3M10 18h4" /></svg>
+              {!isCollapsed && "App Android"}
+            </a>
           </li>
         )}
       </ul>

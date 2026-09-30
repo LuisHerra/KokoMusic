@@ -11,6 +11,8 @@ jobs:
   build-apk:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # para publicar la APK en la release "android-latest"
 
     steps:
       - name: Checkout Repository
@@ -38,3 +40,15 @@ jobs:
         with:
           name: KokoMusic-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      # La web enlaza a releases/download/android-latest/KokoMusic.apk
+      # (frontend/src/lib/androidApp.ts): se recrea la release en cada push a
+      # master para que ese enlace siempre sirva la última APK.
+      - name: Publish APK to "android-latest" release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk KokoMusic.apk
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest KokoMusic.apk             --target "$GITHUB_SHA"             --title "KokoMusic para Android (última versión)"             --notes "APK generada automáticamente desde ${GITHUB_SHA::7}. Descárgala e instálala en tu Android (permite instalar apps de origen desconocido)."
