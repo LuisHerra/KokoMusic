@@ -10,24 +10,28 @@ import { searchTracks } from '../services/metadataService';
 
 const router = Router();
 
+interface ShazamResult {
+  ok: boolean;
+  title?: string;
+  artist?: string;
+  cover?: string;
+  reason?: 'no_key' | 'quota' | 'upstream' | 'no_match';
+}
+
 /**
- * Identify a song via the real Shazam API on RapidAPI.
- * Accepts raw Base64 audio (webm) and returns matched title/artist.
+ * Identify a song via the Shazam API on RapidAPI.
+ * /songs/detect wants the raw PCM (44100 Hz, mono, 16-bit LE) as a base64 string
+ * in a text/plain body, max ~500KB.
  */
-async function identifyViaShazam(base64Audio: string): Promise<{ title: string; artist: string } | null> {
+async function identifyViaShazam(base64Audio: string): Promise<ShazamResult> {
   const apiKey = process.env.RAPIDAPI_KEY;
   if (!apiKey) {
-    console.warn('[Eureka] RAPIDAPI_KEY not set in .env');
-    return null;
+    console.warn('[Eureka] RAPIDAPI_KEY not set');
+    return { ok: false, reason: 'no_key' };
   }
 
   try {
-    // Shazam /songs/detect expects raw binary audio in body
-    // Convert base64 → Buffer → send as raw bytes
-    const audioBuffer = Buffer.from(base64Audio, 'base64');
-
-    console.log(`[Eureka] Sending ${audioBuffer.length} bytes to Shazam API...`);
-
+    console.log(`[Eureka] Sending ${base64Audio.length} base64 chars to Shazam API...`);
     const res = await fetch('https://shazam.p.rapidapi.com/songs/detect', {
       method: 'POST',
       headers: {
@@ -35,32 +39,33 @@ async function identifyViaShazam(base64Audio: string): Promise<{ title: string; 
         'X-RapidAPI-Key': apiKey,
         'X-RapidAPI-Host': 'shazam.p.rapidapi.com',
       },
-      body: base64Audio, // Shazam detect endpoint accepts base64 string directly
+      body: base64Audio,
+      signal: AbortSignal.timeout(20_000),
     });
 
     if (!res.ok) {
       const errText = await res.text();
       console.warn(`[Eureka] Shazam API HTTP error: ${res.status} — ${errText.slice(0, 200)}`);
-      return null;
+      // 429 = cuota mensual agotada; 401/403 = clave o suscripción inválida
+      return { ok: false, reason: res.status === 429 || res.status === 403 || res.status === 401 ? 'quota' : 'upstream' };
     }
 
     const data = await res.json() as any;
     console.log('[Eureka] Shazam API response track:', data?.track?.title ?? 'no match');
-
-    if (data?.track) {
-      return {
-        title: data.track.title,
-        artist: data.track.subtitle, // Shazam uses "subtitle" for artist
-      };
-    }
-
-    // No match found
-    return null;
+    if (!data?.track) return { ok: false, reason: 'no_match' };
+    return {
+      ok: true,
+      title: data.track.title,
+      artist: data.track.subtitle, // Shazam uses "subtitle" for artist
+      cover: data.track.images?.coverarthq || data.track.images?.coverart,
+    };
   } catch (err) {
     console.error('[Eureka] Error calling Shazam RapidAPI:', err);
-    return null;
+    return { ok: false, reason: 'upstream' };
   }
 }
+
+const norm = (s: string) => s.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
 // POST /api/eureka/identify or /api/shazam/identify
 router.post('/identify', async (req: Request, res: Response) => {
@@ -75,13 +80,19 @@ router.post('/identify', async (req: Request, res: Response) => {
     }
 
     // 1. Identify via Shazam audio fingerprinting
+    if (typeof audioBase64 !== 'string' || audioBase64.length > 700_000) {
+      return res.json({ success: false, error: 'Audio no válido o demasiado largo.' });
+    }
     const matched = await identifyViaShazam(audioBase64);
 
-    if (!matched) {
-      return res.json({
-        success: false,
-        error: 'No se reconoció ninguna canción. Asegúrate de que el sonido es claro y vuelve a intentarlo.',
-      });
+    if (!matched.ok) {
+      const errors = {
+        no_key: 'El reconocimiento de canciones no está configurado en el servidor.',
+        quota: 'El servicio de reconocimiento ha alcanzado su límite. Inténtalo más tarde.',
+        upstream: 'El servicio de reconocimiento no responde. Inténtalo de nuevo.',
+        no_match: 'No se reconoció ninguna canción. Asegúrate de que el sonido es claro y vuelve a intentarlo.',
+      } as const;
+      return res.json({ success: false, error: errors[matched.reason!] });
     }
 
     const searchTerm = `${matched.artist} ${matched.title}`;
@@ -97,7 +108,12 @@ router.post('/identify', async (req: Request, res: Response) => {
       });
     }
 
-    const matchedTrack = results[0];
+    // No fiarse ciegamente del primer resultado: preferir el que coincide en título y artista
+    const nt = norm(matched.title), na = norm(matched.artist);
+    const matchedTrack =
+      results.find((r: any) => norm(r.title || '') === nt && norm(r.artist || '').includes(na.split(' ')[0])) ||
+      results.find((r: any) => norm(r.title || '').includes(nt) || nt.includes(norm(r.title || ''))) ||
+      results[0];
     return res.json({
       success: true,
       matchConfidence: 0.99,
@@ -107,7 +123,7 @@ router.post('/identify', async (req: Request, res: Response) => {
         title: matched.title,        // Use Shazam's exact title
         artist: matched.artist,       // Use Shazam's exact artist
         album: matchedTrack.album || '',
-        cover: matchedTrack.cover || '',
+        cover: matchedTrack.cover || matched.cover || '',
         duration: matchedTrack.duration || 180000,
         genre: matchedTrack.genre || 'Music',
       }

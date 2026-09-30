@@ -95,6 +95,7 @@ export default function ShazamModal({ isOpen, onClose }: { isOpen: boolean; onCl
       // 2. Set up Web Audio API AnalyserNode for spectrum visualizer
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
       audioCtxRef.current = audioCtx;
+      const actualRate = audioCtx.sampleRate;
       // Resume the AudioContext — browsers auto-suspend it until explicitly resumed
       if (audioCtx.state === 'suspended') await audioCtx.resume();
       const source = audioCtx.createMediaStreamSource(stream);
@@ -207,9 +208,46 @@ export default function ShazamModal({ isOpen, onClose }: { isOpen: boolean; onCl
           offset += chunk.length;
         }
 
-        // Limit to 4 seconds (44100 * 4 samples) to stay under Shazam's 500KB limit
-        const maxSamples = 44100 * 4;
-        const trimmed = merged.length > maxSamples ? merged.slice(0, maxSamples) : merged;
+        // El navegador puede ignorar sampleRate=44100 (Safari, algunos Android
+        // usan 48000): Shazam exige 44100 Hz exactos o el audio suena a otro
+        // tono y nunca coincide. Remuestreamos si hace falta.
+        const TARGET_RATE = 44100;
+        let pcm = merged;
+        if (Math.abs(actualRate - TARGET_RATE) > 1) {
+          const ratio = actualRate / TARGET_RATE;
+          const outLen = Math.floor(merged.length / ratio);
+          const out = new Float32Array(outLen);
+          for (let i = 0; i < outLen; i++) {
+            const pos = i * ratio;
+            const i0 = Math.floor(pos);
+            const frac = pos - i0;
+            out[i] = merged[i0] * (1 - frac) + (merged[Math.min(i0 + 1, merged.length - 1)] * frac);
+          }
+          pcm = out;
+        }
+
+        // Saltamos el primer medio segundo (arranque del micro) y limitamos a 4 s
+        // para no pasar el límite de 500KB de la API.
+        const start = Math.min(Math.floor(TARGET_RATE * 0.5), Math.max(0, pcm.length - TARGET_RATE * 2));
+        const maxSamples = TARGET_RATE * 4;
+        const trimmed = pcm.slice(start, start + maxSamples);
+
+        // Silencio: no gastar cuota de la API si no se oyó nada
+        let peak = 0, sumSq = 0;
+        for (let i = 0; i < trimmed.length; i++) {
+          const v = Math.abs(trimmed[i]);
+          if (v > peak) peak = v;
+          sumSq += trimmed[i] * trimmed[i];
+        }
+        const rms = Math.sqrt(sumSq / Math.max(1, trimmed.length));
+        if (rms < 0.003) {
+          setIsListening(false);
+          setError('Apenas se oye nada. Acerca el dispositivo al altavoz e inténtalo de nuevo.');
+          return;
+        }
+        // Normalizamos el volumen (el micro de un móvil suele captar muy bajo o saturado)
+        const gain = peak > 0 ? 0.9 / peak : 1;
+        for (let i = 0; i < trimmed.length; i++) trimmed[i] *= gain;
 
         // Convert Float32 → Int16 Little Endian (required by Shazam API)
         const int16 = new Int16Array(trimmed.length);
