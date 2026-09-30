@@ -7,6 +7,7 @@
  */
 
 import { supabase } from './supabaseService';
+import { sendPushToUsers } from './pushService';
 
 export interface FollowedArtist {
   artistId: number;
@@ -192,7 +193,7 @@ async function checkFollowedArtistReleases(): Promise<void> {
   const { data: dbFollows, error } = await supabase
     .schema('kokomusic')
     .from('follows')
-    .select('artist_id, artist_name, last_release_date');
+    .select('artist_id, artist_name, last_release_date, user_id');
 
   if (error || !dbFollows || dbFollows.length === 0) return;
 
@@ -231,6 +232,18 @@ async function checkFollowedArtistReleases(): Promise<void> {
       if (!artist.lastReleaseDate || new Date(releaseDate) > new Date(artist.lastReleaseDate)) {
         console.log(`[FollowService] New release from ${artist.artistName}: "${trackName}"`);
         await pushNotification(artist.artistId, artist.artistName, trackName, coverUrl);
+
+        // Web Push solo a quienes siguen a este artista
+        const followers = dbFollows
+          .filter((r: any) => Number(r.artist_id) === artist.artistId && r.user_id)
+          .map((r: any) => String(r.user_id));
+        sendPushToUsers([...new Set(followers)], {
+          title: `Nuevo de ${artist.artistName}`,
+          body: `${artist.artistName} lanzó "${trackName}"`,
+          icon: coverUrl,
+          url: `artist/${artist.artistId}`,
+          tag: `release-${artist.artistId}`,
+        });
 
         // Update last_release_date for all records of this artist across all users
         await supabase

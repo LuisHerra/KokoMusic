@@ -12,6 +12,12 @@ import { logToServer } from '../lib/logger';
 let globalUnlockHandler: (() => void) | null = null;
 let queueReplenishLock = false; // prevent concurrent replenishment fetches
 
+let globalSeekHandler: ((seconds: number) => void) | null = null;
+/** El hook de audio registra aquí cómo mover el <audio> real (el store solo guarda `progress`). */
+export function registerSeekHandler(handler: (seconds: number) => void) {
+  globalSeekHandler = handler;
+}
+
 export function registerUnlockHandler(handler: () => void) {
   globalUnlockHandler = handler;
 }
@@ -105,6 +111,10 @@ interface PlayerState {
   setIsDjModeActive: (active: boolean) => void;
   autoApplySavedTransitions: boolean;
   setAutoApplySavedTransitions: (enabled: boolean) => void;
+  // Interruptor del Modo DJ: con él apagado no se generan ni se ejecutan
+  // transiciones automáticas — cada canción termina y pasa a la siguiente.
+  djAutoTransition: boolean;
+  setDjAutoTransition: (enabled: boolean) => void;
 
   // Sinfonía Sync
   isSinfoniaSyncEnabled: boolean;
@@ -321,6 +331,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   cuesByTrack: savedCues,
   djFx: { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 },
   isDjModeActive: false,
+  djAutoTransition: localStorage.getItem('koko_dj_auto_transition') !== 'false',
   autoApplySavedTransitions: localStorage.getItem('koko_algo_auto_apply_dj_transitions') === 'true',
 
   isEmbedMode: false,
@@ -516,9 +527,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (globalUnlockHandler) globalUnlockHandler();
     const { queue, queueIndex, progress } = get();
     // Si llevamos >3s en la canción → volver al inicio; si no → track anterior
-    if (progress > 3) {
-      set({ progress: 0 });
-    } else if (queueIndex > 0) {
+    if (progress > 3 || queueIndex <= 0) {
+      // Antes solo se ponía progress=0 en el store y el <audio> real seguía
+      // sonando: hay que mover el elemento de audio de verdad.
+      if (globalSeekHandler) globalSeekHandler(0);
+      else set({ progress: 0 });
+    } else {
       const prev = queueIndex - 1;
       set({ currentTrack: queue[prev], queueIndex: prev, progress: 0, error: null, isPlaying: true });
     }
@@ -748,6 +762,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   resetDjFx: () => set({ djFx: { slowedRate: 1, reverbAmount: 0, filterCutoff: 20000 } }),
 
   setIsDjModeActive: (active) => set({ isDjModeActive: active }),
+  setDjAutoTransition: (enabled) => {
+    localStorage.setItem('koko_dj_auto_transition', String(enabled));
+    set({ djAutoTransition: enabled });
+  },
   setAutoApplySavedTransitions: (enabled) => {
     localStorage.setItem('koko_algo_auto_apply_dj_transitions', String(enabled));
     set({ autoApplySavedTransitions: enabled });

@@ -3,6 +3,7 @@
  * Routes: /api/collab/...  and  /api/jam/...
  */
 
+import { sendPushToUsers } from '../services/pushService';
 import { Router } from 'express';
 import { supabase } from '../services/supabaseService';
 import { getTrackById } from '../services/metadataService';
@@ -850,6 +851,13 @@ router.post('/playlists/:code/invite', async (req, res) => {
   });
 
   await Promise.all(inserts);
+  sendPushToUsers(friendIds, {
+    title: 'Invitación a playlist colaborativa',
+    body: `${senderName} te ha invitado a colaborar en: ${playlistName}`,
+    icon: coverUrl || undefined,
+    url: `playlist/${code.toUpperCase()}?collab=true`,
+    tag: `collab-${code.toUpperCase()}`,
+  });
 
   res.json({ success: true });
 });

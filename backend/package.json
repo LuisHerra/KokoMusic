@@ -19,6 +19,7 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^20.12.7",
     "@types/uuid": "^9.0.8",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.10",
     "@types/yt-search": "^2.10.3",
     "cors": "^2.8.5",
@@ -32,6 +33,7 @@
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5",
     "uuid": "^9.0.0",
+    "web-push": "^3.6.7",
     "ws": "^8.16.0",
     "yt-search": "^2.13.1"
   }

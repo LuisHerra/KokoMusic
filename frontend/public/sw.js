@@ -78,3 +78,37 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// ── Web Push ─────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'KokoMusic', body: event.data ? event.data.text() : '' }; }
+  const base = getBase();
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'KokoMusic', {
+      body: data.body || '',
+      icon: data.icon || `${base}icons/icon-192.png`,
+      badge: `${base}icons/icon-monochrome-512.png`,
+      tag: data.tag,
+      renotify: !!data.tag,
+      data: { url: data.url || '' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(getBase() + (event.notification.data?.url || ''), self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if ('focus' in w) {
+          w.focus();
+          if ('navigate' in w) return w.navigate(target).catch(() => {});
+          return;
+        }
+      }
+      return self.clients.openWindow(target);
+    })
+  );
+});

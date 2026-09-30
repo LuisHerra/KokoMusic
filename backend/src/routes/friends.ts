@@ -4,6 +4,7 @@
  * All user identification uses Koko Account UUID (from auth.users / koko_device_id)
  */
 
+import { sendPushToUser } from '../services/pushService';
 import { Router } from 'express';
 import { supabase } from '../services/supabaseService';
 import multer from 'multer';
@@ -632,7 +633,8 @@ router.post('/request', async (req, res) => {
     .or(
       `and(requester_id.eq.${requesterId},addressee_id.eq.${addresseeId}),and(requester_id.eq.${addresseeId},addressee_id.eq.${requesterId})`
     )
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (existing) {
     if (existing.status === 'accepted') return err(res, 'Ya sois amigos', 409);
@@ -648,6 +650,40 @@ router.post('/request', async (req, res) => {
     .single();
 
   if (error) return err(res, error.message);
+
+  // Notify the addressee (best-effort: never fail the request because of this)
+  try {
+    const { data: me } = await supabase!
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .select('username, display_name, avatar_url')
+      .eq('id', requesterId)
+      .maybeSingle();
+    const senderName = me?.display_name || me?.username || 'Alguien';
+    const { error: notifErr } = await supabase!
+      .schema('kokomusic')
+      .from('notifications')
+      .insert({
+        type: 'friend_request',
+        user_id: addresseeId,
+        sender_name: senderName,
+        message: `${senderName} te ha enviado una solicitud de amistad`,
+        cover_url: me?.avatar_url || null,
+        status: 'pending',
+        is_read: false,
+      });
+    if (notifErr) console.error('[Friends] Error creating friend_request notification:', notifErr.message);
+    sendPushToUser(addresseeId, {
+      title: 'Nueva solicitud de amistad',
+      body: `${senderName} te ha enviado una solicitud de amistad`,
+      icon: me?.avatar_url || undefined,
+      url: 'friends',
+      tag: 'friend-request',
+    });
+  } catch (e) {
+    console.error('[Friends] Notification failed:', e);
+  }
+
   res.json({ friendship });
 });
 
@@ -817,7 +853,8 @@ router.get('/status', async (req, res) => {
     .or(
       `and(requester_id.eq.${userId},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${userId})`
     )
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (!friendship) return res.json({ status: 'none' });
 

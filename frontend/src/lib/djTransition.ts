@@ -1,6 +1,6 @@
 import type { CrossfadeCurve, TransitionRule } from '../store/playerStore';
 import { getLyrics, getStreamUrl, type Track } from './api';
-import { parseSyncedLyrics, detectLyricSections } from './lyricsParser';
+import { parseSyncedLyrics } from './lyricsParser';
 
 /**
  * Estimación determinista de BPM a partir de título+artista — misma fórmula
@@ -28,25 +28,47 @@ export function getFadeRatio(ratio: number, curve: CrossfadeCurve): number {
 export type AutoMixResult = Pick<TransitionRule, 'fromTime' | 'toTime' | 'curve' | 'duration'>;
 
 /**
- * "Auto-Mix Perfecto": analiza las letras sincronizadas de ambas pistas para
- * proponer un punto de salida (última sección de A) y un punto de entrada
- * (primera sección de B). Si no hay letras sincronizadas, cae a un fade
- * genérico sobre los últimos/primeros segundos del track.
+ * "Auto-Mix Perfecto": analiza las letras sincronizadas de ambas pistas.
+ *  - Salida de A: justo después de la última frase cantada (la mezcla cae en
+ *    la cola instrumental), nunca en mitad del último estribillo. Si la cola
+ *    es larguísima se recorta; si no queda sitio, se ajusta al final real.
+ *  - Entrada de B: si tiene una intro instrumental larga, se salta para que la
+ *    voz entre justo cuando termina el fundido; si no, arranca desde el inicio.
+ *  - Sin letras sincronizadas, cae a un fade sobre los últimos segundos.
  */
 export async function computeAutoMix(fromTrack: Track, toTrack: Track): Promise<AutoMixResult> {
   const [fromRes, toRes] = await Promise.allSettled([getLyrics(fromTrack.id), getLyrics(toTrack.id)]);
   const fromLyrics = fromRes.status === 'fulfilled' ? fromRes.value : null;
   const toLyrics = toRes.status === 'fulfilled' ? toRes.value : null;
 
-  const fromSections = fromLyrics?.syncedLyrics ? detectLyricSections(parseSyncedLyrics(fromLyrics.syncedLyrics)) : [];
-  const toSections = toLyrics?.syncedLyrics ? detectLyricSections(parseSyncedLyrics(toLyrics.syncedLyrics)) : [];
+  const fromLines = fromLyrics?.syncedLyrics ? parseSyncedLyrics(fromLyrics.syncedLyrics) : [];
+  const toLines = toLyrics?.syncedLyrics ? parseSyncedLyrics(toLyrics.syncedLyrics) : [];
 
-  const fromTime = fromSections.length > 0
-    ? fromSections[fromSections.length - 1].startTime
-    : Math.max(0, (fromTrack.duration ? fromTrack.duration / 1000 : 180) - 10);
-  const toTime = toSections.length > 0 ? toSections[0].startTime : 0;
+  const fromDur = fromTrack.duration ? fromTrack.duration / 1000 : 180;
+  let duration = 8;
 
-  return { fromTime, toTime, curve: 's-curve', duration: 8 };
+  let fromTime: number;
+  if (fromLines.length > 0) {
+    const lastVocal = fromLines[fromLines.length - 1].time;
+    fromTime = lastVocal + 4; // deja terminar la última frase
+  } else {
+    fromTime = fromDur - duration - 4;
+  }
+  // Nunca antes de la mitad de la canción, y siempre con sitio para el fundido
+  fromTime = Math.max(fromTime, fromDur * 0.5);
+  const tail = fromDur - fromTime;
+  if (tail < duration + 1) {
+    duration = Math.max(3, Math.floor(tail - 1));
+    fromTime = Math.max(0, fromDur - duration - 1);
+  }
+
+  let toTime = 0;
+  if (toLines.length > 0) {
+    const firstVocal = toLines[0].time;
+    if (firstVocal > duration + 6) toTime = Math.max(0, firstVocal - duration - 1);
+  }
+
+  return { fromTime, toTime, curve: 's-curve', duration };
 }
 
 export interface CrossfadePreviewHandle {

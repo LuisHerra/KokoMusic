@@ -1,8 +1,9 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotificationStore } from '../store/notificationStore';
 import { getMyProfile, respondCollabInvitation } from '../lib/api';
+import { getPushState, enablePush, disablePush, syncPushSubscription, type PushState } from '../lib/push';
 
 export default function NotificationBell() {
   const navigate = useNavigate();
@@ -17,6 +18,24 @@ export default function NotificationBell() {
     enabled: !!deviceId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deviceId),
   });
   const displayName = profileData?.profile?.display_name || profileData?.profile?.username || 'Kokoer';
+
+  // Web Push: estado del permiso/suscripción de este dispositivo
+  const [pushState, setPushState] = useState<PushState>('unsupported');
+  useEffect(() => {
+    if (!deviceId) return;
+    getPushState().then(async (st) => {
+      // Permiso ya concedido pero sin suscripción (o cambió de cuenta): renovarla en silencio
+      if (st === 'granted' || st === 'subscribed') st = await syncPushSubscription(deviceId).catch(() => st);
+      setPushState(st);
+    });
+  }, [deviceId]);
+  const togglePush = async () => {
+    try {
+      setPushState(pushState === 'subscribed' ? await disablePush() : await enablePush(deviceId));
+    } catch (e) {
+      console.error('[NotificationBell] Push toggle failed:', e);
+    }
+  };
 
   // Close on outside click
   useEffect(() => {
@@ -145,6 +164,25 @@ export default function NotificationBell() {
               </span>
             )}
           </div>
+
+          {/* Avisos push (app cerrada) */}
+          {(pushState === 'default' || pushState === 'granted' || pushState === 'subscribed' || pushState === 'denied') && (
+            <div style={{ padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+              <span style={{ flex: 1, color: 'var(--text-muted)' }}>
+                {pushState === 'subscribed' ? 'Avisos con la app cerrada activados'
+                  : pushState === 'denied' ? 'Avisos bloqueados en los ajustes del navegador'
+                  : 'Recibe avisos aunque no tengas la app abierta'}
+              </span>
+              {pushState !== 'denied' && (
+                <button
+                  onClick={togglePush}
+                  style={{ background: pushState === 'subscribed' ? 'rgba(255,255,255,0.08)' : 'var(--accent)', color: pushState === 'subscribed' ? '#fff' : '#000', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {pushState === 'subscribed' ? 'Desactivar' : 'Activar'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* List */}
           <div
@@ -320,6 +358,41 @@ export default function NotificationBell() {
                         )}
                       </div>
                     </div>
+                  );
+                }
+
+                if (n.type === 'friend_request') {
+                  return (
+                    <Link
+                      key={n.id}
+                      to="/friends"
+                      onClick={() => setOpen(false)}
+                      style={{ textDecoration: 'none', color: 'inherit' }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '14px 20px',
+                          background: n.isRead ? 'transparent' : 'rgba(var(--accent-rgb, 29, 185, 84), 0.06)',
+                          borderBottom: '1px solid rgba(255,255,255,0.04)',
+                        }}
+                        className="hover-card"
+                      >
+                        <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg,var(--accent),var(--accent-dim))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#000' }}>
+                          {n.coverUrl
+                            ? <img src={n.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : (n.senderName || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: n.isRead ? 400 : 700, lineHeight: 1.4 }}>{n.message}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                            Toca para responder · {new Date(n.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
                   );
                 }
 

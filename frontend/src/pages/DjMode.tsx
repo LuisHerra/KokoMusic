@@ -95,6 +95,8 @@ export default function DjMode() {
     setDjFx,
     resetDjFx,
     setIsDjModeActive,
+    djAutoTransition,
+    setDjAutoTransition,
   } = usePlayerStore();
 
   const defaultDeckB = queue.length > 0 && queueIndex < queue.length - 1 ? queue[queueIndex + 1] : null;
@@ -165,7 +167,7 @@ export default function DjMode() {
   // transición configurada, se genera una automáticamente (una sola vez por
   // pareja — si el usuario la borra a propósito no se vuelve a regenerar sola).
   useEffect(() => {
-    if (!currentTrack || !deckBTrack || !currentPairKey) return;
+    if (!djAutoTransition || !currentTrack || !deckBTrack || !currentPairKey) return;
     if (transitions[currentPairKey] || autoMixedPairs.current.has(currentPairKey)) return;
 
     autoMixedPairs.current.add(currentPairKey);
@@ -180,7 +182,7 @@ export default function DjMode() {
       })
       .catch(() => {})
       .finally(() => setIsAutoMixing(false));
-  }, [currentTrack, deckBTrack, currentPairKey, transitions, setTransition]);
+  }, [djAutoTransition, currentTrack, deckBTrack, currentPairKey, transitions, setTransition]);
 
   useEffect(() => {
     return () => { previewRef.current?.stop(); };
@@ -290,6 +292,27 @@ export default function DjMode() {
 
   return (
     <div className="dj-page">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={djAutoTransition}
+          onClick={() => setDjAutoTransition(!djAutoTransition)}
+          title={djAutoTransition ? 'Las canciones se mezclan solas al terminar' : 'Cada canción termina y pasa a la siguiente sin mezcla'}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 10,
+            background: djAutoTransition ? 'rgba(255,255,255,0.08)' : 'transparent',
+            border: `1px solid ${djAutoTransition ? 'var(--accent)' : 'rgba(255,255,255,0.15)'}`,
+            color: djAutoTransition ? 'var(--accent)' : 'var(--text-secondary)',
+            borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          <span style={{ width: 30, height: 16, borderRadius: 8, background: djAutoTransition ? 'var(--accent)' : 'rgba(255,255,255,0.2)', position: 'relative', transition: 'background 0.2s' }}>
+            <span style={{ position: 'absolute', top: 2, left: djAutoTransition ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: djAutoTransition ? '#000' : '#fff', transition: 'left 0.2s' }} />
+          </span>
+          Transición automática {djAutoTransition ? 'activada' : 'desactivada'}
+        </button>
+      </div>
       <div className="dj-decks" data-tour="dj-decks">
         {/* Deck A — pista actual, real */}
         <div className="dj-deck" style={{ boxShadow: `0 8px 40px ${deckAColor}4d` }}>
@@ -352,7 +375,7 @@ export default function DjMode() {
         {/* Conector — estado de la transición real entre A y B */}
         <div className="dj-transition-connector" data-tour="dj-transition">
           <span className="dj-transition-status">
-            {isAutoMixing ? 'Generando mezcla…' : currentRule ? 'Transición lista' : 'Sin transición'}
+            {isAutoMixing ? 'Generando mezcla…' : !djAutoTransition ? 'Mezcla automática desactivada' : currentRule ? 'Transición lista' : 'Sin transición'}
           </span>
           <div className="dj-transition-actions">
             <button

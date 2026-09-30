@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, sendRemoteCommandIfConnected } from '../store/playerStore';
+import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, registerSeekHandler, sendRemoteCommandIfConnected } from '../store/playerStore';
 import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback } from '../lib/api';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
@@ -56,7 +56,10 @@ function updateMediaSession(
           { src: track.cover, sizes: '512x512', type: 'image/jpeg' },
           { src: track.cover, sizes: '256x256', type: 'image/jpeg' },
         ]
-      : [],
+      : [
+          // Sin portada, Android mostraría el icono de Chrome en el panel multimedia
+          { src: new URL(`${import.meta.env.BASE_URL}icons/icon-512.png`, window.location.href).href, sizes: '512x512', type: 'image/png' },
+        ],
   });
 
   // Handlers de transporte — el SO los invoca desde el lock screen / auriculares
@@ -363,6 +366,7 @@ export function unlockAudio() {
 
 // Register the unlock handler with the store
 registerUnlockHandler(unlockAudio);
+registerSeekHandler((s) => seekAudio(s));
 
 /**
  * Función global de seek — úsala en cualquier componente sin instanciar el hook.
@@ -558,7 +562,7 @@ export function useAudioPlayer() {
           // Ajustes (autoApplySavedTransitions, off por defecto). Sin esto,
           // cualquier pareja de tracks usada alguna vez en una mezcla DJ
           // haría crossfade "mágico" también en reproducción normal.
-          const rule = (state.isDjModeActive || state.autoApplySavedTransitions)
+          const rule = ((state.isDjModeActive && state.djAutoTransition) || (!state.isDjModeActive && state.autoApplySavedTransitions))
             ? state.transitions[`${currentT.id}-${nextT.id}`]
             : undefined;
 
@@ -593,7 +597,8 @@ export function useAudioPlayer() {
           }
         }
 
-        if (!isMobileDevice()) {
+        const djAutoOff = state.isDjModeActive && !state.djAutoTransition;
+        if (!isMobileDevice() && !djAutoOff) {
           const remaining = audio.duration - audio.currentTime;
           if (!shouldCrossfade && remaining <= CROSSFADE_DURATION / 1000) {
             shouldCrossfade = true;
@@ -891,8 +896,9 @@ export function useAudioPlayer() {
     activeIdx = 1 - activeIdx;
     const nextAudio = getActiveAudio();
 
-    const rule = prevTrackId
-      ? usePlayerStore.getState().transitions[`${prevTrackId}-${currentTrack.id}`]
+    const djState = usePlayerStore.getState();
+    const rule = prevTrackId && !(djState.isDjModeActive && !djState.djAutoTransition)
+      ? djState.transitions[`${prevTrackId}-${currentTrack.id}`]
       : undefined;
 
     // FIX: Always stop prevAudio immediately when changing track — even if

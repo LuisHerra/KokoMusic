@@ -24,7 +24,11 @@ function UserCard({ user, myId }: { user: KokoProfile; myId: string }) {
 
   const addMut = useMutation({
     mutationFn: () => sendFriendRequest(myId, user.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['friendship-status', myId, user.id] }),
+    onSuccess: () => {
+      // Optimistic: reflect "sent" immediately, then confirm with the server
+      qc.setQueryData(['friendship-status', myId, user.id], { status: 'pending', isSender: true });
+      qc.invalidateQueries({ queryKey: ['friendship-status', myId, user.id] });
+    },
   });
 
   const statusLabel = () => {
@@ -54,8 +58,13 @@ function UserCard({ user, myId }: { user: KokoProfile; myId: string }) {
             disabled={addMut.isPending}
             style={{ background: 'var(--accent)', color: '#000', border: 'none', borderRadius: 10, padding: '7px 14px', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
-            + Añadir amigo
+            {addMut.isPending ? 'Enviando...' : '+ Añadir amigo'}
           </button>
+        )}
+        {addMut.isError && (
+          <span style={{ color: '#ff6b6b', fontSize: 11, maxWidth: 140, textAlign: 'right' }}>
+            {(addMut.error as Error)?.message || 'No se pudo enviar'}
+          </span>
         )}
       </div>
     </div>
