@@ -34,12 +34,17 @@
 }
 .mix-icon-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 
-.mix-pair { display: flex; align-items: center; gap: 10px; margin: 12px 0 12px; }
-.mix-pair-track { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+.mix-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; margin: 12px 0 12px; }
+.mix-pair-track { min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
 .mix-pair-track img, .mix-pair-ph { width: 30px; height: 30px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: rgba(255, 255, 255, 0.08); }
 .mix-pair-track span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mix-pair-track:last-child { justify-content: flex-end; flex-direction: row-reverse; text-align: right; }
-.mix-pair-arrow { color: var(--accent); flex-shrink: 0; }
+/* En row-reverse, flex-start = borde derecho */
+.mix-pair-track:last-child { justify-content: flex-start; flex-direction: row-reverse; text-align: right; }
+.mix-pair-arrow {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent);
+}
 
 .mix-tabs { display: flex; gap: 2px; }
 .mix-tabs button {

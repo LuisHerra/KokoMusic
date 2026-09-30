@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { usePlayerStore, type CrossfadeCurve, NEUTRAL_DJ_FX, isNeutralFx, describeFx, type DjFxSnapshot, type TransitionRule } from '../../store/playerStore';
 import { useRef } from 'react';
 import { getLyrics, getStreamUrl, type Track } from '../../lib/api';
@@ -276,7 +277,10 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose, collabCode }
     { key: 's-curve', label: 'Suave (S)', path: 'M2 22C12 22 12 2 22 2' },
   ];
 
-  return (
+  // Portal a <body>: si un ancestro tiene backdrop-filter/transform (p. ej. el
+  // tema con fondo de pantalla), un position:fixed quedaría atrapado dentro de
+  // él en vez de cubrir la pantalla.
+  return createPortal(
     <div className="mix-overlay" onClick={onClose}>
       <div className="mix-sheet" onClick={e => e.stopPropagation()} role="dialog" aria-label="Mezcla de DJ">
         {/* Cabecera fija */}
@@ -294,7 +298,7 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose, collabCode }
               {fromTrack.cover ? <img src={fromTrack.cover} alt="" /> : <span className="mix-pair-ph" />}
               <span>{fromTrack.title}</span>
             </div>
-            <IconCrossfade size={18} className="mix-pair-arrow" />
+            <span className="mix-pair-arrow" aria-label="pasa a"><IconArrowRight size={16} /></span>
             <div className="mix-pair-track">
               {toTrack.cover ? <img src={toTrack.cover} alt="" /> : <span className="mix-pair-ph" />}
               <span>{toTrack.title}</span>
@@ -497,5 +501,6 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose, collabCode }
         </footer>
       </div>
     </div>
+    , document.body
   );
 }
