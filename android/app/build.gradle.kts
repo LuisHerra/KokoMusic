@@ -12,8 +12,11 @@ android {
         applicationId = "com.kokomusic.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // En el CI sube con cada build (GITHUB_RUN_NUMBER) para que Android la
+        // reconozca como versión nueva; en local queda en 1.
+        val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionCode = runNumber
+        versionName = "1.0.$runNumber"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
