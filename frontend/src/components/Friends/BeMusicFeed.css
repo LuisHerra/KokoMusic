@@ -300,10 +300,6 @@
 .bm-modal { width: 100%; max-width: 520px; max-height: 82vh; overflow-y: auto; color: #fff; padding: 4px; }
 .bm-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .bm-modal-head h3 { margin: 0; font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
-  position: absolute; top: 6px; left: 6px; z-index: 1;
-  font-size: 10px; font-weight: 800; padding: 3px 7px; border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px);
-}
 
 /* Historial en calendario */
 .bmh { max-width: 440px; background: linear-gradient(180deg, #14111b, #0b0a0f); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 22px; padding: 18px; }

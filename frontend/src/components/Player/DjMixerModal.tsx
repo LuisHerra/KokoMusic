@@ -243,11 +243,6 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose, collabCode }
     onClose();
   };
 
-  const formatSecs = (s: number) => {
-     const m = Math.floor(s / 60);
-     const sec = Math.floor(s % 60);
-     return `${m}:${sec.toString().padStart(2, '0')}`;
-  };
 
   const runAutoMix = async () => {
     setAutoBusy(true);
