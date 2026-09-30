@@ -7,6 +7,7 @@ import { BASE } from '../lib/api';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import ArtistLinks from '../components/Common/ArtistLinks';
 
+import { createPortal } from 'react-dom';
 function formatDuration(ms: number): string {
   const m = Math.floor(ms / 60000);
   const s = Math.floor((ms % 60000) / 1000);
@@ -119,7 +120,9 @@ function ArtistTrackRow({
       </div>
 
       {/* Mobile actions bottom sheet */}
-      {isActionsOpen && (
+      {/* Portal a <body>: dentro de la fila, las filas siguientes y el mini
+          reproductor se pintaban por encima de la hoja */}
+      {isActionsOpen && createPortal(
         <div className="bottom-sheet-overlay open" onClick={(e) => { e.stopPropagation(); setIsActionsOpen(false); }}>
           <div className="bottom-sheet-content open" onClick={(e) => e.stopPropagation()}>
             <div className="bottom-sheet-drag-handle" onClick={() => setIsActionsOpen(false)} />
@@ -151,7 +154,8 @@ function ArtistTrackRow({
             
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: 16 }} onClick={() => setIsActionsOpen(false)}>Cancelar</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
     </div>

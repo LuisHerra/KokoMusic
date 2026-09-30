@@ -17,6 +17,7 @@ import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import { isTrackOffline, saveTrackOffline, deleteOfflineTrack, getAllOfflineTracks } from '../lib/offlineAudio';
 import ArtistLinks from '../components/Common/ArtistLinks';
 
+import { createPortal } from 'react-dom';
 function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
   trackId: string; prevTrackId?: string; index: number;
   onPlay: (t: Track) => void; onRemove: (id: string) => void;
@@ -312,7 +313,9 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
       </div>
 
       {/* Mobile actions bottom sheet */}
-      {isActionsOpen && (
+      {/* Portal a <body>: dentro de la fila, las filas siguientes y el mini
+          reproductor se pintaban por encima de la hoja */}
+      {isActionsOpen && createPortal(
         <div className="bottom-sheet-overlay open" onClick={(e) => { e.stopPropagation(); setIsActionsOpen(false); }}>
           <div className="bottom-sheet-content open" onClick={(e) => e.stopPropagation()}>
             <div className="bottom-sheet-drag-handle" onClick={() => setIsActionsOpen(false)} />
@@ -414,7 +417,8 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
             
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: 16 }} onClick={() => setIsActionsOpen(false)}>Cancelar</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
     </div>

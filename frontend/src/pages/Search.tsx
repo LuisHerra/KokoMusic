@@ -208,7 +208,9 @@ function SearchTrackRow({
       </div>
 
       {/* Mobile actions bottom sheet */}
-      {isActionsOpen && (
+      {/* Portal a <body>: dentro de la fila, las filas siguientes y el mini
+          reproductor se pintaban por encima de la hoja */}
+      {isActionsOpen && createPortal(
         <div className="bottom-sheet-overlay open" onClick={(e) => { e.stopPropagation(); setIsActionsOpen(false); }}>
           <div className="bottom-sheet-content open" onClick={(e) => e.stopPropagation()}>
             <div className="bottom-sheet-drag-handle" onClick={() => setIsActionsOpen(false)} />
@@ -240,7 +242,8 @@ function SearchTrackRow({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -259,6 +262,7 @@ const DISCOVERY_CATEGORIES = [
 
 import ShazamModal from '../components/Player/ShazamModal';
 
+import { createPortal } from 'react-dom';
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
