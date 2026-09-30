@@ -24,8 +24,19 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Chaquopy exige que el Python de compilación sea la misma versión que
+      # el del APK (android/app/build.gradle.kts → chaquopy.version = "3.11")
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # La versión del wrapper del proyecto (gradle-wrapper.properties); el
+      # Gradle "latest" del runner no es compatible con AGP 8.2
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
 
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew || true

@@ -23,6 +23,11 @@ android {
 
         chaquopy {
             defaultConfig {
+                // Python del APK. Debe coincidir con el Python de compilación
+                // (py -3.11 en Windows, python3.11 en el CI): el 3.8 por defecto
+                // de Chaquopy 15 ya no lo soporta yt-dlp, y un Python 3.13 de
+                // compilación rompe el pip de Chaquopy (se eliminó el módulo cgi).
+                version = "3.11"
                 pip {
                     // urllib3 sin pin — el pin v1.x rompe TLS 1.3 en Android moderno
                     install("requests")
