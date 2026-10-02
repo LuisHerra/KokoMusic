@@ -18,8 +18,10 @@ import { isTrackOffline, saveTrackOffline, deleteOfflineTrack, getAllOfflineTrac
 import ArtistLinks from '../components/Common/ArtistLinks';
 
 import { createPortal } from 'react-dom';
-function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
+function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
   trackId: string; prevTrackId?: string; index: number;
+  /** Mientras el lote de la playlist está en curso: no pedir el track por separado. */
+  waitForBatch?: boolean;
   onPlay: (t: Track) => void; onRemove: (id: string) => void;
   onChangeVideo: (t: Track) => void;
   onDuplicateAlias?: (t: Track) => void;
@@ -31,17 +33,21 @@ function TrackRow({ trackId, prevTrackId, index, onPlay, onRemove, onChangeVideo
   onDragEnd?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
 }) {
-  // N+1 fix: use staleTime so this query hits the React Query cache
-  // (populated by the batch fetch in the parent Playlist component)
-  const { data: track, isLoading } = useQuery({
+  // N+1 fix: la caché ['track', id] la rellena el lote del componente padre.
+  // Sin esperar a que termine, cada fila se montaba con la caché vacía y lanzaba
+  // su propio getTrack a la vez que el lote — una petición por canción igual.
+  // Si el lote falla o no trae un track, la fila lo pide por separado.
+  const { data: track, isLoading: trackLoading } = useQuery({
     queryKey: ['track', trackId],
     queryFn: () => getTrack(trackId),
+    enabled: !waitForBatch,
     staleTime: 10 * 60 * 1000,
   });
+  const isLoading = trackLoading || (!!waitForBatch && !track);
   const { data: prevTrack } = useQuery({
     queryKey: ['track', prevTrackId],
     queryFn: () => getTrack(prevTrackId!),
-    enabled: !!prevTrackId,
+    enabled: !!prevTrackId && !waitForBatch,
     staleTime: 10 * 60 * 1000,
   });
   const { currentTrack, isPlaying, activeJamCode, addToQueue, setError } = usePlayerStore();
@@ -1115,7 +1121,7 @@ export default function Playlist() {
   // Batch prefetch: after playlist loads, fetch ALL track metadata in ONE request
   // and seed the React Query cache — TrackRow queries then get instant cache hits
   const trackIds = (pl?.tracks ?? []).map((t: any) => t.trackId).filter(Boolean) as string[];
-  useQuery({
+  const { isPending: batchPending } = useQuery({
     queryKey: ['playlist-tracks-batch', id, trackIds.join(',')],
     queryFn: async () => {
       const batchResult = await getTracksBatch(trackIds);
@@ -1128,6 +1134,7 @@ export default function Playlist() {
     enabled: trackIds.length > 0,
     staleTime: 10 * 60 * 1000,
   });
+  const waitForBatch = trackIds.length > 0 && batchPending;
 
   // Config: auto-aceptar upgrades ambiguos (el usuario puede desactivar esto)
   const [autoAcceptUpgrade, setAutoAcceptUpgrade] = useState(() => localStorage.getItem('koko-auto-accept-upgrade') === 'true');
@@ -1150,9 +1157,10 @@ export default function Playlist() {
       for (const t of ytTracks) {
         if (!mounted) break;
         try {
-          const trackInfo = await getTrack(t.trackId);
+          // Normalmente ya está en caché gracias al lote: no volver a pedirlo.
+          const trackInfo = qc.getQueryData<Track>(['track', t.trackId]) ?? await getTrack(t.trackId);
           if (!trackInfo) continue;
-          
+
           const res = await fetch(`${BASE}/import/upgrade`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1208,7 +1216,8 @@ export default function Playlist() {
   const { data: firstTrack } = useQuery({
     queryKey: ['track', firstTrackId],
     queryFn: () => getTrack(firstTrackId!),
-    enabled: !!firstTrackId,
+    enabled: !!firstTrackId && !waitForBatch,
+    staleTime: 10 * 60 * 1000,
   });
 
   const [bgColor, setBgColor] = useState<string>('#1DB954');
@@ -1895,6 +1904,7 @@ export default function Playlist() {
                 trackId={t.trackId}
                 prevTrackId={i > 0 ? localTracks[i - 1].trackId : undefined}
                 index={i}
+                waitForBatch={waitForBatch}
                 onPlay={async (track) => handlePlayQueue(track)}
                 onRemove={(tid) => removeMutation.mutate(tid)}
                 onChangeVideo={(track) => setChangeVideoTrack(track)}

@@ -987,22 +987,60 @@ router.delete('/custom/:id', (req: Request, res: Response) => {
   }
 });
 
+/** Metadatos de un track con la misma caché de 24h que GET /:id. null si no existe. */
+async function getTrackCached(id: string): Promise<any | null> {
+  const cacheKey = `track:${id}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  const track = await getTrackById(id);
+  if (track) cache.setex(cacheKey, 86400, JSON.stringify(track)); // 24h
+  return track ?? null;
+}
+
+const BATCH_MAX_IDS = 50;
+/** Tracks sin caché van a iTunes/Deezer/etc.: limitar cuántos a la vez para no comernos un rate-limit. */
+const BATCH_CONCURRENCY = 8;
+
+// POST /api/tracks/batch — metadatos de varios tracks en una sola petición.
+// Playlist.tsx lo usa para no hacer una petición por fila. Se borró sin querer
+// en 58ee19b (la radio de canciones reescribió este trozo) y desde entonces
+// cada playlist volvía a cargar canción por canción.
+router.post('/batch', async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids?: unknown };
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string' && id)) {
+    return res.status(400).json({ error: 'ids debe ser un array no vacío de strings' });
+  }
+  if (ids.length > BATCH_MAX_IDS) {
+    return res.status(400).json({ error: `Máximo ${BATCH_MAX_IDS} IDs por petición` });
+  }
+
+  const uniqueIds = [...new Set(ids as string[])];
+  const tracks: Record<string, any> = {};
+  let next = 0;
+  const worker = async () => {
+    while (next < uniqueIds.length) {
+      const id = uniqueIds[next++];
+      try {
+        const track = await getTrackCached(id);
+        if (track) tracks[id] = { ...track, audioReady: audioExists(id) };
+      } catch (err) {
+        // Uno que falle no tumba el lote: el frontend lo pedirá por separado.
+        console.warn(`[Tracks] batch: fallo obteniendo ${id}:`, err instanceof Error ? err.message : err);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(BATCH_CONCURRENCY, uniqueIds.length) }, worker));
+
+  return res.json({ tracks });
+});
+
 router.get('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  const cacheKey = `track:${id}`;
-  const cached = cache.get(cacheKey);
-
-  if (cached) {
-    const track = JSON.parse(cached);
-    return res.json({ ...track, audioReady: audioExists(id) });
-  }
-
   try {
-    const track = await getTrackById(id);
+    const track = await getTrackCached(id);
     if (!track) return res.status(404).json({ error: 'Track no encontrado' });
-
-    cache.setex(cacheKey, 86400, JSON.stringify(track)); // 24h
     return res.json({ ...track, audioReady: audioExists(id) });
   } catch (err) {
     console.error('[Tracks] Error:', err);
