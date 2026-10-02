@@ -317,11 +317,24 @@ export interface RadioResponse {
   seedId: string;
   seedVideoId?: string;
   source: string;
+  /** No había datos suficientes de la canción: la cola sigue con el Koko-Mix */
+  insufficientMetadata?: boolean;
   tracks: Track[];
 }
 
-export const getTrackRadio = (trackId: string) =>
-  apiFetch<RadioResponse>(`/tracks/${encodeURIComponent(trackId)}/radio`);
+// Avisa (al store) de si la última radio tuvo que tirar del Koko-Mix
+type RadioSourceListener = (seedId: string, res: RadioResponse) => void;
+const radioSourceListeners = new Set<RadioSourceListener>();
+export const onRadioSource = (fn: RadioSourceListener) => {
+  radioSourceListeners.add(fn);
+  return () => { radioSourceListeners.delete(fn); };
+};
+
+export const getTrackRadio = async (trackId: string) => {
+  const res = await apiFetch<RadioResponse>(`/tracks/${encodeURIComponent(trackId)}/radio`);
+  radioSourceListeners.forEach((fn) => fn(trackId, res));
+  return res;
+};
 
 export const getStreamStatus = (trackId: string) =>
   apiFetch<{ cached: boolean; downloading: boolean; status: string }>(`/stream/${trackId}/status`);

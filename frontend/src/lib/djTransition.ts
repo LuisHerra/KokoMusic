@@ -45,7 +45,10 @@ export async function computeAutoMix(fromTrack: Track, toTrack: Track): Promise<
   const fromLines = fromLyrics?.syncedLyrics ? parseSyncedLyrics(fromLyrics.syncedLyrics) : [];
   const toLines = toLyrics?.syncedLyrics ? parseSyncedLyrics(toLyrics.syncedLyrics) : [];
 
-  const fromDur = fromTrack.duration ? fromTrack.duration / 1000 : 180;
+  // La duración llega en ms o en s según el origen de la pista; tomarla
+  // siempre como ms dejaba la salida en 0s (la mezcla saltaba al instante).
+  const rawDur = fromTrack.duration || 0;
+  const fromDur = rawDur > 10000 ? rawDur / 1000 : rawDur > 0 ? rawDur : 180;
   let duration = 8;
 
   let fromTime: number;

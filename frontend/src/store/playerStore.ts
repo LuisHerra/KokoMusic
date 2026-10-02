@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import { getTrackRadio, type Track, type RemoteCommand } from '../lib/api';
+import { getTrackRadio, onRadioSource, type Track, type RemoteCommand } from '../lib/api';
 import { markTrackPlayed, pickRecommendations } from '../lib/recommendationPicker';
 import { logToServer } from '../lib/logger';
 
@@ -82,6 +82,9 @@ export interface TransitionRule {
   // colaboradores aunque no tengan activadas las mezclas guardadas.
   shared?: boolean;
   collabCode?: string;
+  // Generada sola por la transición automática del Modo DJ (no la ha tocado
+  // el usuario): solo suena dentro de Modo DJ y no sale en "Tus mezclas".
+  auto?: boolean;
 }
 
 import type { TransitionSfx } from '../lib/djSfx';
@@ -133,6 +136,10 @@ interface PlayerState {
   isShuffle: boolean;
   repeatMode: RepeatMode;  // off → all → one
   autoplayEnabled: boolean;
+  // La última radio no tenía datos suficientes de la canción semilla y la
+  // cola sigue con el Koko-Mix — la cola lo avisa (null = radio normal).
+  radioFallbackSeedId: string | null;
+  dismissRadioFallback: () => void;
   sessionPlayedTrackIds: string[]; // Track IDs played during current listening session
 
   // Sleep Timer
@@ -374,6 +381,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isShuffle: false,
   repeatMode: 'off',
   autoplayEnabled: localStorage.getItem('koko_autoplay_enabled') !== 'false',
+  radioFallbackSeedId: null,
+  dismissRadioFallback: () => set({ radioFallbackSeedId: null }),
   sleepTimerMinutes: null,
   sleepTimerEndTime: null,
 
@@ -847,6 +856,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   jamQueue: [],
   setJamQueue: (q) => set({ jamQueue: q }),
 }));
+
+onRadioSource((seedId, res) => {
+  if (res.insufficientMetadata) usePlayerStore.setState({ radioFallbackSeedId: seedId });
+  else if (usePlayerStore.getState().radioFallbackSeedId) usePlayerStore.setState({ radioFallbackSeedId: null });
+});
 
 // Persistencia del reproductor en localStorage al cambiar de estado
 if (typeof window !== 'undefined') {

@@ -297,6 +297,7 @@ let activeIdx = 0;
 let globalLastLoadedTrackId: string | null = null;
 const CROSSFADE_DURATION = 3000; // ms
 const DJ_PRELOAD_LEAD_SECONDS = 12; // cuánto antes del punto de transición se calienta el buffer del siguiente track
+const MIX_TRIGGER_WINDOW_SECONDS = 3; // margen tras el punto de salida en el que aún se lanza la mezcla
 
 
 export function getActiveAudio() {
@@ -338,6 +339,7 @@ function mixRuleAllowed(rule: TransitionRule | undefined): boolean {
   if (!rule) return false;
   const st = usePlayerStore.getState();
   if (st.isDjModeActive) return st.djAutoTransition;
+  if (rule.auto) return false;
   return st.autoApplySavedTransitions || !!rule.shared;
 }
 
@@ -682,8 +684,12 @@ export function useAudioPlayer() {
             }
           }
 
-          if (rule && audio.currentTime >= rule.fromTime) {
-            shouldCrossfade = true;
+          // Solo al CRUZAR el punto de salida: si la mezcla se creó (o se
+          // entró en Modo DJ) cuando ya se había pasado, saltar de golpe a la
+          // siguiente canción sería un corte — se deja el fundido final normal.
+          if (rule) {
+            const overshoot = (audio.currentTime - rule.fromTime) / (audio.playbackRate || 1);
+            if (overshoot >= 0 && overshoot <= MIX_TRIGGER_WINDOW_SECONDS) shouldCrossfade = true;
           }
         }
 

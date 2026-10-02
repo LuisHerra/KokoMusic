@@ -1268,7 +1268,7 @@ export default function ProfilePage() {
 
             <ToggleRow
               label="Aplicar Transiciones DJ Guardadas Fuera de Modo DJ"
-              description="Si dos canciones que ya mezclaste en Modo DJ se reproducen seguidas en cualquier cola normal, usa esa misma transición guardada en vez del cambio de pista habitual. Dentro de Modo DJ siempre se aplican, esto es solo para el resto de la app."
+              description="Si dos canciones que ya mezclaste se reproducen seguidas en cualquier cola normal, usa esa misma transición en vez del cambio de pista habitual (es el mismo interruptor «Mezclas DJ» de la cola). Las mezclas que el Modo DJ genera solo no se aplican fuera de él. Dentro de Modo DJ manda su «Transición automática»."
               checked={autoApplySavedTransitions}
               onChange={setAutoApplySavedTransitions}
             />

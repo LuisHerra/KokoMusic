@@ -103,6 +103,14 @@ export interface RecommendationOptions {
   producerAffinity?: boolean;
   skipPenalty?: boolean;
   earlySkipIds?: string[];
+  /** Solo la capa de semilla (radio): sin historial ni búsqueda genérica. */
+  seedOnly?: boolean;
+  /**
+   * Relleno cuando la semilla/historial no bastan y no hay mood: normalmente
+   * el Koko-Mix del usuario. Va antes de la búsqueda genérica, que solo se usa
+   * si esto tampoco llega (usuario sin perfil).
+   */
+  fallback?: (needed: number, exclude: Set<string>) => Promise<TrackMetadata[]>;
 }
 
 /**
@@ -110,7 +118,9 @@ export interface RecommendationOptions {
  * 1. Semilla (seedTrackId): Si se proporciona, busca canciones similares en InnerTube Radio / Last.fm.
  * 2. Historial de usuario: Identifica artistas preferidos del usuario y busca similares.
  * 3. Filtrado por Mood y Preferencias (Década, Idioma, Master Studio).
- * 4. Fallback: Búsqueda dinámica de temas populares o lofi chill.
+ * 4. Fallback: el Koko-Mix del usuario (options.fallback) y, si no tiene,
+ *    éxitos populares. Nunca un género concreto como lofi: es un mood muy
+ *    específico y no sirve como "comodín".
  */
 export async function getRecommendations(
   limit = 10,
@@ -121,7 +131,7 @@ export async function getRecommendations(
 ): Promise<TrackMetadata[]> {
   const decadeMode = options?.decadeMode || 'all';
   const languagePref = options?.languagePref || 'auto';
-  const cacheKey = `recs:${userId || 'global'}:${mood || 'none'}:${seedTrackId || 'none'}:${decadeMode}:${languagePref}:${limit}`;
+  const cacheKey = `recs:${userId || 'global'}:${mood || 'none'}:${seedTrackId || 'none'}:${decadeMode}:${languagePref}:${limit}:${options?.seedOnly ? 'seed' : 'full'}`;
   const cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
@@ -197,6 +207,12 @@ export async function getRecommendations(
     }
   }
 
+  if (options?.seedOnly) {
+    const seedRecs = recommendations.slice(0, limit);
+    cache.setex(cacheKey, 600, JSON.stringify(seedRecs));
+    return seedRecs;
+  }
+
   // 2. CAPA 2: Historial del usuario (si no hay suficientes o no hay semilla)
   if (recommendations.length < limit) {
     try {
@@ -261,9 +277,26 @@ export async function getRecommendations(
     focus: ['deep focus concentration', 'ambient drone white noise', 'study focus alpha waves']
   };
 
-  if (recommendations.length < limit || mood) {
-    const activeMood = mood?.toLowerCase();
-    const keywords = (activeMood && moodKeywords[activeMood]) ? moodKeywords[activeMood] : ['pop hits 2026', 'lofi chill beats'];
+  const activeMood = mood?.toLowerCase();
+  const hasMood = !!(activeMood && moodKeywords[activeMood]);
+
+  // Sin mood pedido: lo que falte se rellena con el Koko-Mix del usuario.
+  if (recommendations.length < limit && !hasMood && options?.fallback) {
+    try {
+      const filler = await options.fallback(limit - recommendations.length, seenIds);
+      for (const track of filler) {
+        if (track && !seenIds.has(track.id)) {
+          seenIds.add(track.id);
+          recommendations.push(track);
+        }
+      }
+    } catch (err) {
+      console.error('[Recommendations] Error en el relleno con Koko-Mix:', err);
+    }
+  }
+
+  if (recommendations.length < limit || hasMood) {
+    const keywords = hasMood ? moodKeywords[activeMood!] : ['pop hits 2026', 'top hits global'];
     const chosenKeyword = keywords[Math.floor(Math.random() * keywords.length)];
     
     console.log(`[Recommendations] Usando capa de búsqueda con término: "${chosenKeyword}"`);

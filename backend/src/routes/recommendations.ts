@@ -279,6 +279,21 @@ async function ensureMixPool(userId: string): Promise<void> {
   await pending;
 }
 
+/**
+ * Pistas del Koko-Mix del usuario para rellenar una cola (radio sin datos
+ * suficientes sobre la canción semilla). No registra impresiones: es
+ * reproducción, no el rail de Home. Devuelve [] si el usuario no tiene pool
+ * (cold-start) — el llamante decide qué hacer entonces.
+ */
+export async function getKokoMixTracks(userId: string, limit: number, exclude: Set<string> = new Set()) {
+  if (!userId || userId === 'default') return [];
+  await ensureMixPool(userId).catch((err) => console.error(`[Recs] No se pudo calcular el mix de ${userId}:`, err));
+  const cached = getCachedPlaylist(userId);
+  if (!cached) return [];
+  const pool = rankWeightedShuffle(cached.candidates.filter((c) => !exclude.has(c.trackId)));
+  return mapCandidatesToTracks(applyDiversityFilter(pool.slice(0, limit)));
+}
+
 router.get('/', async (req: Request, res: Response) => {
   const start = Date.now();
   const userId = (req.headers['x-user-id'] || 'default') as string;

@@ -72,6 +72,30 @@ function CoverThumb({ cover, className, iconSize = 20 }: { cover?: string; class
   return <img className={className} src={resolveImageUrl(cover)} alt="" />;
 }
 
+function SwitchPill({ on, onToggle, label, title }: { on: boolean; onToggle: () => void; label: string; title: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onToggle}
+      title={title}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 10,
+        background: on ? 'rgba(255,255,255,0.08)' : 'transparent',
+        border: `1px solid ${on ? 'var(--accent)' : 'rgba(255,255,255,0.15)'}`,
+        color: on ? 'var(--accent)' : 'var(--text-secondary)',
+        borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+      }}
+    >
+      <span style={{ width: 30, height: 16, borderRadius: 8, background: on ? 'var(--accent)' : 'rgba(255,255,255,0.2)', position: 'relative', transition: 'background 0.2s' }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: on ? '#000' : '#fff', transition: 'left 0.2s' }} />
+      </span>
+      {label}
+    </button>
+  );
+}
+
 export default function DjMode() {
   useScreenTour('dj');
   const {
@@ -98,12 +122,16 @@ export default function DjMode() {
     setIsDjModeActive,
     djAutoTransition,
     setDjAutoTransition,
+    autoplayEnabled,
+    toggleAutoplay,
+    moveInQueue,
   } = usePlayerStore();
 
-  const defaultDeckB = queue.length > 0 && queueIndex < queue.length - 1 ? queue[queueIndex + 1] : null;
-  const [deckBId, setDeckBId] = useState<string | null>(null);
+  // Deck B es SIEMPRE la siguiente pista real de la cola: "Cambiar" la
+  // reordena en vez de elegir una pareja que luego nunca llegaba a sonar.
+  const deckBTrack: Track | null = queueIndex < queue.length - 1 ? queue[queueIndex + 1] : null;
   const [showDeckBPicker, setShowDeckBPicker] = useState(false);
-  const deckBTrack: Track | null = (deckBId ? queue.find(t => t.id === deckBId) : null) ?? defaultDeckB;
+  useEffect(() => setShowDeckBPicker(false), [currentTrack?.id]);
 
   const [showMixer, setShowMixer] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -154,15 +182,24 @@ export default function DjMode() {
   // Candidatos de Deck B ordenados por cercanía de BPM (estimado, no real) a
   // la pista que suena en Deck A — para elegir un Deck B "compatible" a ojo.
   const deckACurrentBpm = currentTrack ? estimateBpm(currentTrack.title, currentTrack.artist) : null;
+  // Solo lo que aún no ha sonado (lo de detrás de queueIndex no se puede mover).
   const deckBCandidates = useMemo(() => {
-    const candidates = queue.filter(t => t.id !== currentTrack?.id);
-    if (deckACurrentBpm === null) return candidates.map(t => ({ track: t, bpm: null as number | null, diff: Infinity }));
-    const scored = candidates.map(t => {
-      const bpm = estimateBpm(t.title, t.artist);
-      return { track: t, bpm, diff: Math.abs(bpm - deckACurrentBpm) };
+    const upcoming = queue
+      .map((track, index) => ({ track, index }))
+      .filter(({ track, index }) => index > queueIndex && track.id !== currentTrack?.id);
+    if (deckACurrentBpm === null) return upcoming.map(c => ({ ...c, bpm: null as number | null, diff: Infinity }));
+    const scored = upcoming.map(c => {
+      const bpm = estimateBpm(c.track.title, c.track.artist);
+      return { ...c, bpm, diff: Math.abs(bpm - deckACurrentBpm) };
     });
     return scored.sort((a, b) => a.diff - b.diff);
-  }, [queue, currentTrack?.id, deckACurrentBpm]);
+  }, [queue, queueIndex, currentTrack?.id, deckACurrentBpm]);
+
+  const pickDeckB = (index: number) => {
+    stopPreview();
+    if (index !== queueIndex + 1) moveInQueue(index, queueIndex + 1);
+    setShowDeckBPicker(false);
+  };
 
   // "Auto-Mix Perfecto" automático: en cuanto hay una pareja A→B válida sin
   // transición configurada, se genera una automáticamente (una sola vez por
@@ -173,7 +210,10 @@ export default function DjMode() {
 
     autoMixedPairs.current.add(currentPairKey);
     setIsAutoMixing(true);
-    computeAutoMix(currentTrack, deckBTrack)
+    // La duración del reproductor es la fiable para la pista que suena
+    const liveDuration = usePlayerStore.getState().duration;
+    const fromTrack = liveDuration > 0 ? { ...currentTrack, duration: liveDuration * 1000 } : currentTrack;
+    computeAutoMix(fromTrack, deckBTrack)
       .then((result) => {
         const liveFx = usePlayerStore.getState().djFx;
         setTransition({
@@ -181,6 +221,7 @@ export default function DjMode() {
           toTrackId: deckBTrack.id,
           ...result,
           fx: isNeutralFx(liveFx) ? undefined : liveFx,
+          auto: true,
         });
       })
       .catch(() => {})
@@ -274,7 +315,9 @@ export default function DjMode() {
   }, [transitions, queue]);
 
   // Todas las mezclas guardadas, salvo la pareja A→B que ya se muestra arriba en el conector.
+  // Las generadas solas (auto) no cuentan como "tuyas" hasta que las editas.
   const savedTransitions = useMemo(() => Object.values(transitions).filter((rule) => {
+    if (rule.auto) return false;
     if (rule.fromTrackId === currentTrack?.id && rule.toTrackId === deckBTrack?.id) return false;
     return Boolean(resolveTrack(rule.fromTrackId) && resolveTrack(rule.toTrackId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -295,26 +338,20 @@ export default function DjMode() {
 
   return (
     <div className="dj-page">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={djAutoTransition}
-          onClick={() => setDjAutoTransition(!djAutoTransition)}
-          title={djAutoTransition ? 'Las canciones se mezclan solas al terminar' : 'Cada canción termina y pasa a la siguiente sin mezcla'}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 10,
-            background: djAutoTransition ? 'rgba(255,255,255,0.08)' : 'transparent',
-            border: `1px solid ${djAutoTransition ? 'var(--accent)' : 'rgba(255,255,255,0.15)'}`,
-            color: djAutoTransition ? 'var(--accent)' : 'var(--text-secondary)',
-            borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-          }}
-        >
-          <span style={{ width: 30, height: 16, borderRadius: 8, background: djAutoTransition ? 'var(--accent)' : 'rgba(255,255,255,0.2)', position: 'relative', transition: 'background 0.2s' }}>
-            <span style={{ position: 'absolute', top: 2, left: djAutoTransition ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: djAutoTransition ? '#000' : '#fff', transition: 'left 0.2s' }} />
-          </span>
-          Transición automática {djAutoTransition ? 'activada' : 'desactivada'}
-        </button>
+      {/* Automatismos de la sesión, juntos: qué suena después y cómo se pasa a ello */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <SwitchPill
+          on={autoplayEnabled}
+          onToggle={toggleAutoplay}
+          label="Autoplay"
+          title={autoplayEnabled ? 'Al acabarse la cola se añaden canciones parecidas, y se mezclan igual' : 'La sesión se para cuando se acaba la cola'}
+        />
+        <SwitchPill
+          on={djAutoTransition}
+          onToggle={() => setDjAutoTransition(!djAutoTransition)}
+          label="Transición automática"
+          title={djAutoTransition ? 'Cada canción se mezcla sola con la siguiente (o con la mezcla que hayas guardado)' : 'Cada canción termina y pasa a la siguiente sin mezcla'}
+        />
       </div>
       <div className="dj-decks" data-tour="dj-decks">
         {/* Deck A — pista actual, real */}
@@ -378,7 +415,11 @@ export default function DjMode() {
         {/* Conector — estado de la transición real entre A y B */}
         <div className="dj-transition-connector" data-tour="dj-transition">
           <span className="dj-transition-status">
-            {isAutoMixing ? 'Generando mezcla…' : !djAutoTransition ? 'Mezcla automática desactivada' : currentRule ? 'Transición lista' : 'Sin transición'}
+            {isAutoMixing ? 'Generando mezcla…'
+              : !djAutoTransition ? 'Transición automática desactivada'
+              : !deckBTrack ? (autoplayEnabled ? 'Esperando la siguiente canción…' : 'Cola vacía')
+              : currentRule ? (currentRule.auto ? 'Mezcla automática lista' : 'Tu mezcla, lista')
+              : 'Sin transición'}
           </span>
           <div className="dj-transition-actions">
             <button
@@ -415,24 +456,21 @@ export default function DjMode() {
         {/* Deck B — pista elegida (por defecto, la siguiente de la cola) */}
         <div className="dj-deck dj-deck-b" style={{ boxShadow: `0 8px 40px ${deckBColor}4d` }}>
           <div className="dj-deck-b-header">
-            <span className="dj-deck-label">{deckBId ? 'Deck B' : 'Siguiente en la cola'}</span>
-            {queue.length > 1 && (
-              <button className="dj-deckb-change-btn" onClick={() => setShowDeckBPicker(p => !p)}>
-                Cambiar
+            <span className="dj-deck-label">Siguiente en la cola</span>
+            {deckBCandidates.length > 1 && (
+              <button className="dj-deckb-change-btn" onClick={() => setShowDeckBPicker(p => !p)} title="Elige cuál suena después — se mueve en la cola">
+                {showDeckBPicker ? 'Cerrar' : 'Cambiar'}
               </button>
             )}
           </div>
 
           {showDeckBPicker && (
             <div className="dj-deckb-picker">
-              {deckBCandidates.map(({ track: t, bpm, diff }) => (
+              {deckBCandidates.map(({ track: t, index, bpm, diff }) => (
                 <button
-                  key={t.id}
-                  className={`dj-deckb-picker-item ${deckBTrack?.id === t.id ? 'active' : ''}`}
-                  onClick={() => {
-                    setDeckBId(t.id === defaultDeckB?.id ? null : t.id);
-                    setShowDeckBPicker(false);
-                  }}
+                  key={`${t.id}-${index}`}
+                  className={`dj-deckb-picker-item ${index === queueIndex + 1 ? 'active' : ''}`}
+                  onClick={() => pickDeckB(index)}
                 >
                   <CoverThumb cover={t.cover} className="dj-deckb-picker-item-cover" iconSize={16} />
                   <div>
@@ -455,14 +493,15 @@ export default function DjMode() {
             <p>{deckBTrack?.artist || 'Añade canciones a la cola'}</p>
           </div>
 
+          {/* Con mezcla activa, pasar ya hace el fundido de la mezcla (no un corte) */}
           <button
             className="dj-skip-btn"
-            onClick={() => (deckBId ? null : nextTrack())}
-            disabled={!deckBTrack || Boolean(deckBId)}
-            title={deckBId ? 'Solo disponible para la siguiente pista real de la cola' : undefined}
+            onClick={() => { stopPreview(); nextTrack(); }}
+            disabled={!deckBTrack}
+            title={currentRule && djAutoTransition ? 'Pasa a esta pista ahora con la mezcla configurada' : 'Pasa a esta pista ahora'}
           >
             <IconNext size={16} />
-            Saltar a esta pista
+            {currentRule && djAutoTransition ? 'Mezclar ahora' : 'Saltar a esta pista'}
           </button>
         </div>
       </div>

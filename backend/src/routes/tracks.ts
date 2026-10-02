@@ -30,8 +30,15 @@ import { logTrackPlay, readHistory, saveSessionMinutes, HistoryEntry, getHistory
 import { getRecommendations } from '../services/recommendationService';
 import { getInnerTubeRadioTracks } from '../services/innerTubeService';
 import { searchYouTube } from '../services/metadataService';
+import { getKokoMixTracks } from './recommendations';
 
 const router = Router();
+
+// Por debajo de esto, la radio de una canción no da para una cola con sentido.
+const MIN_RADIO_TRACKS = 5;
+
+const kokoMixFallback = (userId: string) => async (needed: number, exclude: Set<string>) =>
+  (await getKokoMixTracks(userId, needed, exclude)) as any[];
 
 // GET /api/tracks/recommendations
 router.get('/recommendations', async (req: Request, res: Response) => {
@@ -58,6 +65,7 @@ router.get('/recommendations', async (req: Request, res: Response) => {
       producerAffinity,
       skipPenalty,
       earlySkipIds,
+      fallback: userId ? kokoMixFallback(userId) : undefined,
     });
     return res.json(recommendations);
   } catch (error) {
@@ -70,7 +78,10 @@ router.get('/recommendations', async (req: Request, res: Response) => {
 router.get('/:id/radio', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = (req.headers['x-user-id'] || '') as string;
     let videoId = id.startsWith('yt_') ? id.replace('yt_', '') : '';
+    // Lo poco que dé la radio de YouTube (si no llega al mínimo) va delante
+    let partial: any[] = [];
 
     // If it's an iTunes ID, try to get track details to find its YouTube equivalent
     if (!videoId) {
@@ -85,7 +96,8 @@ router.get('/:id/radio', async (req: Request, res: Response) => {
 
     if (videoId) {
       const radioTracks = await getInnerTubeRadioTracks(videoId);
-      if (radioTracks.length > 0) {
+      partial = radioTracks;
+      if (radioTracks.length >= MIN_RADIO_TRACKS) {
         return res.json({
           seedId: id,
           seedVideoId: videoId,
@@ -95,13 +107,24 @@ router.get('/:id/radio', async (req: Request, res: Response) => {
       }
     }
 
-    // Fallback: use multi-level recommendations
-    const fallbackRecs = await getRecommendations(25, undefined, undefined, id);
-    return res.json({
-      seedId: id,
-      source: 'recommendations_fallback',
-      tracks: fallbackRecs,
-    });
+    // Similares por Last.fm (solo a partir de la semilla)
+    const seedRecs = await getRecommendations(25, userId || undefined, undefined, id, { seedOnly: true });
+    const partialIds = new Set(partial.map((t) => t.id));
+    const similar = [...partial, ...seedRecs.filter((t) => !partialIds.has(t.id))];
+    if (similar.length >= MIN_RADIO_TRACKS) {
+      return res.json({ seedId: id, source: 'recommendations_fallback', tracks: similar });
+    }
+
+    // Sin metadatos suficientes sobre la canción: se sigue con el Koko-Mix
+    // del usuario (sus gustos) en vez de un género genérico.
+    const mix = userId ? await getKokoMixTracks(userId, 25, new Set([id, ...similar.map((t) => t.id)])) : [];
+    if (mix.length > 0) {
+      return res.json({ seedId: id, source: 'kokomix_fallback', insufficientMetadata: true, tracks: [...similar, ...mix] });
+    }
+
+    // Usuario sin perfil todavía: recomendaciones generales
+    const general = await getRecommendations(25, userId || undefined, undefined, id);
+    return res.json({ seedId: id, source: 'recommendations_fallback', insufficientMetadata: true, tracks: general });
   } catch (error) {
     console.error('[Tracks] Error generating song radio for', req.params.id, ':', error);
     return res.status(500).json({ error: 'Error generating song radio' });

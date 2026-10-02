@@ -1,5 +1,6 @@
 import { usePlayerStore } from '../../store/playerStore';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DjMixerModal from './DjMixerModal';
 import { getJamQueue, voteJamQueueItem, removeFromJamQueue, getRecommendations, getTrackRadio } from '../../lib/api';
 import { pickRecommendations } from '../../lib/recommendationPicker';
@@ -19,8 +20,11 @@ export default function QueuePanel() {
     queue, queueIndex, currentTrack, isPlaying,
     isQueueOpen, toggleQueue, removeFromQueue, jumpToQueueIndex,
     activeJamCode, isJamHost, jamQueue, setJamQueue,
-    autoplayEnabled, toggleAutoplay
+    autoplayEnabled, toggleAutoplay,
+    radioFallbackSeedId, dismissRadioFallback,
+    autoApplySavedTransitions, setAutoApplySavedTransitions,
   } = usePlayerStore();
+  const navigate = useNavigate();
 
   const [djModalTracks, setDjModalTracks] = useState<{ from: any, to: any } | null>(null);
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
@@ -167,7 +171,43 @@ export default function QueuePanel() {
             </label>
           </div>
         )}
+        {!activeJamCode && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+            <span style={{ color: 'var(--text-muted)' }} title="Las transiciones que configuras con el botón de nota de cada canción">Mezclas DJ entre canciones</span>
+            <label className="autoplay-switch" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={autoApplySavedTransitions}
+                onChange={(e) => setAutoApplySavedTransitions(e.target.checked)}
+                style={{ display: 'none' }}
+              />
+              <span className="autoplay-slider" />
+            </label>
+          </div>
+        )}
       </div>
+
+      {!activeJamCode && radioFallbackSeedId && radioFallbackSeedId === currentTrack?.id && (
+        <div style={{
+          margin: '8px 12px 0', padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.45,
+          background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+        }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <span style={{ flex: 1 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>Sin suficiente información</strong> sobre esta canción para buscar parecidas. Lo siguiente sale de tu Koko-Mix.
+            </span>
+            <button className="lyrics-close-btn" onClick={dismissRadioFallback} title="Ocultar aviso" style={{ padding: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+          </div>
+          <button
+            onClick={() => { navigate('/'); toggleQueue(); }}
+            style={{ marginTop: 8, background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)', borderRadius: 999, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Ver mi Koko-Mix
+          </button>
+        </div>
+      )}
 
       <div className="queue-content">
         {/* Reproduciendo ahora */}
