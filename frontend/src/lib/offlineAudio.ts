@@ -69,16 +69,26 @@ export async function isTrackOffline(trackId: string): Promise<boolean> {
   }
 }
 
+/** URL absoluta del audio completo de un track, forzando la transmisión (evitando embedMode) y sin descarga en background para el CDN. */
+export async function trackAudioUrl(trackId: string): Promise<string> {
+  const API_BASE = await getApiUrl();
+  const url = `${API_BASE}/stream/${encodeURIComponent(trackId)}?forceStream=true&autoDownload=false`;
+  return new URL(url, window.location.href).href;
+}
+
 export async function saveTrackOffline(
   trackId: string,
   metadata: { title: string; artist: string; cover: string; duration: number }
 ): Promise<void> {
   if (!trackId) throw new Error('No trackId specified for saving offline');
   const db = await initOfflineDB();
-  const API_BASE = await getApiUrl();
-  
-  // 1. Descargar el stream desde el backend forzando la transmisión (evitando embedMode) y desactivando la descarga en background para el CDN
-  const res = await fetch(`${API_BASE}/stream/${trackId}?forceStream=true&autoDownload=false`);
+  const blob = await fetchTrackAudio(trackId);
+  return putOfflineRecord(db, trackId, blob, metadata);
+}
+
+async function fetchTrackAudio(trackId: string): Promise<Blob> {
+  // 1. Descargar el stream desde el backend
+  const res = await fetch(await trackAudioUrl(trackId));
   if (!res.ok) {
     throw new Error(`Error al descargar el track de audio: ${res.status}`);
   }
@@ -94,7 +104,15 @@ export async function saveTrackOffline(
   if (blob.size === 0) {
     throw new Error('El archivo de audio descargado está vacío');
   }
+  return blob;
+}
 
+function putOfflineRecord(
+  db: IDBDatabase,
+  trackId: string,
+  blob: Blob,
+  metadata: { title: string; artist: string; cover: string; duration: number }
+): Promise<void> {
   // 2. Guardar en IndexedDB
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');

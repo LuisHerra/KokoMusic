@@ -31,7 +31,9 @@ function formatTime(secs: number): string {
 }
 
 
-import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
+import { isTrackOffline, saveTrackOffline, deleteOfflineTrack } from '../../lib/offlineAudio';
+import { saveTrackToDevice } from '../../lib/deviceDownload';
+import DownloadChoiceSheet from '../Common/DownloadChoiceSheet';
 import { resolveImageUrl, isDesktopApp } from '../../lib/api';
 import { getApiUrl } from '../../lib/backendResolver';
 
@@ -137,6 +139,36 @@ export default function Player() {
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [currentTrack?.id]);
+
+  const [showDownloadChoice, setShowDownloadChoice] = useState(false);
+  const [savingToDevice, setSavingToDevice] = useState(false);
+
+  const openDownloadChoice = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!currentTrack || downloadStatus === 'downloading' || savingToDevice) return;
+    setShowDownloadChoice(true);
+  };
+
+  const handleDeviceDownload = async () => {
+    if (!currentTrack) return;
+    const { setError } = usePlayerStore.getState();
+    setSavingToDevice(true);
+    try {
+      setError(await saveTrackToDevice(currentTrack.id, { title: currentTrack.title, artist: currentTrack.artist }));
+    } catch (err: any) {
+      console.error('[Player] Error al descargar al dispositivo:', err);
+      setError(err?.message || 'Error al descargar');
+    } finally {
+      setSavingToDevice(false);
+    }
+  };
+
+  const handleRemoveOffline = async () => {
+    if (!currentTrack) return;
+    await deleteOfflineTrack(currentTrack.id);
+    setDownloadStatus('none');
+    usePlayerStore.getState().setError('Quitada de la app');
+  };
 
   const handleDownload = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -285,23 +317,23 @@ export default function Player() {
               </button>
               <button 
                 className={`ctrl-btn hide-on-mobile ${downloadStatus === 'downloaded' ? 'downloaded' : ''}`}
-                onClick={handleDownload}
-                disabled={downloadStatus !== 'none'}
-                title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión" : downloadStatus === 'downloading' ? "Guardando..." : "Guardar sin conexión"}
-                style={{ 
-                  padding: 4, 
+                onClick={openDownloadChoice}
+                disabled={downloadStatus === 'downloading' || savingToDevice}
+                title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión — descargar o quitar" : downloadStatus === 'downloading' || savingToDevice ? "Guardando..." : "Guardar sin conexión"}
+                style={{
+                  padding: 4,
                   flexShrink: 0,
                   color: downloadStatus === 'downloaded' ? 'var(--accent)' : 'var(--text-secondary)',
-                  opacity: downloadStatus === 'downloading' ? 0.6 : 1,
-                  cursor: downloadStatus === 'none' ? 'pointer' : 'default',
+                  opacity: downloadStatus === 'downloading' || savingToDevice ? 0.6 : 1,
+                  cursor: downloadStatus === 'downloading' || savingToDevice ? 'default' : 'pointer',
                   background: 'transparent',
                   border: 'none'
                 }}
               >
-                {downloadStatus === 'downloaded' ? (
-                  <IconCheck />
-                ) : downloadStatus === 'downloading' ? (
+                {downloadStatus === 'downloading' || savingToDevice ? (
                   <IconLoadingSpinner />
+                ) : downloadStatus === 'downloaded' ? (
+                  <IconCheck />
                 ) : (
                   <IconCloudDownload />
                 )}
@@ -550,8 +582,8 @@ export default function Player() {
               </button>
 
               <button
-                onClick={() => { handleDownload(); setShowMobileMenu(false); }}
-                disabled={downloadStatus !== 'none'}
+                onClick={() => { setShowMobileMenu(false); openDownloadChoice(); }}
+                disabled={downloadStatus === 'downloading' || savingToDevice}
                 style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
               >
                 <IconCloudDownload />
@@ -589,6 +621,17 @@ export default function Player() {
 
       {showCreditsModal && currentTrack && (
         <SongCreditsModal track={currentTrack} onClose={() => setShowCreditsModal(false)} />
+      )}
+
+      {currentTrack && (
+        <DownloadChoiceSheet
+          open={showDownloadChoice}
+          onClose={() => setShowDownloadChoice(false)}
+          track={{ title: currentTrack.title, artist: currentTrack.artist, cover: currentTrack.cover }}
+          internalSaved={downloadStatus === 'downloaded'}
+          onInternal={() => (downloadStatus === 'downloaded' ? handleRemoveOffline() : handleDownload())}
+          onExternal={handleDeviceDownload}
+        />
       )}
     </div>
   );

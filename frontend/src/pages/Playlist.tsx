@@ -16,6 +16,8 @@ function formatDuration(ms: number) {
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import { isTrackOffline, saveTrackOffline, deleteOfflineTrack, getAllOfflineTracks } from '../lib/offlineAudio';
 import ArtistLinks from '../components/Common/ArtistLinks';
+import DownloadChoiceSheet from '../components/Common/DownloadChoiceSheet';
+import { saveTrackToDevice } from '../lib/deviceDownload';
 
 import { createPortal } from 'react-dom';
 function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
@@ -65,8 +67,28 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
     }
   }, [trackId]);
 
-  const handleDownload = async (e: React.MouseEvent | React.TouchEvent) => {
+  const [isDownloadChoiceOpen, setIsDownloadChoiceOpen] = useState(false);
+
+  const openDownloadChoice = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
+    if (!track || downloading) return;
+    setIsDownloadChoiceOpen(true);
+  };
+
+  const handleDeviceDownload = async () => {
+    if (!track) return;
+    try {
+      setDownloading(true);
+      setError(await saveTrackToDevice(trackId, { title: track.title, artist: track.artist }));
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Error al descargar');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleDownload = async () => {
     if (!track) return;
     try {
       setDownloading(true);
@@ -278,9 +300,9 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
         <button 
           className="ctrl-btn" 
           style={{ padding: 4, opacity: isOffline ? 1 : 0.4, color: isOffline ? 'var(--accent)' : 'inherit' }}
-          onClick={handleDownload}
+          onClick={openDownloadChoice}
           disabled={downloading}
-          title={downloading ? 'Descargando...' : isOffline ? 'Eliminar descarga de este dispositivo' : 'Descargar para escuchar sin conexión'}
+          title={downloading ? 'Descargando...' : isOffline ? 'Guardada en la app — descargar o quitar' : 'Descargar'}
         >
           {downloading ? (
             <div className="spinner" style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.2)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
@@ -317,6 +339,15 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
           </svg>
         </button>
       </div>
+
+      <DownloadChoiceSheet
+        open={isDownloadChoiceOpen}
+        onClose={() => setIsDownloadChoiceOpen(false)}
+        track={track}
+        internalSaved={isOffline}
+        onInternal={handleDownload}
+        onExternal={handleDeviceDownload}
+      />
 
       {/* Mobile actions bottom sheet */}
       {/* Portal a <body>: dentro de la fila, las filas siguientes y el mini
@@ -359,9 +390,9 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
 
               <button 
                 className="track-action-sheet-btn" 
-                onClick={(e) => { 
-                  setIsActionsOpen(false); 
-                  handleDownload(e); 
+                onClick={(e) => {
+                  setIsActionsOpen(false);
+                  openDownloadChoice(e);
                 }}
                 disabled={downloading}
               >
@@ -375,14 +406,14 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ color: 'var(--accent)' }}>
                       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                     </svg>
-                    <span style={{ color: 'var(--accent)' }}>Eliminar descarga</span>
+                    <span style={{ color: 'var(--accent)' }}>Descargada · opciones</span>
                   </>
                 ) : (
                   <>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                     </svg>
-                    <span>Descargar sin conexión</span>
+                    <span>Descargar</span>
                   </>
                 )}
               </button>

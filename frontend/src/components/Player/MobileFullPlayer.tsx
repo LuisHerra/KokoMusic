@@ -9,7 +9,9 @@ import { seekAudio } from '../../hooks/useAudioPlayer';
 import { useQuery } from '@tanstack/react-query';
 import { getLyrics, resolveImageUrl, getTrackVideo, searchTracks, type Lyrics, type VideoData, formatYoutubeEmbedUrl, BASE } from '../../lib/api';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
-import { isTrackOffline, saveTrackOffline } from '../../lib/offlineAudio';
+import { isTrackOffline, saveTrackOffline, deleteOfflineTrack } from '../../lib/offlineAudio';
+import { saveTrackToDevice } from '../../lib/deviceDownload';
+import DownloadChoiceSheet from '../Common/DownloadChoiceSheet';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
 import { useDeviceSyncStore } from '../../store/deviceSyncStore';
@@ -223,8 +225,37 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     };
   }, [currentTrack?.id]);
 
-  const handleDownload = async (e: React.MouseEvent) => {
+  const [showDownloadChoice, setShowDownloadChoice] = useState(false);
+  const [savingToDevice, setSavingToDevice] = useState(false);
+
+  const openDownloadChoice = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!currentTrack || downloadStatus === 'downloading' || savingToDevice) return;
+    setShowDownloadChoice(true);
+  };
+
+  const handleDeviceDownload = async () => {
+    if (!currentTrack) return;
+    const { setError } = usePlayerStore.getState();
+    setSavingToDevice(true);
+    try {
+      setError(await saveTrackToDevice(currentTrack.id, { title: currentTrack.title, artist: currentTrack.artist }));
+    } catch (err: any) {
+      console.error('[MobilePlayer] Error al descargar al dispositivo:', err);
+      setError(err?.message || 'Error al descargar');
+    } finally {
+      setSavingToDevice(false);
+    }
+  };
+
+  const handleRemoveOffline = async () => {
+    if (!currentTrack) return;
+    await deleteOfflineTrack(currentTrack.id);
+    setDownloadStatus('none');
+    usePlayerStore.getState().setError('Quitada de la app');
+  };
+
+  const handleDownload = async () => {
     if (!currentTrack || downloadStatus !== 'none') return;
 
     setDownloadStatus('downloading');
@@ -666,29 +697,39 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           {/* Caching/Offline Button */}
           <button
             className={`mfp-download-btn ${downloadStatus === 'downloaded' ? 'active' : ''}`}
-            onClick={handleDownload}
-            disabled={downloadStatus !== 'none'}
+            onClick={openDownloadChoice}
+            disabled={downloadStatus === 'downloading' || savingToDevice}
             style={{
               background: 'transparent',
               border: 'none',
               color: downloadStatus === 'downloaded' ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
-              opacity: downloadStatus === 'downloading' ? 0.6 : 1,
+              opacity: downloadStatus === 'downloading' || savingToDevice ? 0.6 : 1,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               padding: 8,
-              cursor: downloadStatus === 'none' ? 'pointer' : 'default',
+              cursor: downloadStatus === 'downloading' || savingToDevice ? 'default' : 'pointer',
             }}
-            title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión" : downloadStatus === 'downloading' ? "Guardando..." : "Guardar sin conexión"}
+            title={downloadStatus === 'downloaded' ? "Audio guardado sin conexión — descargar o quitar" : downloadStatus === 'downloading' || savingToDevice ? "Guardando..." : "Guardar sin conexión"}
           >
-            {downloadStatus === 'downloaded' ? (
-              <IconCheck size={24} />
-            ) : downloadStatus === 'downloading' ? (
+            {downloadStatus === 'downloading' || savingToDevice ? (
               <IconLoadingSpinner size={24} />
+            ) : downloadStatus === 'downloaded' ? (
+              <IconCheck size={24} />
             ) : (
               <IconCloudDownload size={24} />
             )}
           </button>
+          {currentTrack && (
+            <DownloadChoiceSheet
+              open={showDownloadChoice}
+              onClose={() => setShowDownloadChoice(false)}
+              track={{ title: currentTrack.title, artist: currentTrack.artist, cover: currentTrack.cover }}
+              internalSaved={downloadStatus === 'downloaded'}
+              onInternal={() => (downloadStatus === 'downloaded' ? handleRemoveOffline() : handleDownload())}
+              onExternal={handleDeviceDownload}
+            />
+          )}
 
 
 

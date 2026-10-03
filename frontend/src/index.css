@@ -4747,6 +4747,72 @@ input:checked + .autoplay-slider:before {
   flex-shrink: 0;
 }
 
+/* Hoja "¿Dónde quieres guardarla?" (DownloadChoiceSheet) */
+.download-choice-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.download-choice-header img {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.download-choice-header h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+.download-choice-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.download-choice-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.download-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.download-choice-text strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+.download-choice-text small {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+/* En escritorio, una tarjeta centrada en vez de una hoja a todo el ancho. */
+@media (min-width: 769px) {
+  .bottom-sheet-content.download-choice-sheet,
+  .bottom-sheet-content.download-choice-sheet.open {
+    left: 50%;
+    right: auto;
+    bottom: 50%;
+    width: 420px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 16px;
+    transform: translate(-50%, 50%);
+  }
+  .download-choice-sheet .bottom-sheet-drag-handle {
+    display: none;
+  }
+}
+
 /* Artist page layout classes */
 .artist-hero {
   position: relative;
