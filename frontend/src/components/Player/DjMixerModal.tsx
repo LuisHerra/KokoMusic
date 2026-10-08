@@ -1,3 +1,4 @@
+import RateSlider from '../RateSlider';
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { usePlayerStore, type CrossfadeCurve, NEUTRAL_DJ_FX, isNeutralFx, describeFx, type DjFxSnapshot, type TransitionRule } from '../../store/playerStore';
@@ -387,14 +388,18 @@ export default function DjMixerModal({ fromTrack, toTrack, onClose, collabCode }
                   {fxOn && <button className="mix-link" onClick={() => updateFx(NEUTRAL_DJ_FX)}>Quitar</button>}
                 </div>
                 {[
-                  { key: 'slowedRate' as const, label: 'Slowed', min: 0.7, max: 1.15, step: 0.01, fmt: (v: number) => `${v.toFixed(2)}x` },
+                  { key: 'slowedRate' as const, label: 'Slowed', min: 0.5, max: 1.2, step: 0.01, fmt: (v: number) => `${v.toFixed(2)}x` },
                   { key: 'reverbAmount' as const, label: 'Reverb / Eco', min: 0, max: 1, step: 0.01, fmt: (v: number) => `${Math.round(v * 100)}%` },
                   { key: 'filterCutoff' as const, label: 'Filtro', min: 200, max: 20000, step: 100, fmt: (v: number) => (v >= 20000 ? 'Off' : `${(v / 1000).toFixed(1)}kHz`) },
                 ].map(c => (
                   <div key={c.key}>
                     <div className="mix-row"><span>{c.label}</span><strong>{c.fmt(fx[c.key])}</strong></div>
-                    <input className="mix-range" type="range" min={c.min} max={c.max} step={c.step} value={fx[c.key]}
-                      onChange={e => updateFx({ [c.key]: Number(e.target.value) })} />
+                    {c.key === 'slowedRate' ? (
+                      <RateSlider className="mix-range" value={fx.slowedRate} onChange={v => updateFx({ slowedRate: v })} />
+                    ) : (
+                      <input className="mix-range" type="range" min={c.min} max={c.max} step={c.step} value={fx[c.key]}
+                        onChange={e => updateFx({ [c.key]: Number(e.target.value) })} />
+                    )}
                   </div>
                 ))}
                 <p className="mix-note">{isDjModeActive ? 'Parten de los efectos que tienes puestos y se oyen al moverlos.' : 'Se aplican cada vez que suene la mezcla.'}</p>

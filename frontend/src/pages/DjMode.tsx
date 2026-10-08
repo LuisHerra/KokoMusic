@@ -1,3 +1,4 @@
+import RateSlider from '../components/RateSlider';
 import { useState, useEffect, useRef, useMemo, type MouseEvent } from 'react';
 import { usePlayerStore, isNeutralFx, describeRule, type TransitionRule } from '../store/playerStore';
 import { seekAudio, getActiveAudio, setDjFxParams, setAudioPlaybackRate } from '../hooks/useAudioPlayer';
@@ -514,13 +515,9 @@ export default function DjMode() {
 
         <div className="dj-fx-row">
           <span className="dj-fx-label">Slowed</span>
-          <input
-            type="range"
-            min={0.7}
-            max={1.15}
-            step={0.01}
+          <RateSlider
             value={djFx.slowedRate}
-            onChange={(e) => setDjFx({ slowedRate: Number(e.target.value) })}
+            onChange={(v) => setDjFx({ slowedRate: v })}
             disabled={!currentTrack}
           />
           <span className="dj-fx-value">{djFx.slowedRate.toFixed(2)}x</span>

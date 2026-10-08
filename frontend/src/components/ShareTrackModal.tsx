@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Track } from '../lib/api';
 import { getFriends, sendMessage, type Friendship } from '../lib/api';
 
@@ -51,7 +52,7 @@ export default function ShareTrackModal({ isOpen, onClose, track, userId }: Shar
     }
   };
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed',
@@ -156,7 +157,7 @@ export default function ShareTrackModal({ isOpen, onClose, track, userId }: Shar
                     background: 'rgba(255, 255, 255, 0.03)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                     <div
                       style={{
                         width: 34,
@@ -170,17 +171,18 @@ export default function ShareTrackModal({ isOpen, onClose, track, userId }: Shar
                         fontWeight: 700,
                         color: '#000',
                         overflow: 'hidden',
+                        flexShrink: 0,
                       }}
                     >
                       {friend.avatar_url ? (
                         <img src={friend.avatar_url} alt={friend.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       ) : (
-                        friend.display_name.charAt(0).toUpperCase()
+                        (friend.display_name || '?').charAt(0).toUpperCase()
                       )}
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{friend.display_name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>@{friend.username}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{friend.display_name}</div>
+                      {friend.username && <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>@{friend.username}</div>}
                     </div>
                   </div>
 
@@ -196,6 +198,7 @@ export default function ShareTrackModal({ isOpen, onClose, track, userId }: Shar
                       fontSize: 11,
                       fontWeight: 700,
                       cursor: isSent ? 'default' : 'pointer',
+                      flexShrink: 0,
                     }}
                   >
                     {isSending ? 'Enviando...' : isSent ? 'Enviado ✓' : 'Enviar'}
@@ -206,6 +209,7 @@ export default function ShareTrackModal({ isOpen, onClose, track, userId }: Shar
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
