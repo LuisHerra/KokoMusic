@@ -72,7 +72,8 @@ export async function isTrackOffline(trackId: string): Promise<boolean> {
 /** URL absoluta del audio completo de un track, forzando la transmisión (evitando embedMode) y sin descarga en background para el CDN. */
 export async function trackAudioUrl(trackId: string): Promise<string> {
   const API_BASE = await getApiUrl();
-  const url = `${API_BASE}/stream/${encodeURIComponent(trackId)}?forceStream=true&autoDownload=false`;
+  const uid = localStorage.getItem('koko_device_id');
+  const url = `${API_BASE}/stream/${encodeURIComponent(trackId)}?forceStream=true&autoDownload=false${uid ? `&uid=${encodeURIComponent(uid)}` : ''}`;
   return new URL(url, window.location.href).href;
 }
 

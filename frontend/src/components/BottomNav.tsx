@@ -7,6 +7,7 @@ import { getMyProfile } from '../lib/api';
 import { IconKaraoke } from './Icons/NavIcons';
 
 import { ANDROID_APK_URL, canOfferAndroidApp } from '../lib/androidApp';
+import { isGuestMode } from '../lib/guest';
 function IconHome() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -129,6 +130,28 @@ export default function BottomNav() {
   };
 
   const moreActive = ['/stats', '/dj', '/following', '/events', '/profile'].includes(location.pathname);
+
+  if (isGuestMode()) {
+    return (
+      <div className="bottom-nav">
+        <NavLink to="/" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+          <IconHome />
+          <span>Inicio</span>
+        </NavLink>
+        <NavLink to="/search" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+          <IconSearch />
+          <span>Buscar</span>
+        </NavLink>
+        <button
+          className="bottom-nav-item bottom-nav-btn"
+          onClick={() => window.dispatchEvent(new Event('koko-open-auth'))}
+        >
+          <IconFriends />
+          <span>Entrar</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>

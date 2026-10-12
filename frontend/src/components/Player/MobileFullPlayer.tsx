@@ -192,7 +192,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           return;
         }
 
-        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
+        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status?uid=${encodeURIComponent(localStorage.getItem('koko_device_id') || '')}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!isMounted) return;

@@ -23,6 +23,7 @@ import { metrics } from '../services/metricsService';
 import { findTrackInCDN, isCDNEnabled, getCDNUsageStats } from '../services/cdnService';
 import { cacheStreamInBackground } from '../services/cdnAutoCacheService';
 import { getStreamRelayUrl } from '../services/kokoLiteService';
+import { isRegisteredRequest, GUEST_FORBIDDEN } from '../services/accessService';
 
 const router = Router();
 
@@ -301,6 +302,13 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
       return;
     }
 
+    // Modo invitado: solo lo que ya está en el CDN. Resolver un track nuevo
+    // pasa por KokoMusic-lite y proxies (tráfico real), así que queda
+    // reservado a cuentas registradas.
+    if (!(await isRegisteredRequest(req))) {
+      return res.status(403).json(GUEST_FORBIDDEN);
+    }
+
     // 3. Resolución de IDs y metadatos
     const { youtubeId: primaryYoutubeId, alternates, resolvableItunesId, artist, title } = await resolveYoutubeIdForTrack(itunesId);
 
@@ -386,6 +394,7 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
 
 router.get('/:itunesId/resolve', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
+  if (!(await isRegisteredRequest(req))) return res.status(403).json(GUEST_FORBIDDEN);
 
   try {
     const { youtubeId, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);
@@ -415,6 +424,7 @@ router.get('/:itunesId/resolve', async (req: Request, res: Response) => {
 
 router.post('/:itunesId/purge-cache', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
+  if (!(await isRegisteredRequest(req))) return res.status(403).json(GUEST_FORBIDDEN);
 
   try {
     const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
@@ -430,6 +440,7 @@ router.post('/:itunesId/purge-cache', async (req: Request, res: Response) => {
 // Alias DELETE /api/stream/:itunesId/cache
 router.delete('/:itunesId/cache', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
+  if (!(await isRegisteredRequest(req))) return res.status(403).json(GUEST_FORBIDDEN);
 
   try {
     const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
@@ -446,6 +457,7 @@ router.delete('/:itunesId/cache', async (req: Request, res: Response) => {
 
 router.get('/:itunesId/diagnose', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
+  if (!(await isRegisteredRequest(req))) return res.status(403).json(GUEST_FORBIDDEN);
 
   try {
     const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
@@ -464,6 +476,8 @@ router.get('/:itunesId/diagnose', async (req: Request, res: Response) => {
 
 router.post('/prefetch', async (req: Request, res: Response) => {
   const { ids } = req.body;
+  // Invitados: nada que pre-resolver (solo pueden sonar tracks ya en el CDN).
+  if (!(await isRegisteredRequest(req))) return res.json({ success: true, prefetching: 0 });
   if (!Array.isArray(ids)) {
     return res.status(400).json({ error: 'ids debe ser un array' });
   }
@@ -495,6 +509,12 @@ router.post('/prefetch', async (req: Request, res: Response) => {
 
 router.get('/:itunesId/status', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
+
+  // Invitados: no resolvemos nada nuevo, solo decimos si está en el CDN.
+  if (!(await isRegisteredRequest(req))) {
+    const inCDN = !!(await findTrackInCDN(itunesId));
+    return res.json({ trackId: itunesId, inCDN, downloaded: false, cached: inCDN, status: inCDN ? 'ready' : 'none', guest: true });
+  }
 
   try {
     const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
@@ -535,6 +555,7 @@ router.get('/:itunesId/status', async (req: Request, res: Response) => {
 
 router.post('/:itunesId/download', async (req: Request, res: Response) => {
   const { itunesId } = req.params;
+  if (!(await isRegisteredRequest(req))) return res.status(403).json(GUEST_FORBIDDEN);
 
   try {
     const { youtubeId, artist, title, durationSeconds } = await resolveYoutubeIdForTrack(itunesId);

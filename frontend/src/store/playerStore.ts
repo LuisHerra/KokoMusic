@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import { getTrackRadio, onRadioSource, type Track, type RemoteCommand } from '../lib/api';
 import { markTrackPlayed, pickRecommendations } from '../lib/recommendationPicker';
 import { logToServer } from '../lib/logger';
+import { canPlayTrack, isGuestMode, GUEST_BLOCKED_MESSAGE } from '../lib/guest';
 
 let globalUnlockHandler: (() => void) | null = null;
 let queueReplenishLock = false; // prevent concurrent replenishment fetches
@@ -428,8 +429,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return { isKaraokeMode: next };
   }),
 
-  setTrack: (track, queue) => {
+  setTrack: (track, rawQueue) => {
     logToServer('INFO', `[playerStore] setTrack: ${track.title} - ${track.artist} (${track.id})`);
+    // Modo invitado: solo suena lo que ya está en el CDN.
+    if (!canPlayTrack(track.id)) {
+      set({ error: GUEST_BLOCKED_MESSAGE });
+      return;
+    }
+    const queue = rawQueue?.filter((t) => canPlayTrack(t.id));
     if (sendRemoteCommandIfConnected({ type: 'play_track', track, queue: queue ?? [track] })) {
       // Solo pintamos el cambio ya (el principal confirmará en su siguiente
       // heartbeat); aquí no se carga audio.
@@ -466,8 +473,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
 
-  setQueue: (tracks, startIndex = 0) =>
-    set({ queue: tracks, originalQueue: tracks, queueIndex: startIndex }),
+  setQueue: (tracks, startIndex = 0) => {
+    const playable = tracks.filter((t) => canPlayTrack(t.id));
+    if (playable.length !== tracks.length) {
+      // Recolocar el índice sobre la cola filtrada (invitado).
+      const current = tracks[startIndex];
+      const idx = current ? playable.findIndex((t) => t.id === current.id) : -1;
+      set({ queue: playable, originalQueue: playable, queueIndex: Math.max(idx, 0) });
+      return;
+    }
+    set({ queue: tracks, originalQueue: tracks, queueIndex: startIndex });
+  },
 
   togglePlay: () => {
     logToServer('INFO', `[playerStore] togglePlay. Current playing: ${get().isPlaying} -> ${!get().isPlaying}`);
@@ -501,7 +517,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
       // ── Dynamic 1-by-1 Queue Enrichment (usando Radio de YouTube Music) ──
       const remaining = queue.length - next - 1;
-      if (remaining <= 2 && currentTrack && !queueReplenishLock) {
+      if (remaining <= 2 && currentTrack && !queueReplenishLock && !isGuestMode()) {
         queueReplenishLock = true;
         (async () => {
           try {
@@ -532,7 +548,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     // ── ENDLESS PLAYBACK GUARANTEE (Using Smart Track Radio) ──────────
-    if (currentTrack) {
+    // (El invitado no tiene radio: casi nada de ella está en el CDN.)
+    if (currentTrack && !isGuestMode()) {
       try {
         set({ isLoading: true });
         const radio = await getTrackRadio(currentTrack.id);
@@ -660,6 +677,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   addToQueue: (track) => {
+    if (!canPlayTrack(track.id)) {
+      set({ error: GUEST_BLOCKED_MESSAGE });
+      return;
+    }
     if (sendRemoteCommandIfConnected({ type: 'add_to_queue', track })) {
       // Pintado optimista: justo detrás de la canción actual, igual que hará el principal.
       const { queue, queueIndex } = get();

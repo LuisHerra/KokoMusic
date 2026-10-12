@@ -72,6 +72,21 @@ function scaleArtwork(url: string | undefined): string {
   return url.replace(/\d+x\d+bb\.jpg$/, '600x600bb.jpg');
 }
 
+/**
+ * iTunes mezcla en sus resultados `kind: 'song'` que no son canciones: los
+ * "Track by Track Commentary" de Apple Music (el artista hablando 30s sobre
+ * cada tema, p.ej. "Feid on ROMÁNTICOS DE LUNES"). No existen en YouTube con
+ * ese título, así que el stream acababa en 404 → "Format error" en el cliente.
+ */
+const COMMENTARY_RE = /\b(track\s*by\s*track|commentary|interview|entrevista)\b/i;
+function isPlayableItunesSong(r: any): boolean {
+  if (r?.kind !== 'song' || !r.trackId) return false;
+  if (COMMENTARY_RE.test(r.collectionName || '') || COMMENTARY_RE.test(r.primaryGenreName || '')) return false;
+  // "Artista on CANCIÓN" de menos de 90s → comentario, no canción
+  if (/^.+\son\s.+$/i.test(r.trackName || '') && (r.trackTimeMillis ?? 0) > 0 && r.trackTimeMillis < 90_000) return false;
+  return true;
+}
+
 /** Convierte un resultado de iTunes al formato interno */
 function itunesResultToTrack(item: any, index = 0): TrackMetadata {
   return {
@@ -378,7 +393,7 @@ export async function searchTracks(
 
     const data = (await res.json()) as any;
     const results: any[] = data.results ?? [];
-    const songs = results.filter((r: any) => r.kind === 'song' && r.trackId);
+    const songs = results.filter(isPlayableItunesSong);
     const rawTracks = songs.map((item, idx) => itunesResultToTrack(item, idx));
     const tracks = deduplicateTracks(rawTracks);
 
@@ -517,7 +532,7 @@ async function fetchItunesRaw(term: string, limit: number): Promise<TrackMetadat
   if (!res.ok) return [];
   const data = (await res.json()) as any;
   const results: any[] = data.results ?? [];
-  const songs = results.filter((r: any) => r.kind === 'song' && r.trackId);
+  const songs = results.filter(isPlayableItunesSong);
   return deduplicateTracks(songs.map((item, idx) => itunesResultToTrack(item, idx)));
 }
 
@@ -540,7 +555,7 @@ export async function getArtistTopTracksFromItunes(artistName: string, limit = 5
     if (!res.ok) return [];
     const data = (await res.json()) as any;
     const songs = (data.results ?? []).filter(
-      (r: any) => r.kind === 'song' && r.trackId && norm(r.artistName || '') === target
+      (r: any) => isPlayableItunesSong(r) && norm(r.artistName || '') === target
     );
     // Remixes, directos y sesiones al final: para recomendar se quiere el tema original.
     const altVersion = /remix|en vivo|live|session|acoustic|ac[uú]stic|instrumental|sped up|slowed|karaoke|versi[oó]n/i;
@@ -851,7 +866,10 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
       // nunca se resuelve, solo contra un rechazo) — sin dar ningún error
       // visible en cliente. Con AbortSignal.timeout, si no responde a
       // tiempo, la promesa rechaza y cae al catch de abajo normalmente.
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(idStr)}&format=json`, {
+      // Los ids del catálogo llevan prefijo "yt_" (así se guardan en R2):
+      // oEmbed necesita el videoId pelado o responde 400.
+      const videoId = idStr.startsWith('yt_') ? idStr.slice(3) : idStr;
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&format=json`, {
         signal: AbortSignal.timeout(8000),
       });
       if (!oembedRes.ok) return null;
@@ -868,7 +886,7 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
         title: cleanTitle,
         artist: cleanArtist,
         album: 'YouTube',
-        cover: v.thumbnail_url ?? `https://img.youtube.com/vi/${idStr}/hqdefault.jpg`,
+        cover: v.thumbnail_url ?? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
         duration: 180000,
         genre: 'Urbano / Pop',
         releaseDate: null,
@@ -927,7 +945,7 @@ export async function getTrackById(itunesId: string | number): Promise<TrackMeta
 
     const data = (await res.json()) as any;
     const item = data.results?.[0];
-    if (!item || item.kind !== 'song') return null;
+    if (!item || !isPlayableItunesSong(item)) return null;
 
     const track = itunesResultToTrack(item);
 
@@ -979,7 +997,7 @@ export async function getArtistTracksAndCollabs(artistId: number, limit = 25): P
     if (!res.ok) throw new Error(`iTunes artist lookup error: ${res.status}`);
 
     const data = (await res.json()) as any;
-    const rawSongItems = (data.results ?? []).filter((item: any) => item.wrapperType === 'track' && item.kind === 'song');
+    const rawSongItems = (data.results ?? []).filter((item: any) => item.wrapperType === 'track' && isPlayableItunesSong(item));
     const artistEntry = (data.results ?? []).find((r: any) => r.wrapperType === 'artist');
     const targetArtistName = (artistEntry?.artistName || '').toLowerCase().trim();
 

@@ -10,6 +10,7 @@ import kokoLogo from '../../assets/koko-logo.png';
 import { IconKaraoke } from '../Icons/NavIcons';
 
 import { ANDROID_APK_URL, canOfferAndroidApp } from '../../lib/androidApp';
+import { isGuestMode } from '../../lib/guest';
 function IconHome() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -125,9 +126,11 @@ export default function Sidebar() {
   }, [myProfileData]);
 
 
+  const isGuest = isGuestMode();
   const { data: localPlaylists = [] } = useQuery({
     queryKey: ['playlists'],
     queryFn: getPlaylists,
+    enabled: !isGuest,
   });
 
   const { data: collabPlaylists = [] } = useQuery({
@@ -270,6 +273,43 @@ export default function Sidebar() {
       setImportState(null);
     }
   };
+
+  // Invitado: solo Inicio (catálogo) y Buscar, sin biblioteca ni social.
+  if (isGuest) {
+    const navStyle = isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined;
+    return (
+      <nav className="sidebar">
+        <NavLink to="/" className="sidebar-logo" style={isCollapsed ? { justifyContent: 'center', padding: '16px 0' } : undefined}>
+          <img src={kokoLogo} alt="KokoMusic" width="28" height="28" style={{ objectFit: 'contain', flexShrink: 0 }} />
+          {!isCollapsed && <span className="sidebar-logo-text">Koko<span>Music</span></span>}
+        </NavLink>
+        <ul className="sidebar-nav">
+          <li className="sidebar-nav-item">
+            <NavLink to="/" end style={navStyle} title={isCollapsed ? 'Inicio' : undefined}>
+              <IconHome /> {!isCollapsed && 'Inicio'}
+            </NavLink>
+          </li>
+          <li className="sidebar-nav-item">
+            <NavLink to="/search" style={navStyle} title={isCollapsed ? 'Buscar' : undefined}>
+              <IconSearch /> {!isCollapsed && 'Buscar'}
+            </NavLink>
+          </li>
+        </ul>
+        {!isCollapsed && (
+          <div style={{ padding: '16px 20px', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
+            Modo invitado. Inicia sesión para tu biblioteca, playlists y cualquier canción.
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: 12, width: '100%' }}
+              onClick={() => window.dispatchEvent(new Event('koko-open-auth'))}
+            >
+              Iniciar sesión
+            </button>
+          </div>
+        )}
+      </nav>
+    );
+  }
 
   return (
     <nav className="sidebar">

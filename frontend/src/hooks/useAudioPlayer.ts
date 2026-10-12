@@ -13,6 +13,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, registerSeekHandler, consumePendingStart, isNeutralFx, NEUTRAL_DJ_FX, type DjFxSnapshot, type TransitionRule, sendRemoteCommandIfConnected } from '../store/playerStore';
 import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback } from '../lib/api';
+import { isGuestMode } from '../lib/guest';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
 import { logToServer } from '../lib/logger';
@@ -624,7 +625,7 @@ export function useAudioPlayer() {
             getApiUrl().then(apiBase => {
               fetch(`${apiBase}/stream/prefetch`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-user-id': localStorage.getItem('koko_device_id') || '' },
                 body: JSON.stringify({ ids: [nextT.id] })
               }).catch(() => {});
             });
@@ -797,7 +798,7 @@ export function useAudioPlayer() {
         if (audioEl.error?.code === 4) {
           try {
             const API_BASE = await getApiUrl();
-            await fetch(`${API_BASE}/stream/${currentT.id}/purge-cache`, { method: 'POST' });
+            await fetch(`${API_BASE}/stream/${currentT.id}/purge-cache?uid=${encodeURIComponent(localStorage.getItem('koko_device_id') || '')}`, { method: 'POST' });
             logToServer('INFO', `[useAudioPlayer] Purgado caché corrupto para track: ${currentT.id}`);
           } catch {}
         }
@@ -850,7 +851,7 @@ export function useAudioPlayer() {
           // Intentar resolver desde el backend si no estaba en el store
           try {
             const API_BASE = await getApiUrl();
-            const res = await fetch(`${API_BASE}/stream/${currentT.id}/status`);
+            const res = await fetch(`${API_BASE}/stream/${currentT.id}/status?uid=${encodeURIComponent(localStorage.getItem('koko_device_id') || '')}`);
             if (res.ok) {
               const data = await res.json();
               if (data.youtubeId) {
@@ -971,7 +972,7 @@ export function useAudioPlayer() {
 
       try {
         const API_BASE = await getApiUrl();
-        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
+        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status?uid=${encodeURIComponent(localStorage.getItem('koko_device_id') || '')}`);
         if (res.ok) {
           const data = await res.json();
           if (data.youtubeId) {
@@ -1410,7 +1411,8 @@ export function useAudioPlayer() {
     if (progress >= 10) {
       lastLoggedTrackId.current = currentTrack.id;
       const myId = localStorage.getItem('koko_device_id') ?? '';
-      logTrackPlay(
+      // Invitado (sin cuenta): no se registra nada en el historial compartido.
+      if (myId && !isGuestMode()) logTrackPlay(
         currentTrack.id,
         { title: currentTrack.title, artist: currentTrack.artist, cover: currentTrack.cover, genre: currentTrack.genre },
         myId,

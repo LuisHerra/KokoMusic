@@ -223,25 +223,55 @@ function largeUrl(trackId: string): string {
 
 // ── Operaciones R2 ────────────────────────────────────────────────────────────
 
-/** Lista todas las claves de tracks en el bucket R2 */
+/** Lista todas las claves de tracks en el bucket R2 (paginando, cacheado 10 min) */
+const LIST_TTL_MS = 10 * 60 * 1000;
+const LIST_MAX_KEYS = 20_000;
+let listCache: { ids: string[]; expires: number } | null = null;
+let listInFlight: Promise<string[]> | null = null;
+
 export async function listObjectsInCDN(): Promise<string[]> {
   if (!isCDNEnabled()) return [];
-  try {
-    const command = new ListObjectsV2Command({
-      Bucket: BUCKET(),
-      Prefix: PREFIX_AUDIO,
-      MaxKeys: 1000,
-    });
-    const response = await getR2Client().send(command);
-    if (!response.Contents) return [];
-    return response.Contents.map((item) => {
-      const key = item.Key ?? '';
-      return key.replace(PREFIX_AUDIO, '').replace('.opus', '').trim();
-    }).filter(Boolean);
-  } catch (err) {
-    console.error('[CDN] Error listing R2 objects:', err);
-    return [];
-  }
+  if (listCache && listCache.expires > Date.now()) return listCache.ids;
+  if (listInFlight) return listInFlight;
+
+  listInFlight = (async () => {
+    // Más recientes primero: el catálogo de invitado enseña antes lo último que
+    // se ha escuchado, no el orden alfabético de las claves.
+    const items: { id: string; modified: number }[] = [];
+    let token: string | undefined;
+    try {
+      do {
+        incrementRequests(1);
+        const response = await getR2Client().send(new ListObjectsV2Command({
+          Bucket: BUCKET(),
+          Prefix: PREFIX_AUDIO,
+          MaxKeys: 1000,
+          ContinuationToken: token,
+        }));
+        for (const item of response.Contents ?? []) {
+          const key = item.Key ?? '';
+          // Las claves de audio/large/ comparten prefijo: esas son temporales.
+          if (!key.endsWith('.opus') || key.startsWith(PREFIX_LARGE)) continue;
+          const id = key.slice(PREFIX_AUDIO.length, -'.opus'.length).trim();
+          if (id) items.push({ id, modified: item.LastModified?.getTime() ?? 0 });
+        }
+        token = response.IsTruncated ? response.NextContinuationToken : undefined;
+      } while (token && items.length < LIST_MAX_KEYS);
+
+      const ids = items.sort((a, b) => b.modified - a.modified).map((i) => i.id);
+      listCache = { ids, expires: Date.now() + LIST_TTL_MS };
+      for (const id of ids) {
+        cdnExistence.set(id, { url: permanentUrl(id), expires: Date.now() + CDN_HIT_TTL_MS });
+      }
+      return ids;
+    } catch (err) {
+      console.error('[CDN] Error listing R2 objects:', err);
+      return listCache?.ids ?? [];
+    } finally {
+      listInFlight = null;
+    }
+  })();
+  return listInFlight;
 }
 
 /**

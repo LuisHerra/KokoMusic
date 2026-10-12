@@ -13,9 +13,11 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  /** Entrar sin cuenta: solo el catálogo ya disponible en el CDN. */
+  onGuest?: () => void;
 }
 
-export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, onSuccess, onGuest }: AuthModalProps) {
   const [isRegister, setIsRegister] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -545,6 +547,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               <span>¿No tienes cuenta? <b style={{ color: activeAccent }}>Regístrate</b></span>
             )}
           </button>
+          {onGuest && (
+            <button
+              type="button"
+              onClick={onGuest}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.55)',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: 'inherit',
+                textDecoration: 'underline',
+                textUnderlineOffset: 3,
+              }}
+            >
+              Entrar como invitado (catálogo limitado)
+            </button>
+          )}
         </div>
       </div>
     </div>

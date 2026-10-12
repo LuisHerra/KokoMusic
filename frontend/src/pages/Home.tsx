@@ -166,6 +166,17 @@ export default function Home() {
       action: handlePlayRandomKokoMix
     },
     {
+      title: 'En bucle',
+      cover: 'linear-gradient(135deg, #f7971e, #c2185b)',
+      isGradient: true,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
+        </svg>
+      ),
+      action: () => navigate('/playlist/on-repeat')
+    },
+    {
       title: 'Sinfonía',
       cover: 'linear-gradient(135deg, #0d724f, #051811)',
       isGradient: true,

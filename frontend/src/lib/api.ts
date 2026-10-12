@@ -5,6 +5,7 @@
  */
 
 import { getApiUrl, getCachedBaseUrl } from './backendResolver';
+import { isGuestMode } from './guest';
 
 export function isDesktopApp(): boolean {
   return typeof window !== 'undefined' && Boolean((window as any).electronAPI);
@@ -200,7 +201,7 @@ export const prefetchAudio = async (ids: string[]): Promise<void> => {
     const apiBase = await import('./backendResolver').then(m => m.getApiUrl());
     fetch(`${apiBase}/stream/prefetch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-user-id': localStorage.getItem('koko_device_id') || '' },
       body: JSON.stringify({ ids: toFetch.slice(0, 5) }),
     }).catch(() => {});
   } catch {
@@ -224,8 +225,14 @@ export const prefetchAudio = async (ids: string[]): Promise<void> => {
 export const getStreamUrl = (trackId: string, opts?: { forceStream?: boolean }) => {
   const cached = getCachedBaseUrl();
   const apiBase = cached ? `${cached}/api` : BASE;
-  const base = `${apiBase}/stream/${trackId}`;
-  return opts?.forceStream ? `${base}?forceStream=true` : base;
+  // El <audio> no manda cabeceras: el backend identifica al usuario por ?uid=
+  // para decidir si puede resolver algo fuera del CDN (ver modo invitado).
+  const params = new URLSearchParams();
+  const uid = localStorage.getItem('koko_device_id');
+  if (uid) params.set('uid', uid);
+  if (opts?.forceStream) params.set('forceStream', 'true');
+  const qs = params.toString();
+  return `${apiBase}/stream/${trackId}${qs ? `?${qs}` : ''}`;
 };
 
 export interface Lyrics {
@@ -991,8 +998,9 @@ export const getDiscoverTracks = (limit = 20) =>
  * del caché) porque el filtro de "escuchado recientemente" solo se aplica al
  * regenerar candidatos, y regenerar candidatos solo ocurre en estos eventos.
  */
+// Invitado: sin perfil de gustos que alimentar, así que ni se envía.
 export const triggerRecommendationEvent = (event: 'app_open' | 'track_completed' | 'artist_followed', trackId?: string) =>
-  apiFetch<{ ok: boolean }>(`/recommendations/trigger/${event}`, {
+  isGuestMode() ? Promise.resolve(undefined) : apiFetch<{ ok: boolean }>(`/recommendations/trigger/${event}`, {
     method: 'POST',
     body: JSON.stringify(trackId ? { trackId } : {}),
   }).catch(() => {});
@@ -1000,10 +1008,13 @@ export const triggerRecommendationEvent = (event: 'app_open' | 'track_completed'
 export type RecommendationFeedbackEvent = 'skip' | 'track_completed' | 'liked' | 'added_to_playlist';
 
 export const sendRecommendationFeedback = (trackId: string, event: RecommendationFeedbackEvent) =>
-  apiFetch<{ ok: boolean; action: string }>('/recommendations/feedback', {
+  isGuestMode() ? Promise.resolve(undefined) : apiFetch<{ ok: boolean; action: string }>('/recommendations/feedback', {
     method: 'POST',
     body: JSON.stringify({ trackId, event }),
   }).catch(() => {});
+
+export const getOnRepeatTracks = () =>
+  apiFetch<{ tracks: (Track & { recentPlays?: number })[]; updatedAt?: string }>('/tracks/on-repeat');
 
 export const getAvailableCDNTracks = (page = 1, limit = 30) =>
   apiFetch<{ tracks: Track[]; count: number; totalCount: number; page: number; totalPages: number }>(

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
@@ -39,6 +39,8 @@ import { useVoiceControl } from './hooks/useVoiceControl';
 import VoiceControlModal, { IconMic } from './components/VoiceControlModal';
 import ThemeModal from './components/ThemeModal';
 import AuthModal from './components/Auth/AuthModal';
+import GuestHome from './pages/GuestHome';
+import { isGuestMode, enterGuestMode, exitGuestMode, loadGuestPlayableIds } from './lib/guest';
 import GuidedTour from './components/GuidedTour';
 import { useThemeStore } from './store/themeStore';
 
@@ -251,11 +253,32 @@ function AppShell() {
   const joinJamCode = searchParams.get('join_jam');
   const [hasAutoJoined, setHasAutoJoined] = useState(false);
 
-  // App privada, sin modo invitado: se exige autenticación real siempre que
-  // no haya una sesión completada.
+  // App privada: sin sesión completada se exige login, salvo que se haya
+  // elegido el modo invitado (solo catálogo del CDN — ver lib/guest.ts).
+  const [isGuest, setIsGuest] = useState(isGuestMode);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(() => {
-    return !localStorage.getItem('koko_auth_completed');
+    return !localStorage.getItem('koko_auth_completed') && !isGuestMode();
   });
+
+  useEffect(() => {
+    if (isGuest) loadGuestPlayableIds();
+  }, [isGuest]);
+
+  const handleEnterGuest = () => {
+    enterGuestMode();
+    setIsGuest(true);
+    setIsAuthModalOpen(false);
+  };
+
+  const handleAuthSuccess = () => {
+    if (isGuest) {
+      // Todo lo cargado como invitado (sin x-user-id) no sirve: arrancar limpio.
+      exitGuestMode();
+      window.location.replace('/');
+      return;
+    }
+    setIsAuthModalOpen(false);
+  };
 
   useEffect(() => {
     const openAuth = () => setIsAuthModalOpen(true);
@@ -322,7 +345,15 @@ function AppShell() {
   // modal de auth es lo ÚNICO que se renderiza — antes era un overlay sobre
   // una app ya completamente montada y funcional por detrás.
   if (isAuthModalOpen) {
-    return <AuthModal isOpen onClose={() => {}} onSuccess={() => setIsAuthModalOpen(false)} />;
+    return (
+      <AuthModal
+        isOpen
+        // Un invitado puede volver atrás; sin cuenta ni invitado no hay "fuera".
+        onClose={() => { if (isGuest) setIsAuthModalOpen(false); }}
+        onSuccess={handleAuthSuccess}
+        onGuest={isGuest ? () => setIsAuthModalOpen(false) : handleEnterGuest}
+      />
+    );
   }
 
   return (
@@ -532,6 +563,15 @@ function AppShell() {
             )}
           </header>
 
+          {isGuest ? (
+          <Routes>
+            <Route path="/" element={<GuestHome />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/artist/:name" element={<Artist />} />
+            <Route path="/album/:id" element={<Album />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          ) : (
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/search" element={<Search />} />
@@ -550,6 +590,7 @@ function AppShell() {
             <Route path="/dj" element={<DjMode />} />
             <Route path="/karaoke" element={<KaraokeStudioPage />} />
           </Routes>
+          )}
         </main>
       )}
 

@@ -753,6 +753,26 @@ export default function Library() {
                 </div>
               </div>
 
+              {/* En bucle — lo que más repites últimamente */}
+              <div className="track-card" onClick={() => navigate('/playlist/on-repeat')}>
+                <div
+                  className="track-card-cover-wrap"
+                  style={{
+                    background: 'linear-gradient(135deg, #f7971e 0%, #c2185b 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff'
+                  }}
+                >
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
+                  </svg>
+                </div>
+                <div className="track-card-title">En bucle</div>
+                <div className="track-card-artist">Lo que más repites últimamente</div>
+              </div>
+
               {/* Local playlists */}
               {playlists.map((pl) => (
                 <div key={pl.id} className="track-card" onClick={() => navigate(`/playlist/${pl.id}`)}>

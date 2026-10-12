@@ -106,7 +106,7 @@ export default function Player() {
           return;
         }
 
-        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status`);
+        const res = await fetch(`${API_BASE}/stream/${currentTrack.id}/status?uid=${encodeURIComponent(localStorage.getItem('koko_device_id') || '')}`);
         if (!res.ok || !isMounted) return;
         const data = await res.json();
         if (!isMounted) return;

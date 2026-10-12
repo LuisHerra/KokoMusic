@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylist, getTrack, getTracksBatch, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, BASE } from '../lib/api';
+import { getPlaylist, getTrack, getTracksBatch, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, getOnRepeatTracks, BASE } from '../lib/api';
 import type { Track, Friendship } from '../lib/api';
 import { usePlayerStore, type TransitionRule } from '../store/playerStore';
 import { useLikedSongs } from '../hooks/useLikedSongs';
@@ -1063,22 +1063,36 @@ export default function Playlist() {
       }
 
       if (id === 'on-repeat') {
-        const playHistoryRaw = localStorage.getItem('koko_play_history');
-        const playHistory = playHistoryRaw ? JSON.parse(playHistoryRaw) : [];
-        const repeatTracks = playHistory
-          .filter((t: any) => t.playCount >= 2)
-          .sort((a: any, b: any) => b.playCount - a.playCount);
-        
+        // Lo que más repites últimamente (historial de la cuenta, ventana de
+        // ~30 días con más peso a lo reciente). Si el backend no responde,
+        // caemos al contador local de este dispositivo.
+        let ids: string[] = [];
+        try {
+          const { tracks } = await getOnRepeatTracks();
+          ids = tracks.map((t) => t.id);
+        } catch (err) {
+          console.warn('[OnRepeat] Backend no disponible, usando historial local:', err);
+        }
+        if (ids.length === 0) {
+          const playHistoryRaw = localStorage.getItem('koko_play_history');
+          const playHistory = playHistoryRaw ? JSON.parse(playHistoryRaw) : [];
+          ids = playHistory
+            .filter((t: any) => t.playCount >= 2)
+            .sort((a: any, b: any) => b.playCount - a.playCount)
+            .slice(0, 30)
+            .map((t: any) => t.id);
+        }
+
         return {
           id: 'on-repeat',
-          name: 'En Bucle',
-          description: 'Tus canciones más escuchadas y repetidas en este dispositivo.',
+          name: 'En bucle',
+          description: 'Las canciones que no paras de escuchar últimamente.',
           cover: '',
-          tracks: repeatTracks.map((t: any, idx: number) => ({
-            trackId: t.id,
+          tracks: ids.map((trackId, idx) => ({
+            trackId,
             position: idx + 1,
-            addedAt: new Date(t.lastPlayed || Date.now()).toISOString(),
-            addedBy: 'local'
+            addedAt: new Date().toISOString(),
+            addedBy: 'on-repeat'
           }))
         };
       }

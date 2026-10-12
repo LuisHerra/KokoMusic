@@ -1002,6 +1002,116 @@ const BATCH_MAX_IDS = 50;
 /** Tracks sin caché van a iTunes/Deezer/etc.: limitar cuántos a la vez para no comernos un rate-limit. */
 const BATCH_CONCURRENCY = 8;
 
+/** Metadatos de varios ids con concurrencia acotada (mismo patrón que /batch). Mantiene el orden. */
+async function getTracksCachedInOrder(ids: string[]): Promise<(any | null)[]> {
+  const out: (any | null)[] = new Array(ids.length).fill(null);
+  let next = 0;
+  const worker = async () => {
+    while (next < ids.length) {
+      const i = next++;
+      try { out[i] = await getTrackCached(ids[i]); } catch { out[i] = null; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(BATCH_CONCURRENCY, ids.length) }, worker));
+  return out;
+}
+
+// GET /api/tracks/available-cdn — catálogo de lo que ya está subido a R2.
+// Es lo único que puede sonar en modo invitado; el onboarding también lo usa
+// para proponer canciones que arrancan al instante. (Se borró en 58ee19b.)
+router.get('/available-cdn', async (req: Request, res: Response) => {
+  try {
+    const { listObjectsInCDN } = await import('../services/cdnService');
+    const page = Math.max(parseInt((req.query.page as string) || '1', 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '30', 10) || 30, 1), BATCH_MAX_IDS);
+
+    const allIds = await listObjectsInCDN();
+    const totalCount = allIds.length;
+    const totalPages = Math.max(Math.ceil(totalCount / limit), 1);
+    const pageIds = allIds.slice((page - 1) * limit, page * limit);
+
+    const metas = await getTracksCachedInOrder(pageIds);
+    const tracks = metas
+      .map((t, i) => (t ? { ...t, id: pageIds[i], audioReady: true } : null))
+      .filter(Boolean);
+
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.json({ tracks, count: tracks.length, totalCount, page, totalPages });
+  } catch (err) {
+    console.error('[Tracks] Error en /available-cdn:', err);
+    return res.status(500).json({ error: 'Error obteniendo el catálogo del CDN' });
+  }
+});
+
+// GET /api/tracks/cdn-ids — solo los ids del CDN, para que el cliente invitado
+// sepa qué puede reproducir sin pedir metadatos de todo el catálogo.
+router.get('/cdn-ids', async (_req: Request, res: Response) => {
+  try {
+    const { listObjectsInCDN } = await import('../services/cdnService');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.json({ ids: await listObjectsInCDN() });
+  } catch (err) {
+    console.error('[Tracks] Error en /cdn-ids:', err);
+    return res.status(500).json({ error: 'Error obteniendo el catálogo del CDN' });
+  }
+});
+
+// GET /api/tracks/on-repeat — "En bucle": lo que el usuario más repite
+// últimamente (no de siempre). Cada escucha pesa menos cuanto más antigua es
+// (vida media de 14 días) y hace falta repetir para entrar.
+const ON_REPEAT_LIMIT = 30;
+const ON_REPEAT_HALF_LIFE_DAYS = 14;
+router.get('/on-repeat', async (req: Request, res: Response) => {
+  const { getRequestUserId, isRegisteredUser } = await import('../services/accessService');
+  const userId = getRequestUserId(req);
+  if (!(await isRegisteredUser(userId))) return res.json({ tracks: [] });
+
+  try {
+    const now = Date.now();
+    const DAY = 86_400_000;
+    const rank = (history: HistoryEntry[], windowDays: number) => {
+      const since = now - windowDays * DAY;
+      return history
+        .map((h) => {
+          const plays = (h.plays ?? []).map((p) => new Date(p).getTime()).filter((t) => t >= since);
+          const score = plays.reduce((acc, t) => acc + Math.pow(0.5, (now - t) / DAY / ON_REPEAT_HALF_LIFE_DAYS), 0);
+          return { h, count: plays.length, score };
+        })
+        .filter((r) => r.count >= 2)
+        .sort((a, b) => b.score - a.score);
+    };
+
+    let history = await getHistoryForUser(userId, new Date(now - 30 * DAY));
+    let ranked = rank(history, 30);
+    // Poca actividad reciente: ampliamos la ventana antes de devolver una lista casi vacía.
+    if (ranked.length < 10) {
+      history = await getHistoryForUser(userId, new Date(now - 90 * DAY));
+      ranked = rank(history, 90);
+    }
+    const top = ranked.slice(0, ON_REPEAT_LIMIT);
+
+    const metas = await getTracksCachedInOrder(top.map((r) => r.h.trackId));
+    const tracks = top.map((r, i) => ({
+      ...(metas[i] ?? {
+        title: r.h.title,
+        artist: r.h.artist,
+        album: '',
+        cover: r.h.cover,
+        duration: 0,
+        popularity: 0,
+        preview_url: null,
+      }),
+      id: r.h.trackId,
+      recentPlays: r.count,
+    }));
+
+    return res.json({ tracks, updatedAt: new Date(now).toISOString() });
+  } catch (err) {
+    console.error('[Tracks] Error en /on-repeat:', err);
+    return res.status(500).json({ error: 'Error calculando En bucle' });
+  }
+});
+
 // POST /api/tracks/batch — metadatos de varios tracks en una sola petición.
 // Playlist.tsx lo usa para no hacer una petición por fila. Se borró sin querer
 // en 58ee19b (la radio de canciones reescribió este trozo) y desde entonces
