@@ -274,6 +274,73 @@ export async function diagnoseStream(videoId: string): Promise<any> {
   }
 }
 
+// ── Funciones opcionales de KokoMusic-lite ─────────────────────────────────
+// Lite anuncia en /health lo que soporta ('cors-stream', 'cdn-cache'). Se
+// consulta como mucho cada 5 min y, si no se puede saber, se asume que no
+// hay nada: así este backend funciona igual con una versión vieja de lite.
+export type LiteFeature = 'cors-stream' | 'cdn-cache';
+const FEATURES_TTL_MS = 5 * 60 * 1000;
+let liteFeatures: { set: Set<string>; expires: number } | null = null;
+let liteFeaturesInFlight: Promise<Set<string>> | null = null;
+
+async function fetchLiteFeatures(): Promise<Set<string>> {
+  if (liteFeatures && liteFeatures.expires > Date.now()) return liteFeatures.set;
+  if (liteFeaturesInFlight) return liteFeaturesInFlight;
+  liteFeaturesInFlight = (async () => {
+    let set = new Set<string>();
+    try {
+      const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        if (Array.isArray(data.features)) set = new Set(data.features.map(String));
+      }
+    } catch { /* lite dormido o caído: sin funciones extra hasta el próximo intento */ }
+    liteFeatures = { set, expires: Date.now() + FEATURES_TTL_MS };
+    liteFeaturesInFlight = null;
+    return set;
+  })();
+  return liteFeaturesInFlight;
+}
+
+export async function liteSupports(feature: LiteFeature): Promise<boolean> {
+  return (await fetchLiteFeatures()).has(feature);
+}
+
+// Forma plana (no unión discriminada): este tsconfig no es strict y TS no
+// estrecha `ok: true | false` sin strictNullChecks.
+export interface LiteCdnCacheResult {
+  ok: boolean;
+  bytes?: number;   // si ok
+  reason?: string;  // si !ok: 'busy' | 'too_large' | 'download_failed' | ...
+}
+
+/**
+ * Pide a KokoMusic-lite que descargue, transcodee y suba el track a R2 con la
+ * URL firmada `upload`. Espera a que termine (hasta 3 min): se llama siempre
+ * en segundo plano. `null` = lite no respondió (caído, versión vieja...).
+ */
+export async function requestLiteCdnCache(
+  videoId: string,
+  upload: { putUrl: string; contentType: string; cacheControl: string; maxBytes: number },
+): Promise<LiteCdnCacheResult | null> {
+  try {
+    const res = await fetch(appendKey(`${BASE_URL}/api/cdn-cache/${encodeURIComponent(videoId)}`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+      },
+      body: JSON.stringify(upload),
+      signal: AbortSignal.timeout(180_000),
+    });
+    if (res.status === 404) return null; // versión de lite sin este endpoint
+    return (await res.json()) as LiteCdnCacheResult;
+  } catch (err: any) {
+    console.warn(`[KokoLiteClient] cdn-cache de ${videoId} falló: ${err.message || err}`);
+    return null;
+  }
+}
+
 /**
  * Chequeo de salud del servicio.
  */

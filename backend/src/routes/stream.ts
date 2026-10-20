@@ -22,7 +22,7 @@ import { diagnoseLiteStream } from '../services/kokoLiteService';
 import { metrics } from '../services/metricsService';
 import { findTrackInCDN, isCDNEnabled, getCDNUsageStats } from '../services/cdnService';
 import { cacheStreamInBackground } from '../services/cdnAutoCacheService';
-import { getStreamRelayUrl } from '../services/kokoLiteService';
+import { getStreamRelayUrl, liteSupports } from '../services/kokoLiteService';
 import { isRegisteredRequest, GUEST_FORBIDDEN } from '../services/accessService';
 
 const router = Router();
@@ -349,14 +349,15 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
     // La primera vez que resolvemos un track con éxito, lo cacheamos en R2 en
     // segundo plano — las próximas reproducciones lo encontrarán en el paso 2
     // de arriba y nunca volverán a depender de Google ni de proxies.
-    cacheStreamInBackground(itunesId, relayUrl);
+    cacheStreamInBackground(itunesId, relayUrl, youtubeId);
 
     // 5. Camino principal (reproducción normal en <audio>): 302 al endpoint
     // de KokoMusic-lite (no a la URL cruda de googlevideo). Funciona igual de
     // bien en móvil/APK que un 302 directo — el reproductor nativo sigue la
     // redirección igual — pero mantiene la descarga en la misma IP que la
-    // resolvió.
-    if (!forceStream) {
+    // resolvió. Con forceStream (EQ / descarga offline) también, si lite ya
+    // sirve CORS: así los bytes no pasan dos veces (lite → aquí → cliente).
+    if (!forceStream || (await liteSupports('cors-stream'))) {
       res.setHeader('Cache-Control', 'public, max-age=1800');
       return res.redirect(302, relayUrl);
     }
@@ -492,7 +493,7 @@ router.post('/prefetch', async (req: Request, res: Response) => {
         const { youtubeId, artist, title } = await resolveYoutubeIdForTrack(id);
         if (youtubeId) {
           const resolved = await resolveAudioStream(youtubeId, { artist, title, itunesId: id });
-          if (idx === 0 && resolved?.url) cacheStreamInBackground(id, getStreamRelayUrl(youtubeId));
+          if (idx === 0 && resolved?.url) cacheStreamInBackground(id, getStreamRelayUrl(youtubeId), youtubeId);
         }
       } catch {}
       // Espaciado para respetar los límites de InnerTube

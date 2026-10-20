@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "backend"],
       "port": 3001
+    },
+    {
+      "name": "kokomusic-lite",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "backendKokoMusic"],
+      "port": 7860
     }
   ]
 }

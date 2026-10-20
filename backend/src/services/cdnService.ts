@@ -446,6 +446,51 @@ export async function uploadImageToCDN(localPath: string, folder: 'avatars' | 'c
   }
 }
 
+const AUDIO_CONTENT_TYPE = 'audio/ogg; codecs=opus';
+const AUDIO_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
+/**
+ * URL de subida firmada (PUT, 15 min) para que KokoMusic-lite suba él mismo el
+ * .opus de un track a R2 sin conocer nuestras credenciales. Content-Type y
+ * Cache-Control van firmados: quien suba debe mandar exactamente estos valores.
+ * Firmar es local (no consume requests de R2); la subida en sí se apunta en
+ * recordExternalAudioUpload cuando lite confirma.
+ */
+export async function createAudioUploadUrl(trackId: string): Promise<{
+  putUrl: string; contentType: string; cacheControl: string; maxBytes: number;
+} | null> {
+  if (!isCDNEnabled()) return null;
+  try {
+    const command = new PutObjectCommand({
+      Bucket: BUCKET(),
+      Key: permanentKey(trackId),
+      ContentType: AUDIO_CONTENT_TYPE,
+      CacheControl: AUDIO_CACHE_CONTROL,
+    });
+    const putUrl = await getSignedUrl(getR2Client(), command, { expiresIn: 15 * 60 });
+    return {
+      putUrl,
+      contentType: AUDIO_CONTENT_TYPE,
+      cacheControl: AUDIO_CACHE_CONTROL,
+      maxBytes: MAX_CDN_SIZE_MB * 1024 * 1024,
+    };
+  } catch (err) {
+    console.error(`[CDN] Error firmando subida para ${trackId}:`, err);
+    return null;
+  }
+}
+
+/** Contabiliza una subida hecha por KokoMusic-lite con createAudioUploadUrl. */
+export function recordExternalAudioUpload(trackId: string, bytes: number): string {
+  const sizeMB = bytes / (1024 * 1024);
+  incrementRequests(1); // PutObject = Class A
+  incrementStorage(sizeMB);
+  const publicUrl = permanentUrl(trackId);
+  cdnExistence.set(trackId, { url: publicUrl, expires: Date.now() + CDN_HIT_TTL_MS });
+  console.log(`[CDN] ✅ Subido por KokoMusic-lite: ${trackId} (${sizeMB.toFixed(1)} MB) → ${publicUrl}`);
+  return publicUrl;
+}
+
 /**
  * Genera una Presigned URL temporal (1 hora) para buckets privados.
  * Consume 1 Class B request.

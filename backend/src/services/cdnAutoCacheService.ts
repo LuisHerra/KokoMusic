@@ -17,7 +17,8 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { uploadToCDN, isCDNEnabled } from './cdnService';
+import { uploadToCDN, isCDNEnabled, createAudioUploadUrl, recordExternalAudioUpload } from './cdnService';
+import { liteSupports, requestLiteCdnCache } from './kokoLiteClient';
 
 const execAsync = promisify(exec);
 
@@ -71,11 +72,42 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
 }
 
 /**
- * Descarga, transcodea a Opus y sube a R2 en segundo plano. No lanza —
- * cualquier error se loguea y se descarta, ya que esto nunca debe afectar
- * al usuario que ya está escuchando el track.
+ * Intenta que KokoMusic-lite haga el cacheo él mismo (ver cdnCacheJob.ts en
+ * lite). Ahorra ancho de banda de salida: antes el audio salía de lite hacia
+ * aquí (~3-4 MB sin comprimir) y luego de aquí a R2 (~2,5 MB en Opus); ahora
+ * solo sale una vez, ya comprimido, de lite a R2.
+ * Devuelve true si el asunto queda resuelto (subido, o descartado por tamaño
+ * o por estar lite ocupado) y false si hay que hacerlo aquí como antes.
  */
-export function cacheStreamInBackground(trackId: string, sourceUrl: string): void {
+async function cacheViaLite(trackId: string, youtubeId: string): Promise<boolean> {
+  if (!(await liteSupports('cdn-cache'))) return false;
+  const upload = await createAudioUploadUrl(trackId);
+  if (!upload) return false;
+
+  const result = await requestLiteCdnCache(youtubeId, upload);
+  if (!result) return false;
+  if (result.ok && result.bytes) {
+    recordExternalAudioUpload(trackId, result.bytes);
+    return true;
+  }
+  // Demasiado grande u ocupado: hacerlo aquí no cambiaría nada, se reintentará
+  // la próxima vez que alguien lo reproduzca. Otros fallos → plan B local.
+  if (result.reason === 'too_large' || result.reason === 'busy') {
+    console.log(`[CDN AutoCache] KokoMusic-lite no cacheó ${trackId} (${result.reason}).`);
+    return true;
+  }
+  console.warn(`[CDN AutoCache] KokoMusic-lite falló cacheando ${trackId} (${result.reason}) — se intenta aquí.`);
+  return false;
+}
+
+/**
+ * Sube el track a R2 en segundo plano: primero delegando en KokoMusic-lite
+ * (si se conoce `youtubeId` y lite lo soporta) y, si no, descargando,
+ * transcodeando a Opus y subiendo desde aquí. No lanza — cualquier error se
+ * loguea y se descarta, ya que esto nunca debe afectar al usuario que ya
+ * está escuchando el track.
+ */
+export function cacheStreamInBackground(trackId: string, sourceUrl: string, youtubeId?: string): void {
   if (!isCDNEnabled() || inFlight.has(trackId)) return;
   if (inFlight.size >= MAX_CONCURRENT_AUTOCACHE) {
     console.log(`[CDN AutoCache] Límite de ${MAX_CONCURRENT_AUTOCACHE} auto-cacheos simultáneos alcanzado — se omite ${trackId} por ahora.`);
@@ -88,6 +120,8 @@ export function cacheStreamInBackground(trackId: string, sourceUrl: string): voi
     const opusPath = path.join(AUDIO_DIR, `${trackId}.opus`);
 
     try {
+      if (youtubeId && (await cacheViaLite(trackId, youtubeId))) return;
+
       await downloadToFile(sourceUrl, rawPath);
 
       const ffmpegCmd = [
