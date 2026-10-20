@@ -20,8 +20,8 @@ import {
 } from '../services/streamResolverService';
 import { diagnoseLiteStream } from '../services/kokoLiteService';
 import { metrics } from '../services/metricsService';
-import { findTrackInCDN, isCDNEnabled, getCDNUsageStats } from '../services/cdnService';
-import { cacheStreamInBackground } from '../services/cdnAutoCacheService';
+import { findTrackInCDN, isCDNEnabled, getCDNUsageStats, getCachedIdsInCDN } from '../services/cdnService';
+import { cacheStreamInBackground, cacheTrackNow } from '../services/cdnAutoCacheService';
 import { getStreamRelayUrl, liteSupports } from '../services/kokoLiteService';
 import { isRegisteredRequest, GUEST_FORBIDDEN } from '../services/accessService';
 
@@ -502,6 +502,38 @@ router.post('/prefetch', async (req: Request, res: Response) => {
   });
 
   return res.json({ success: true, prefetching: Math.min(ids.length, 5) });
+});
+
+// ── POST /api/stream/cdn-status — Qué tracks ya están preparados en el CDN ──
+// Usa el listado cacheado del bucket: 0-1 requests a R2 para toda la playlist.
+
+router.post('/cdn-status', async (req: Request, res: Response) => {
+  const ids: string[] | null = Array.isArray(req.body?.ids) ? req.body.ids.slice(0, 500).map(String) : null;
+  if (!ids) return res.status(400).json({ error: 'ids debe ser un array' });
+  return res.json({ enabled: isCDNEnabled(), cached: await getCachedIdsInCDN(ids) });
+});
+
+// ── POST /api/stream/:itunesId/precache — Preparar un track sin escucharlo ──
+// Lo sube a R2 y responde al terminar (~20-40 s). El cliente los manda de uno
+// en uno y espaciados (ver frontend/src/store/precacheStore.ts); aquí además
+// siempre queda un hueco libre para el auto-cacheo de lo que se está
+// escuchando (cacheTrackNow → 'busy' si no).
+
+router.post('/:itunesId/precache', async (req: Request, res: Response) => {
+  if (!(await isRegisteredRequest(req))) return res.status(403).json(GUEST_FORBIDDEN);
+  const { itunesId } = req.params;
+  if (itunesId.startsWith('custom_')) return res.json({ status: 'unsupported' });
+
+  try {
+    if (await findTrackInCDN(itunesId)) return res.json({ status: 'cached' });
+    const { youtubeId } = await resolveYoutubeIdForTrack(itunesId);
+    if (!youtubeId) return res.json({ status: 'failed' });
+    const status = await cacheTrackNow(itunesId, getStreamRelayUrl(youtubeId), youtubeId);
+    return res.json({ status });
+  } catch (err: any) {
+    console.warn(`[Stream] Precarga de ${itunesId} falló:`, err?.message || err);
+    return res.json({ status: 'failed' });
+  }
 });
 
 // ── GET /api/stream/:itunesId/status ─────────────────────────────────────────

@@ -16,6 +16,7 @@ function formatDuration(ms: number) {
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import { isTrackOffline, saveTrackOffline, deleteOfflineTrack, getAllOfflineTracks } from '../lib/offlineAudio';
 import ArtistLinks from '../components/Common/ArtistLinks';
+import { PrecacheBar, TrackPrecacheIndicator } from '../components/Playlist/PrecacheBar';
 import DownloadChoiceSheet from '../components/Common/DownloadChoiceSheet';
 import { saveTrackToDevice } from '../lib/deviceDownload';
 
@@ -219,6 +220,7 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
       </div>
       <div className="track-row-album">{track.album}</div>
       <div className="track-row-duration" style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'flex-end' }}>
+        <TrackPrecacheIndicator trackId={trackId} />
         {addedByName && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginRight: 8, whiteSpace: 'nowrap' }}>Añadida por: <strong style={{color: '#a78bfa'}}>{addedByName}</strong></span>}
         {prevTrack && onDjMix && (
           <button className="ctrl-btn" style={{ padding: 4, opacity: usePlayerStore.getState().transitions[`${prevTrack.id}-${track.id}`] ? 1 : 0.4 }}
@@ -1942,6 +1944,8 @@ export default function Playlist() {
             </div>
           )
         ) : (
+          <>
+          {id !== 'local-downloads' && <PrecacheBar trackIds={localTracks.map((t: any) => t.trackId)} />}
           <div className="track-list" style={{ marginBottom: 32 }}>
             {localTracks.map((t: any, i: number) => (
               <TrackRow
@@ -1964,6 +1968,7 @@ export default function Playlist() {
               />
             ))}
           </div>
+          </>
         )}
 
         {/* Add tracks section */}

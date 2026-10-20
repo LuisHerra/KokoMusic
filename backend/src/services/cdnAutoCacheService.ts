@@ -76,28 +76,43 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
  * lite). Ahorra ancho de banda de salida: antes el audio salía de lite hacia
  * aquí (~3-4 MB sin comprimir) y luego de aquí a R2 (~2,5 MB en Opus); ahora
  * solo sale una vez, ya comprimido, de lite a R2.
- * Devuelve true si el asunto queda resuelto (subido, o descartado por tamaño
- * o por estar lite ocupado) y false si hay que hacerlo aquí como antes.
+ * Devuelve el resultado si el asunto queda resuelto (subido, o descartado por
+ * tamaño o por estar lite ocupado) y null si hay que hacerlo aquí como antes.
  */
-async function cacheViaLite(trackId: string, youtubeId: string): Promise<boolean> {
-  if (!(await liteSupports('cdn-cache'))) return false;
+async function cacheViaLite(trackId: string, youtubeId: string): Promise<CacheOutcome | null> {
+  if (!(await liteSupports('cdn-cache'))) return null;
   const upload = await createAudioUploadUrl(trackId);
-  if (!upload) return false;
+  if (!upload) return null;
 
   const result = await requestLiteCdnCache(youtubeId, upload);
-  if (!result) return false;
+  if (!result) return null;
   if (result.ok && result.bytes) {
     recordExternalAudioUpload(trackId, result.bytes);
-    return true;
+    return 'cached';
   }
   // Demasiado grande u ocupado: hacerlo aquí no cambiaría nada, se reintentará
-  // la próxima vez que alguien lo reproduzca. Otros fallos → plan B local.
+  // más tarde. Otros fallos → plan B local.
   if (result.reason === 'too_large' || result.reason === 'busy') {
     console.log(`[CDN AutoCache] KokoMusic-lite no cacheó ${trackId} (${result.reason}).`);
-    return true;
+    return result.reason;
   }
   console.warn(`[CDN AutoCache] KokoMusic-lite falló cacheando ${trackId} (${result.reason}) — se intenta aquí.`);
-  return false;
+  return null;
+}
+
+export type CacheOutcome = 'cached' | 'busy' | 'too_large' | 'failed' | 'in_progress' | 'disabled';
+
+/**
+ * Comprueba si se puede empezar a cachear `trackId` y, si sí, lo reserva.
+ * `reserveSlots`: huecos que se dejan libres para las reproducciones en vivo
+ * (la precarga de playlists usa 1, para no quitarle sitio a quien escucha).
+ */
+function tryStart(trackId: string, reserveSlots = 0): CacheOutcome | null {
+  if (!isCDNEnabled()) return 'disabled';
+  if (inFlight.has(trackId)) return 'in_progress';
+  if (inFlight.size >= MAX_CONCURRENT_AUTOCACHE - reserveSlots) return 'busy';
+  inFlight.add(trackId);
+  return null;
 }
 
 /**
@@ -108,47 +123,65 @@ async function cacheViaLite(trackId: string, youtubeId: string): Promise<boolean
  * está escuchando el track.
  */
 export function cacheStreamInBackground(trackId: string, sourceUrl: string, youtubeId?: string): void {
-  if (!isCDNEnabled() || inFlight.has(trackId)) return;
-  if (inFlight.size >= MAX_CONCURRENT_AUTOCACHE) {
-    console.log(`[CDN AutoCache] Límite de ${MAX_CONCURRENT_AUTOCACHE} auto-cacheos simultáneos alcanzado — se omite ${trackId} por ahora.`);
+  const blocked = tryStart(trackId);
+  if (blocked) {
+    if (blocked === 'busy') console.log(`[CDN AutoCache] Límite de ${MAX_CONCURRENT_AUTOCACHE} auto-cacheos simultáneos alcanzado — se omite ${trackId} por ahora.`);
     return;
   }
-  inFlight.add(trackId);
+  void runCache(trackId, sourceUrl, youtubeId);
+}
 
-  (async () => {
-    const rawPath = path.join(AUDIO_DIR, `tmp_${trackId}_raw`);
-    const opusPath = path.join(AUDIO_DIR, `${trackId}.opus`);
+/**
+ * Igual que cacheStreamInBackground pero esperando el resultado. Lo usa la
+ * precarga de playlists ("preparar canciones sin escucharlas"), que va de una
+ * en una y deja siempre un hueco libre para la reproducción en vivo.
+ */
+export async function cacheTrackNow(trackId: string, sourceUrl: string, youtubeId?: string): Promise<CacheOutcome> {
+  const blocked = tryStart(trackId, 1);
+  if (blocked) return blocked;
+  return runCache(trackId, sourceUrl, youtubeId);
+}
 
-    try {
-      if (youtubeId && (await cacheViaLite(trackId, youtubeId))) return;
+async function runCache(trackId: string, sourceUrl: string, youtubeId?: string): Promise<CacheOutcome> {
+  const rawPath = path.join(AUDIO_DIR, `tmp_${trackId}_raw`);
+  const opusPath = path.join(AUDIO_DIR, `${trackId}.opus`);
 
-      await downloadToFile(sourceUrl, rawPath);
-
-      const ffmpegCmd = [
-        'ffmpeg',
-        '-i', `"${rawPath}"`,
-        '-c:a', 'libopus',
-        '-b:a', AUDIO_BITRATE,
-        '-vbr', AUDIO_VBR ? 'on' : 'off',
-        '-compression_level', String(AUDIO_COMPRESSION_LEVEL),
-        '-ar', AUDIO_SAMPLE_RATE,
-        '-ac', '2',
-        '-y',
-        `"${opusPath}"`,
-      ].join(' ');
-      await execAsync(ffmpegCmd);
-
-      const url = await uploadToCDN(trackId, opusPath, true);
-      if (url) {
-        console.log(`[CDN AutoCache] ✅ ${trackId} cacheado permanentemente en R2 — futuras reproducciones no dependerán de Google.`);
-      }
-    } catch (err: any) {
-      console.warn(`[CDN AutoCache] No se pudo cachear ${trackId} en background:`, err.message || err);
-    } finally {
-      for (const p of [rawPath, opusPath]) {
-        if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch {} }
-      }
-      inFlight.delete(trackId);
+  try {
+    if (youtubeId) {
+      const viaLite = await cacheViaLite(trackId, youtubeId);
+      if (viaLite) return viaLite;
     }
-  })();
+
+    await downloadToFile(sourceUrl, rawPath);
+
+    const ffmpegCmd = [
+      'ffmpeg',
+      '-i', `"${rawPath}"`,
+      '-c:a', 'libopus',
+      '-b:a', AUDIO_BITRATE,
+      '-vbr', AUDIO_VBR ? 'on' : 'off',
+      '-compression_level', String(AUDIO_COMPRESSION_LEVEL),
+      '-ar', AUDIO_SAMPLE_RATE,
+      '-ac', '2',
+      '-y',
+      `"${opusPath}"`,
+    ].join(' ');
+    await execAsync(ffmpegCmd);
+
+    const url = await uploadToCDN(trackId, opusPath, true);
+    if (url) {
+      console.log(`[CDN AutoCache] ✅ ${trackId} cacheado permanentemente en R2 — futuras reproducciones no dependerán de Google.`);
+      return 'cached';
+    }
+    // uploadToCDN solo devuelve null sin lanzar por tamaño o R2 desactivado.
+    return 'too_large';
+  } catch (err: any) {
+    console.warn(`[CDN AutoCache] No se pudo cachear ${trackId} en background:`, err.message || err);
+    return 'failed';
+  } finally {
+    for (const p of [rawPath, opusPath]) {
+      if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch {} }
+    }
+    inFlight.delete(trackId);
+  }
 }

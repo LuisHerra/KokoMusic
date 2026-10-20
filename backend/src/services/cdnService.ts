@@ -311,6 +311,21 @@ export async function findTrackInCDN(trackId: string): Promise<string | null> {
 }
 
 /**
+ * Cuáles de `ids` están ya en R2, sin un HEAD por track: el listado del bucket
+ * (1 request por cada 1000 claves, cacheado 10 min) rellena cdnExistence, y
+ * cdnExistence también recoge lo subido después del último listado.
+ */
+export async function getCachedIdsInCDN(ids: string[]): Promise<string[]> {
+  if (!isCDNEnabled() || !ids.length) return [];
+  await listObjectsInCDN();
+  const now = Date.now();
+  return ids.filter((id) => {
+    const known = cdnExistence.get(id);
+    return !!known?.url && known.expires > now;
+  });
+}
+
+/**
  * Mantiene compatibilidad con stream.ts — devuelve boolean.
  * Usa findTrackInCDN internamente.
  */

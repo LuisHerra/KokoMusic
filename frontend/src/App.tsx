@@ -39,6 +39,7 @@ import { useVoiceControl } from './hooks/useVoiceControl';
 import VoiceControlModal, { IconMic } from './components/VoiceControlModal';
 import ThemeModal from './components/ThemeModal';
 import SpotifyImportModal from './components/Import/SpotifyImportModal';
+import { usePrecacheStore } from './store/precacheStore';
 import AuthModal from './components/Auth/AuthModal';
 import GuestHome from './pages/GuestHome';
 import { isGuestMode, enterGuestMode, exitGuestMode, loadGuestPlayableIds } from './lib/guest';
@@ -264,6 +265,12 @@ function AppShell() {
   useEffect(() => {
     if (isGuest) loadGuestPlayableIds();
   }, [isGuest]);
+
+  // Continuar la preparación de canciones en el servidor que quedó a medias
+  // la última vez que se cerró la app (ver store/precacheStore.ts).
+  useEffect(() => {
+    if (!isGuest && !isAuthModalOpen) usePrecacheStore.getState().resume();
+  }, [isGuest, isAuthModalOpen]);
 
   const handleEnterGuest = () => {
     enterGuestMode();
