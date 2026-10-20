@@ -289,17 +289,15 @@ router.get('/:itunesId', async (req: Request, res: Response) => {
 
     // 2. Comprobar si ya lo tenemos cacheado en R2 — si es así, ni tocamos
     // KokoMusic-lite ni googlevideo. Evita por completo el problema de IP.
+    // Siempre 302, también con forceStream: el bucket R2 responde con
+    // `Access-Control-Allow-Origin: *`, así que tanto el <audio crossOrigin>
+    // del EQ como el fetch() de la descarga offline siguen la redirección y
+    // leen los bytes directamente de R2. Proxyarlos aquí hacía que cada
+    // canción (3-4 MB) saliera por el ancho de banda de Render.
     const cdnUrl = await findTrackInCDN(itunesId);
     if (cdnUrl) {
-      if (!forceStream) {
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        return res.redirect(302, cdnUrl);
-      }
-      const proxiedFromCdn = await proxyAudioStream(req, res, cdnUrl, 'audio/ogg; codecs=opus');
-      if (!proxiedFromCdn && !res.headersSent) {
-        res.status(502).json({ error: 'Stream temporalmente no disponible' });
-      }
-      return;
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.redirect(302, cdnUrl);
     }
 
     // Modo invitado: solo lo que ya está en el CDN. Resolver un track nuevo

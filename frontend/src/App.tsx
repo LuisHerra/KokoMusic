@@ -38,6 +38,7 @@ import AppSplash from './components/AppSplash';
 import { useVoiceControl } from './hooks/useVoiceControl';
 import VoiceControlModal, { IconMic } from './components/VoiceControlModal';
 import ThemeModal from './components/ThemeModal';
+import SpotifyImportModal from './components/Import/SpotifyImportModal';
 import AuthModal from './components/Auth/AuthModal';
 import GuestHome from './pages/GuestHome';
 import { isGuestMode, enterGuestMode, exitGuestMode, loadGuestPlayableIds } from './lib/guest';
@@ -607,6 +608,7 @@ function AppShell() {
       />
 
       <ThemeModal />
+      <SpotifyImportModal />
       <GuidedTour />
     </div>
   );

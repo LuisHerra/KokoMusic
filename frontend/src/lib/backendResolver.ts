@@ -22,6 +22,14 @@ const LOCAL_URL    = 'http://localhost:3001/api';
 // Resuelve la URL base (sin /api) del .env para construir candidatos
 const HF_BASE = HF_URL.replace(/\/api$/, '');
 
+// Backend de respaldo (otra cuenta de Render). Solo se usa si el principal no
+// responde — p. ej. suspendido por agotar el ancho de banda del mes. Dejar la
+// variable vacía desactiva por completo el respaldo (y su health check extra).
+const FALLBACK_BASE = ((import.meta.env.VITE_API_URL_FALLBACK as string | undefined) ?? '')
+  .trim()
+  .replace(/\/api\/?$/, '')
+  .replace(/\/$/, '');
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 let resolvedBase: string | null = null;   // URL base resuelta (sin /api)
@@ -101,7 +109,17 @@ async function resolveBackend(): Promise<string> {
     localStorage.removeItem(STORAGE_TUNNEL_KEY);
   }
 
-  // 4. Fallback HF / variable de entorno
+  // 4. Backend cloud (VITE_API_URL), con respaldo opcional (VITE_API_URL_FALLBACK)
+  if (FALLBACK_BASE && FALLBACK_BASE !== HF_BASE) {
+    if (await probe(HF_BASE, true)) {
+      console.info(`[BackendResolver] ✅ Backend cloud: ${HF_BASE}`);
+      return HF_BASE;
+    }
+    if (await probe(FALLBACK_BASE, true)) {
+      console.warn(`[BackendResolver] ⚠️  ${HF_BASE} no responde — usando respaldo ${FALLBACK_BASE}`);
+      return FALLBACK_BASE;
+    }
+  }
   console.info(`[BackendResolver] ℹ️  Usando backend cloud: ${HF_BASE}`);
   return HF_BASE;
 }

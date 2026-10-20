@@ -20,6 +20,8 @@ import { usePlayerStore } from '../store/playerStore';
 import { useSwipeToQueue } from '../hooks/useSwipeToQueue';
 import { getAllOfflineTracks, deleteOfflineTrack } from '../lib/offlineAudio';
 import ArtistLinks from '../components/Common/ArtistLinks';
+import { SpotifyLogo } from '../components/Import/SpotifyImportModal';
+import { useSpotifyImportStore } from '../store/spotifyImportStore';
 
 // Solo lectura: el id lo fija el login. Inventar uno aquí creaba cuentas fantasma.
 function getDeviceId(): string {
@@ -374,6 +376,7 @@ export default function Library() {
   const [activeTab, setActiveTab] = useState<'playlists' | 'custom' | 'offline'>('playlists');
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  const openSpotifyImport = useSpotifyImportStore((s) => s.open);
   const [offlineTracksCount, setOfflineTracksCount] = useState(0);
   const [offlineTracks, setOfflineTracks] = useState<Track[]>([]);
 
@@ -708,6 +711,20 @@ export default function Library() {
                   {createCollabMutation.isPending ? 'Creando...' : 'Crear playlist'}
                 </button>
               </form>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 12px', color: 'var(--text-muted)', fontSize: 12 }}>
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+                o
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => { setCreating(false); openSpotifyImport(); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(29,185,84,0.12)', color: 'var(--text-primary)', border: '1px solid #1DB95460' }}
+              >
+                <SpotifyLogo size={16} />
+                Importar una playlist de Spotify
+              </button>
             </div>
           )}
 

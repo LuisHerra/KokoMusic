@@ -2,45 +2,80 @@ import { Router } from 'express';
 // Use dynamic import or require for spotify-url-info as it might need fetch injection
 const spotifyUrlInfo = require('spotify-url-info')(fetch);
 import { searchTracks } from '../services/metadataService';
+import { cache } from '../services/cacheService';
 import { supabase } from '../services/supabaseService';
 import { hydrateLocalHistoryFromCloud } from '../services/historyService';
 import { triggerUserPipeline } from '../services/backgroundJobRunner';
 
 const router = Router();
 
-// Parse Spotify URL and extract raw tracks
+/**
+ * Normaliza un enlace de Spotify a `https://open.spotify.com/{playlist|album}/{id}`.
+ * Acepta enlaces con /intl-es/, parámetros (?si=...), URIs `spotify:playlist:...`
+ * y enlaces cortos de la app (spotify.link / spotify.app.link), que se siguen
+ * con una sola petición para obtener la URL real.
+ */
+async function normalizeSpotifyUrl(raw: string): Promise<{ type: 'playlist' | 'album'; url: string } | null> {
+  let input = String(raw).trim();
+
+  const uri = input.match(/^spotify:(playlist|album):([A-Za-z0-9]+)$/);
+  if (uri) return { type: uri[1] as 'playlist' | 'album', url: `https://open.spotify.com/${uri[1]}/${uri[2]}` };
+
+  if (/^https?:\/\/(spotify\.link|spotify\.app\.link)\//i.test(input)) {
+    try {
+      const r = await fetch(input, { redirect: 'follow', signal: AbortSignal.timeout(6000) });
+      input = r.url;
+    } catch {
+      return null;
+    }
+  }
+
+  const m = input.match(/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(playlist|album)\/([A-Za-z0-9]+)/i);
+  if (!m) return null;
+  const type = m[1].toLowerCase() as 'playlist' | 'album';
+  return { type, url: `https://open.spotify.com/${type}/${m[2]}` };
+}
+
+// Parse Spotify URL and extract raw tracks (una sola petición a Spotify)
 router.post('/parse', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'Falta la URL' });
 
   try {
-    let name = 'Playlist Importada';
-    let cover = '';
-    let tracks: any[] = [];
-
-    if (url.includes('spotify.com')) {
-      const data = await spotifyUrlInfo.getData(url);
-      if (data && data.type === 'playlist') {
-        name = data.name || name;
-        cover = data.coverArt?.sources?.[0]?.url || cover;
-        const spTracks = await spotifyUrlInfo.getTracks(url);
-        tracks = spTracks.map((t: any) => ({
-          title: t.name,
-          artist: t.artist,
-          duration: t.duration || 0,
-          originalId: t.uri || t.id
-        }));
-      } else {
-        return res.status(400).json({ error: 'Solo playlists de Spotify' });
-      }
-    } else {
-      return res.status(400).json({ error: 'URL no soportada' });
+    const target = await normalizeSpotifyUrl(url);
+    if (!target) {
+      return res.status(400).json({ error: 'Pega un enlace de una playlist o un álbum de Spotify' });
     }
 
-    res.json({ name, cover, tracks });
+    const { preview, tracks: spTracks } = await spotifyUrlInfo.getDetails(target.url);
+
+    // Quitar duplicados (misma canción repetida en la playlist) para no
+    // resolverla dos veces.
+    const seen = new Set<string>();
+    const tracks = (spTracks as any[])
+      .filter((t) => t?.name && t?.artist)
+      .map((t) => ({
+        title: t.name,
+        artist: t.artist,
+        duration: t.duration || 0,
+        originalId: t.uri,
+      }))
+      .filter((t) => {
+        const key = `${normalize(t.artist)}|${normalize(t.title)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+    res.json({
+      name: preview?.title || (target.type === 'album' ? 'Álbum importado' : 'Playlist importada'),
+      cover: preview?.image || '',
+      type: target.type,
+      tracks,
+    });
   } catch (error: any) {
-    console.error('[Import Parse] Error:', error);
-    res.status(500).json({ error: 'Error al parsear la playlist' });
+    console.error('[Import Parse] Error:', error?.message || error);
+    res.status(502).json({ error: 'No se pudo leer el enlace. Comprueba que la playlist es pública.' });
   }
 });
 
@@ -130,6 +165,116 @@ function similarity(a: string, b: string): number {
   for (const bg of bigramsA) { if (bigramsB.has(bg)) intersection++; }
   return intersection / (bigramsA.size + bigramsB.size - intersection);
 }
+
+// ── Resolución por lotes para la importación desde Spotify ───────────────────
+
+type RawImportTrack = { title: string; artist: string; duration?: number };
+type ImportCandidate = { id: string; title: string; artist: string; album?: string; cover?: string; score: number };
+type ImportResolution =
+  | { status: 'matched'; id: string; candidates: ImportCandidate[] }
+  | { status: 'ambiguous'; candidates: ImportCandidate[] }
+  | { status: 'notfound' };
+
+const RESOLVE_BATCH_MAX = 20;
+const RESOLVE_CACHE_TTL = 7 * 24 * 3600;  // misma canción de Spotify → mismo resultado durante una semana
+const MATCH_THRESHOLD = 0.75;
+const AMBIGUOUS_MIN = 0.35;
+const BATCH_SPACING_MS = 250;            // pausa entre búsquedas reales (no cacheadas) para no provocar 429
+
+/** Puntúa un resultado frente a la canción de Spotify (título, artista y duración). */
+function scoreCandidate(track: RawImportTrack, r: { title: string; artist: string; duration?: number }): number {
+  const titleSim = similarity(track.title, r.title);
+  // Spotify une colaboradores con ", " / " & " — basta con que coincida uno.
+  const artists = [track.artist, ...track.artist.split(/,|&/).map((a) => a.trim()).filter(Boolean)];
+  const artistSim = Math.max(...artists.map((a) => similarity(a, r.artist)));
+  let score = titleSim * 0.6 + artistSim * 0.4;
+
+  if (track.duration && r.duration) {
+    const diffSec = Math.abs(track.duration - r.duration) / 1000;
+    if (diffSec <= 3) score += 0.05;
+    else if (diffSec > 20) score -= 0.15;  // probablemente versión en directo, remix o vídeo con intro
+  }
+  return Math.max(0, Math.min(1, score));
+}
+
+function rankResults(track: RawImportTrack, results: any[]): ImportCandidate[] {
+  return results
+    .filter((r) => r?.id)
+    .map((r) => ({
+      id: String(r.id),
+      title: r.title,
+      artist: r.artist,
+      album: r.album,
+      cover: r.cover,
+      score: scoreCandidate(track, r),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+}
+
+/**
+ * Resuelve una canción de Spotify con el mínimo de peticiones salientes:
+ *   1. Caché (7 días).
+ *   2. Una búsqueda en iTunes (1 petición; da IDs de catálogo y duración fiable).
+ *   3. Solo si no hay coincidencia clara, una búsqueda en YouTube con el título limpio.
+ * Antes se iba directo a YouTube (scraping + hasta 5 consultas de enriquecimiento
+ * a iTunes por canción) y con hasta 4 reintentos.
+ * Devuelve también si hizo peticiones reales, para espaciar solo esas.
+ */
+async function resolveImportTrack(track: RawImportTrack): Promise<{ result: ImportResolution; usedNetwork: boolean }> {
+  const cacheKey = `import-resolve:${normalize(track.artist)}|${normalize(track.title)}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return { result: JSON.parse(cached), usedNetwork: false };
+
+  const cleanTitle = track.title.replace(/[\(\[].*?[\)\]]/g, '').replace(/\s+-\s+.*$/, '').trim() || track.title;
+  const firstArtist = track.artist.split(/,|&/)[0].trim();
+
+  let ranked = rankResults(track, await searchTracks(`${firstArtist} ${cleanTitle}`, 5, 'itunes'));
+
+  if (!ranked.length || ranked[0].score < MATCH_THRESHOLD) {
+    const yt = rankResults(track, await searchTracks(`${firstArtist} ${cleanTitle}`, 5, 'youtube'));
+    ranked = [...ranked, ...yt].sort((a, b) => b.score - a.score).slice(0, 5);
+  }
+
+  let result: ImportResolution;
+  if (ranked.length && ranked[0].score >= MATCH_THRESHOLD) {
+    result = { status: 'matched', id: ranked[0].id, candidates: ranked };
+  } else if (ranked.length && ranked[0].score >= AMBIGUOUS_MIN) {
+    result = { status: 'ambiguous', candidates: ranked };
+  } else {
+    result = { status: 'notfound' };
+  }
+
+  // Los "no encontrado" se cachean menos tiempo por si era un fallo puntual.
+  cache.setex(cacheKey, result.status === 'notfound' ? 3600 : RESOLVE_CACHE_TTL, JSON.stringify(result));
+  return { result, usedNetwork: true };
+}
+
+// POST /api/import/resolve-batch  { tracks: RawImportTrack[] }  (máx. 20 por llamada)
+// Secuencial a propósito: el cliente manda lotes pequeños y el servidor espacia
+// las búsquedas reales, así una playlist grande nunca dispara ráfagas.
+router.post('/resolve-batch', async (req, res) => {
+  const tracks: RawImportTrack[] = Array.isArray(req.body?.tracks) ? req.body.tracks : [];
+  if (!tracks.length) return res.status(400).json({ error: 'Faltan canciones' });
+  if (tracks.length > RESOLVE_BATCH_MAX) {
+    return res.status(400).json({ error: `Máximo ${RESOLVE_BATCH_MAX} canciones por lote` });
+  }
+
+  const results: ImportResolution[] = [];
+  for (const t of tracks) {
+    if (!t?.title || !t?.artist) { results.push({ status: 'notfound' }); continue; }
+    try {
+      const { result, usedNetwork } = await resolveImportTrack(t);
+      results.push(result);
+      if (usedNetwork) await new Promise((r) => setTimeout(r, BATCH_SPACING_MS));
+    } catch (err: any) {
+      console.warn(`[Import Batch] Error resolviendo "${t.artist} - ${t.title}":`, err?.message || err);
+      results.push({ status: 'notfound' });
+    }
+  }
+
+  res.json({ results });
+});
 
 // Endpoint para "upgradear" de YouTube a iTunes en segundo plano
 // Devuelve: { id } si match confiable, { ambiguous: true, candidates } si necesita confirmación del usuario, o 404

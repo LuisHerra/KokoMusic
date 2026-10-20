@@ -1,7 +1,8 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylists, createPlaylist, getCollabPlaylists, deletePlaylist, getPlaylistTrackCount, getMyProfile, BASE } from '../../lib/api';
+import { getPlaylists, createPlaylist, getCollabPlaylists, deletePlaylist, getPlaylistTrackCount, getMyProfile } from '../../lib/api';
+import { useSpotifyImportStore } from '../../store/spotifyImportStore';
 import { resolveImageUrl } from '../../lib/api';
 import { usePlayerStore } from '../../store/playerStore';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -189,90 +190,12 @@ export default function Sidebar() {
     createMutation.mutate();
   };
 
-  const [importState, setImportState] = useState<{ active: boolean; current: number; total: number; name: string } | null>(null);
-  const [disambiguation, setDisambiguation] = useState<{ track: any, candidates: any[], resolve: (id: string | null) => void } | null>(null);
-  const [askAlways, setAskAlways] = useState(true);
-  const askAlwaysRef = useRef(askAlways);
-  useEffect(() => { askAlwaysRef.current = askAlways; }, [askAlways]);
-
-  const handleImport = async () => {
-    const url = window.prompt('Pega aquí el enlace de tu playlist de Spotify:');
-    if (!url) return;
-    
-    try {
-      setImportState({ active: true, current: 0, total: 0, name: 'Analizando...' });
-      
-      // 1. Obtener metadatos crudos de Spotify
-      const parseRes = await fetch(`${BASE}/import/parse`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-      if (!parseRes.ok) throw new Error('Error al parsear la URL');
-      const data = await parseRes.json();
-      
-      const tracksToResolve = data.tracks || [];
-      setImportState({ active: true, current: 0, total: tracksToResolve.length, name: data.name });
-
-      // 2. Resolver track a track de manera secuencial (Batch = 1) y con pausa para no saturar iTunes (Rate limit 429)
-      const tracksIds: string[] = [];
-      const failedTracks: any[] = [];
-      
-      for (let i = 0; i < tracksToResolve.length; i++) {
-        const track = tracksToResolve[i];
-        try {
-          const res = await fetch(`${BASE}/import/resolve`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ track })
-          });
-          
-          if (res.ok) {
-            const data = await res.json();
-            if (data.exactMatch || !askAlwaysRef.current) {
-              tracksIds.push(data.results[0].id);
-            } else {
-              // Pause loop and ask user
-              const chosenId = await new Promise<string | null>((resolve) => {
-                setDisambiguation({ track, candidates: data.results, resolve });
-              });
-              setDisambiguation(null);
-              if (chosenId) {
-                tracksIds.push(chosenId);
-              } else {
-                failedTracks.push(track);
-              }
-            }
-          } else {
-            failedTracks.push(track);
-          }
-        } catch (e) {
-          failedTracks.push(track);
-        }
-        
-        setImportState(prev => prev ? { ...prev, current: i + 1 } : null);
-        
-        // Pausa de 300ms entre peticiones para respetar rate limits de iTunes/YouTube
-        await new Promise(r => setTimeout(r, 300));
-      }
-      
-      // 3. Crear Playlist local
-      const newPl = await createPlaylist({ 
-        name: data.name, 
-        description: 'Importada desde Spotify', 
-        cover: data.cover,
-        tracks: tracksIds
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ['playlists'] });
-      navigate(`/playlist/${newPl.id}`, { state: { failedTracks } });
-    } catch (err) {
-      alert('Hubo un error al importar la playlist. Revisa la consola.');
-      console.error(err);
-    } finally {
-      setImportState(null);
-    }
-  };
+  const importPhase = useSpotifyImportStore((s) => s.phase);
+  const importName = useSpotifyImportStore((s) => s.name);
+  const importCurrent = useSpotifyImportStore((s) => s.current);
+  const importTotal = useSpotifyImportStore((s) => s.total);
+  const openImport = useSpotifyImportStore((s) => s.open);
+  const importActive = importPhase === 'parsing' || importPhase === 'resolving' || importPhase === 'saving' || importPhase === 'review';
 
   // Invitado: solo Inicio (catálogo) y Buscar, sin biblioteca ni social.
   if (isGuest) {
@@ -442,10 +365,10 @@ export default function Sidebar() {
           <div style={{ display: 'flex', gap: 4 }}>
             <button
               className="ctrl-btn"
-              onClick={handleImport}
-              title="Importar desde Spotify"
-              style={{ marginTop: 4, opacity: importState?.active ? 0.5 : 1 }}
-              disabled={importState?.active}
+              onClick={openImport}
+              title="Importar playlist de Spotify"
+              aria-label="Importar playlist de Spotify"
+              style={{ marginTop: 4 }}
             >
               <IconImport />
             </button>
@@ -473,29 +396,38 @@ export default function Sidebar() {
       )}
 
       <div className="sidebar-playlists">
-        {importState?.active && !isCollapsed && (
-          <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', margin: '0 12px 12px', borderRadius: '8px' }}>
+        {importActive && !isCollapsed && (
+          <button
+            onClick={openImport}
+            title="Ver importación"
+            style={{ display: 'block', width: 'calc(100% - 24px)', textAlign: 'left', padding: '12px', background: 'rgba(255,255,255,0.05)', margin: '0 12px 12px', borderRadius: '8px', border: 'none', color: 'inherit', cursor: 'pointer', fontFamily: 'inherit' }}
+          >
             <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
-              Importando: {importState.name}
+              Importando: {importName || 'Spotify'}
             </div>
             <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-              {importState.total > 0 ? `Buscando ${importState.current} de ${importState.total} canciones...` : 'Obteniendo metadata de Spotify...'}
+              {importPhase === 'review'
+                ? 'Revisa las canciones dudosas →'
+                : importTotal > 0 ? `Buscando ${importCurrent} de ${importTotal} canciones...` : 'Obteniendo canciones de Spotify...'}
             </div>
             <div style={{ height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
-              <div 
-                style={{ 
-                  height: '100%', 
-                  background: 'var(--accent)', 
-                  width: importState.total > 0 ? `${(importState.current / importState.total) * 100}%` : '10%',
+              <div
+                style={{
+                  height: '100%',
+                  background: 'var(--accent)',
+                  width: importTotal > 0 ? `${(importCurrent / importTotal) * 100}%` : '10%',
                   transition: 'width 0.3s ease'
-                }} 
+                }}
               />
             </div>
-          </div>
+          </button>
         )}
         {playlists.length === 0 && !isCollapsed && (
           <p style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
-            Crea tu primera playlist &rarr;
+            Crea tu primera playlist o{' '}
+            <button onClick={openImport} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>
+              impórtala desde Spotify
+            </button>
           </p>
         )}
         {[...playlists].sort((a, b) => {
@@ -556,61 +488,6 @@ export default function Sidebar() {
 
 
 
-      {/* Modal de Disambiguación */}
-      {disambiguation && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 9999, padding: 24
-        }}>
-          <div style={{
-            background: 'var(--bg-card)', padding: 24, borderRadius: 12, width: '100%', maxWidth: 500,
-            border: '1px solid rgba(255,255,255,0.1)', color: 'white'
-          }}>
-            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 18 }}>Confirmar Canción</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>
-              No hemos encontrado una coincidencia exacta para <strong>{disambiguation.track.title}</strong> de <strong>{disambiguation.track.artist}</strong>. Selecciona la opción correcta o descártala.
-            </p>
-
-            <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-              {disambiguation.candidates.map((c) => (
-                <div key={c.id} style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 8 }}>
-                  <img src={c.cover} alt="cover" style={{ width: 40, height: 40, borderRadius: 4, objectFit: 'cover' }} />
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{c.title}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.artist}</div>
-                  </div>
-                  <button 
-                    onClick={() => disambiguation.resolve(c.id)}
-                    style={{ background: 'var(--accent)', border: 'none', padding: '6px 12px', borderRadius: 16, color: 'black', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}
-                  >
-                    Elegir
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  checked={!askAlways} 
-                  onChange={(e) => setAskAlways(!e.target.checked)} 
-                />
-                Aceptar siempre el primer resultado
-              </label>
-              
-              <button 
-                onClick={() => disambiguation.resolve(null)}
-                style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 16px', borderRadius: 20, cursor: 'pointer', fontSize: 13 }}
-              >
-                Descartar esta
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
       {/* Sidebar resizer handle */}
       <div 
         className="resize-handle sidebar-resizer"
