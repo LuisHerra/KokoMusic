@@ -1,0 +1,7 @@
+# Contexto de build del Dockerfile de la raíz: solo el código del backend.
+# Sin esto se mandaría todo el repo (frontend, android, spotify_data...).
+*
+!backend/package.json
+!backend/package-lock.json
+!backend/tsconfig.json
+!backend/src
