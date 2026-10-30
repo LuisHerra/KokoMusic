@@ -483,6 +483,9 @@ export function useVoiceControl(): VoiceControlState {
       setIsListening(false);
       if (event.error === 'no-speech') setError('No se detectó voz. Intenta de nuevo.');
       else if (event.error === 'not-allowed') setError('Permiso de micrófono denegado.');
+      // El reconocimiento del navegador depende de Google: en la app de
+      // escritorio (WebView2) no existe y falla siempre con 'network'.
+      else if (event.error === 'network') setError('El reconocimiento de voz del servidor no está configurado (falta GROQ_API_KEY en el backend).');
       else if (event.error !== 'aborted') setError(`Error de voz: ${event.error}`);
     };
 
