@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { VoiceControlState, VoiceActionId } from '../hooks/useVoiceControl';
-import { DEFAULT_VOICE_COMMANDS } from '../hooks/useVoiceControl';
+import { DEFAULT_VOICE_COMMANDS, BROWSER_VOICE_LANGS } from '../hooks/useVoiceControl';
 
 interface VoiceControlModalProps {
   voiceControl: VoiceControlState;
@@ -47,6 +47,10 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
     feedback,
     error,
     isSupported,
+    isTranscribing,
+    engine,
+    browserLang,
+    setBrowserLang,
     customCommands,
     toggleListening,
     updateCustomCommand,
@@ -215,11 +219,35 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
 
         {activeTab === 'listen' ? (
           <>
-            <p style={{ color: '#aaa', fontSize: 13, margin: '0 0 20px 0' }}>
+            <p style={{ color: '#aaa', fontSize: 13, margin: '0 0 12px 0' }}>
               {isSupported
-                ? 'Di un comando o una canción para reproducir (fallback YouTube automático si no está en catálogo).'
-                : 'Tu navegador no soporta la API de reconocimiento de voz.'}
+                ? 'Di un comando o el nombre de una canción, sin más ("Bohemian Rhapsody", "pon Alors on danse", "siguiente").'
+                : 'El reconocimiento de voz no está disponible aquí.'}
             </p>
+
+            {engine === 'whisper' ? (
+              <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 16 }}>
+                Idioma automático: habla en español, inglés, francés… o mézclalos
+              </div>
+            ) : engine === 'browser' ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 16 }}>
+                <span style={{ fontSize: 12, color: '#888' }}>Idioma (Alt + L):</span>
+                {BROWSER_VOICE_LANGS.map((l) => (
+                  <button
+                    key={l.code}
+                    onClick={() => setBrowserLang(l.code)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: browserLang === l.code ? 'var(--accent)' : 'transparent',
+                      color: browserLang === l.code ? '#000' : '#ccc',
+                    }}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             {/* Microphone Animated Visualizer */}
             <div style={{ position: 'relative', margin: '10px 0 20px 0' }}>
@@ -292,9 +320,13 @@ export default function VoiceControlModal({ voiceControl, isOpen, onClose }: Voi
                 <span style={{ fontSize: 14, fontWeight: 500, color: interimTranscript || transcript ? 'var(--accent)' : '#888' }}>
                   {interimTranscript || transcript || 'Escuchando... di tu comando'}
                 </span>
+              ) : isTranscribing ? (
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#888' }}>Entendiendo…</span>
+              ) : transcript ? (
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--accent)' }}>“{transcript}”</span>
               ) : (
                 <span style={{ fontSize: 13, color: '#aaa' }}>
-                  Haz clic en el micrófono o usa <strong style={{ color: '#fff' }}>Alt + V</strong>
+                  Pulsa <strong style={{ color: '#fff' }}>Alt + V</strong> y habla, o mantenlo pulsado mientras hablas
                 </span>
               )}
             </div>

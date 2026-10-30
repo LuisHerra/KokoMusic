@@ -260,7 +260,22 @@ interface PlayerState {
 }
 
 // Fisher-Yates shuffle — retorna un nuevo array con el track actual primero
-function shuffleArray(array: Track[], currentTrack: Track | null): Track[] {
+function isSameSong(a: Track, b: Track): boolean {
+  if (a.id === b.id) return true;
+  return a.title.toLowerCase().trim() === b.title.toLowerCase().trim()
+    && a.artist.toLowerCase().trim() === b.artist.toLowerCase().trim();
+}
+
+/** Coloca `track` justo detrás de `list[currentIndex]`, quitando sus copias previas. */
+function placeNext(list: Track[], currentIndex: number, track: Track): { list: Track[]; index: number } {
+  const current = list[currentIndex];
+  const rest = list.filter((t, i) => i === currentIndex || !isSameSong(t, track));
+  const index = current ? rest.indexOf(current) : -1;
+  rest.splice(index + 1, 0, track);
+  return { list: rest, index: Math.max(index, 0) };
+}
+
+export function shuffleArray(array: Track[], currentTrack: Track | null): Track[] {
   const clone = [...array];
   if (currentTrack) {
     const idx = clone.findIndex(t => t.id === currentTrack.id);
@@ -683,11 +698,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
     if (sendRemoteCommandIfConnected({ type: 'add_to_queue', track })) {
       // Pintado optimista: justo detrás de la canción actual, igual que hará el principal.
-      const { queue, queueIndex } = get();
-      if (queue.some((t) => t.id === track.id)) return;
-      const q = [...queue];
-      q.splice(queueIndex + 1, 0, track);
-      set({ queue: q, originalQueue: q });
+      const { queue, queueIndex, currentTrack } = get();
+      if (currentTrack?.id === track.id) return;
+      const { list, index } = placeNext(queue, queueIndex, track);
+      set({ queue: list, originalQueue: list, queueIndex: index });
       return;
     }
     const { queue, originalQueue, currentTrack, queueIndex } = get();
@@ -697,24 +711,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ currentTrack: track, queue: [track], originalQueue: [track], queueIndex: 0, isPlaying: true, progress: 0, error: null });
       return;
     }
-    // Evitar duplicados exactos si ya está justo delante
-    const isDuplicate = queue.some(t => t.id === track.id || (t.title.toLowerCase().trim() === track.title.toLowerCase().trim() && t.artist.toLowerCase().trim() === track.artist.toLowerCase().trim()));
-    if (isDuplicate) return;
+    if (isSameSong(currentTrack, track)) return;
 
-    // Insertar justo después de la canción actual en la cola activa (cabeza de la pila)
-    const newQueue = [...queue];
-    newQueue.splice(queueIndex + 1, 0, track);
+    // Si ya estaba en la cola (lo normal al reproducir una playlist y encolar
+    // otra canción de ella) se MUEVE justo detrás de la actual. Antes se
+    // ignoraba en silencio y parecía que "no se podía encolar".
+    const { list: newQueue, index: newIndex } = placeNext(queue, queueIndex, track);
 
     // Mantener la coherencia con originalQueue para que funcione con shuffle desactivado
-    const newOriginalQueue = [...originalQueue];
     const origIndex = originalQueue.findIndex((t) => t.id === currentTrack.id);
-    if (origIndex !== -1) {
-      newOriginalQueue.splice(origIndex + 1, 0, track);
-    } else {
-      newOriginalQueue.push(track);
-    }
+    const newOriginalQueue = origIndex !== -1
+      ? placeNext(originalQueue, origIndex, track).list
+      : [...originalQueue.filter((t) => !isSameSong(t, track)), track];
 
-    set({ queue: newQueue, originalQueue: newOriginalQueue });
+    set({ queue: newQueue, originalQueue: newOriginalQueue, queueIndex: newIndex });
   },
 
   appendQueue: (tracks) => {

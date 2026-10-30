@@ -31,6 +31,7 @@ import { checkHealth as checkKokoLiteHealth } from './services/kokoLiteClient';
 
 import spotifyRouter from './routes/spotify';
 import shazamRouter from './routes/shazam';
+import voiceRouter from './routes/voice';
 import playbackRouter from './routes/playback';
 import pushRouter from './routes/push';
 
@@ -154,6 +155,7 @@ app.use('/api/shazam', shazamRouter);
 app.use('/api/eureka', shazamRouter);
 app.use('/api/playback', playbackRouter);
 app.use('/api/push', pushRouter);
+app.use('/api/voice', voiceRouter);
 
 // ── Remote logging from frontend for mobile debugging ──────────────────────────
 app.post('/api/log', (req, res) => {

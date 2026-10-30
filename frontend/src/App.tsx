@@ -610,7 +610,7 @@ function AppShell() {
 
       <VoiceControlModal
         voiceControl={voiceControl}
-        isOpen={isVoiceModalOpen || voiceControl.isListening}
+        isOpen={isVoiceModalOpen || voiceControl.isListening || voiceControl.isTranscribing}
         onClose={() => setIsVoiceModalOpen(false)}
       />
 

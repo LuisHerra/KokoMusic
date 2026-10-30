@@ -37,34 +37,63 @@ export const playlists = new Map<string, Playlist>();
 
 // ── Persistencia ──────────────────────────────────────────────────────────────
 
-const loadedUsers = new Map<string, Promise<void>>();
+// Varios procesos escriben la misma tabla (backend principal, el de respaldo,
+// solapes de deploy en Render, el local). Cada escritura sube la playlist
+// ENTERA, así que un proceso con la caché vieja pisaba los cambios hechos en
+// otro: así se "perdían" likes. Por eso cada escritura relee antes de Supabase
+// y las lecturas no se fían de una caché de más de READ_MAX_AGE_MS.
+const READ_MAX_AGE_MS = 15_000;
+const loadedAt = new Map<string, number>();
+const inflightLoads = new Map<string, Promise<void>>();
 
 function storageKey(pl: Playlist): string {
   return pl.id === 'liked-songs' ? `liked-songs-${pl.userId}` : pl.id;
 }
 
-/** Carga (una sola vez por proceso) las playlists persistidas de este usuario en el Map. */
-export function ensureUserPlaylistsLoaded(userId: string): Promise<void> {
+/** Sustituye en el Map las playlists del usuario por lo que hay en Supabase. */
+async function loadUserPlaylists(userId: string): Promise<void> {
+  const startedAt = Date.now();
+  const { data, error } = await supabase!
+    .schema('kokomusic')
+    .from('user_playlists')
+    .select('key, data')
+    .eq('user_id', userId);
+  if (error) throw error;
+  const rows = (data ?? []) as { key: string; data: Playlist }[];
+  const keys = new Set(rows.map((r) => r.key));
+  for (const [key, pl] of playlists) {
+    if (pl.userId === userId && !keys.has(key)) playlists.delete(key);
+  }
+  for (const row of rows) playlists.set(row.key, row.data);
+  loadedAt.set(userId, startedAt);
+}
+
+/**
+ * Garantiza que el Map tiene las playlists del usuario cargadas hace menos de
+ * `maxAgeMs` (por defecto, basta con haberlas cargado alguna vez).
+ */
+export function ensureUserPlaylistsLoaded(userId: string, maxAgeMs = Infinity): Promise<void> {
   if (!supabase) return Promise.resolve();
-  let pending = loadedUsers.get(userId);
+  const at = loadedAt.get(userId);
+  if (at !== undefined && Date.now() - at < maxAgeMs) return Promise.resolve();
+  let pending = inflightLoads.get(userId);
   if (!pending) {
-    pending = (async () => {
-      const { data, error } = await supabase!
-        .schema('kokomusic')
-        .from('user_playlists')
-        .select('key, data')
-        .eq('user_id', userId);
-      if (error) {
-        loadedUsers.delete(userId);
-        throw error;
-      }
-      for (const row of (data ?? []) as { key: string; data: Playlist }[]) {
-        if (!playlists.has(row.key)) playlists.set(row.key, row.data);
-      }
-    })();
-    loadedUsers.set(userId, pending);
+    pending = loadUserPlaylists(userId).finally(() => inflightLoads.delete(userId));
+    inflightLoads.set(userId, pending);
   }
   return pending;
+}
+
+// Serializa por usuario recarga + cambio + guardado: dos peticiones a la vez
+// del mismo usuario (p. ej. dos likes seguidos) no deben pisarse entre sí.
+const userLocks = new Map<string, Promise<unknown>>();
+
+function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const run = (userLocks.get(userId) ?? Promise.resolve()).catch(() => {}).then(fn);
+  const tail = run.catch(() => {});
+  userLocks.set(userId, tail);
+  tail.then(() => { if (userLocks.get(userId) === tail) userLocks.delete(userId); });
+  return run;
 }
 
 export async function persistPlaylist(pl: Playlist): Promise<void> {
@@ -88,9 +117,12 @@ type Handler = (req: Request, res: Response, userId: string) => Promise<unknown>
 function withUserPlaylists(handler: Handler) {
   return async (req: Request, res: Response) => {
     const userId = (req.headers['x-user-id'] || 'default') as string;
+    const isWrite = req.method !== 'GET';
     try {
-      await ensureUserPlaylistsLoaded(userId);
-      await handler(req, res, userId);
+      await withUserLock(userId, async () => {
+        await ensureUserPlaylistsLoaded(userId, isWrite ? 0 : READ_MAX_AGE_MS);
+        await handler(req, res, userId);
+      });
     } catch (err) {
       console.error('[Playlists] Error de persistencia:', err);
       if (!res.headersSent) res.status(500).json({ error: 'No se pudieron guardar/cargar tus playlists' });
@@ -135,21 +167,23 @@ export function getLikedTracks(userId: string): { trackId: string; likedAt: stri
 }
 
 /** Helper to batch add track IDs to a user's liked-songs playlist */
-export async function addTracksToLikedSongs(userId: string, trackIds: string[]): Promise<void> {
-  await ensureUserPlaylistsLoaded(userId);
-  const pl = getOrCreatePlaylist('liked-songs', userId);
-  if (!pl) return;
-  for (const trackId of trackIds) {
-    if (trackId && !pl.tracks.some((t) => t.trackId === String(trackId))) {
-      pl.tracks.push({
-        trackId: String(trackId),
-        position: pl.tracks.length,
-        addedAt: new Date().toISOString(),
-      });
+export function addTracksToLikedSongs(userId: string, trackIds: string[]): Promise<void> {
+  return withUserLock(userId, async () => {
+    await ensureUserPlaylistsLoaded(userId, 0);
+    const pl = getOrCreatePlaylist('liked-songs', userId);
+    if (!pl) return;
+    for (const trackId of trackIds) {
+      if (trackId && !pl.tracks.some((t) => t.trackId === String(trackId))) {
+        pl.tracks.push({
+          trackId: String(trackId),
+          position: pl.tracks.length,
+          addedAt: new Date().toISOString(),
+        });
+      }
     }
-  }
-  pl.updatedAt = new Date().toISOString();
-  await persistPlaylist(pl);
+    pl.updatedAt = new Date().toISOString();
+    await persistPlaylist(pl);
+  });
 }
 
 // ── Rutas ─────────────────────────────────────────────────────────────────────
@@ -268,7 +302,13 @@ router.put('/:id/tracks/:oldId', withUserPlaylists(async (req, res, userId) => {
 
   const track = pl.tracks.find((t) => t.trackId === req.params.oldId);
   if (track) {
-    track.trackId = newId;
+    if (pl.tracks.some((t) => t.trackId === newId)) {
+      // Ya estaba la versión nueva: quitar la vieja en vez de duplicar.
+      pl.tracks = pl.tracks.filter((t) => t !== track);
+      pl.tracks.forEach((t, i) => (t.position = i));
+    } else {
+      track.trackId = newId;
+    }
     pl.updatedAt = new Date().toISOString();
     await persistPlaylist(pl);
   }

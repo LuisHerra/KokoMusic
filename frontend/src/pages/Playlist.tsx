@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPlaylist, getTrack, getTracksBatch, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, getOnRepeatTracks, BASE } from '../lib/api';
+import { getPlaylist, getTrack, getTracksBatch, removeTrackFromPlaylist, searchTracks, addTrackToPlaylist, updatePlaylist, createCollabPlaylist, getCollabPlaylist, addTrackToCollabPlaylist, removeTrackFromCollabPlaylist, reorderPlaylist, reorderCollabPlaylist, addToJamQueue, smartReorderPlaylist, smartReorderCollabPlaylist, inviteFriendsToCollab, getFriends, deletePlaylist, resolveImageUrl, getPlaylistTrackCount, getRecommendations, getOnRepeatTracks, apiFetch, BASE } from '../lib/api';
 import type { Track, Friendship } from '../lib/api';
-import { usePlayerStore, type TransitionRule } from '../store/playerStore';
+import { shuffleArray, usePlayerStore, type TransitionRule } from '../store/playerStore';
 import { useLikedSongs } from '../hooks/useLikedSongs';
 import DjMixerModal from '../components/Player/DjMixerModal';
 
@@ -21,7 +21,7 @@ import DownloadChoiceSheet from '../components/Common/DownloadChoiceSheet';
 import { saveTrackToDevice } from '../lib/deviceDownload';
 
 import { createPortal } from 'react-dom';
-function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
+function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove, onChangeVideo, onDuplicateAlias, addedByName, onDjMix, onMove, draggable, onDragStart, onDragOver, onDragEnd, onDrop }: {
   trackId: string; prevTrackId?: string; index: number;
   /** Mientras el lote de la playlist está en curso: no pedir el track por separado. */
   waitForBatch?: boolean;
@@ -30,6 +30,8 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
   onDuplicateAlias?: (t: Track) => void;
   addedByName?: string;
   onDjMix?: (fromTrack: Track, toTrack: Track) => void;
+  /** Mueve la fila `delta` posiciones (alternativa táctil a arrastrar). */
+  onMove?: (delta: number) => void;
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
@@ -389,6 +391,19 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 <span>Añadir a la cola</span>
               </button>
+
+              {onMove && (
+                <>
+                  <button className="track-action-sheet-btn" onClick={() => { setIsActionsOpen(false); onMove(-1); }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
+                    <span>Subir</span>
+                  </button>
+                  <button className="track-action-sheet-btn" onClick={() => { setIsActionsOpen(false); onMove(1); }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+                    <span>Bajar</span>
+                  </button>
+                </>
+              )}
 
               <button 
                 className="track-action-sheet-btn" 
@@ -973,6 +988,13 @@ function ChangeVideoModal({ track, onClose }: { track: Track; onClose: () => voi
   );
 }
 
+const pillButtonStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  background: 'rgba(29, 185, 84, 0.1)', border: '1px solid rgba(29, 185, 84, 0.3)',
+  borderRadius: 20, padding: '8px 16px',
+  color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+};
+
 export default function Playlist() {
   const { id } = useParams<{ id: string }>();
   const isVirtualPlaylist = id === 'on-repeat' || id === 'recommended' || id === 'local-downloads';
@@ -1231,9 +1253,8 @@ export default function Playlist() {
               setUpgradeDisambiguation(null);
               
               if (chosenId && mounted) {
-                await fetch(`${BASE}/playlists/${id}/tracks/${t.trackId}`, {
+                await apiFetch(`/playlists/${id}/tracks/${t.trackId}`, {
                   method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ newId: chosenId })
                 });
                 qc.invalidateQueries({ queryKey: ['playlist', id] });
@@ -1241,9 +1262,8 @@ export default function Playlist() {
             } else if (data.id && mounted) {
               // Confiable o auto-accept: upgrade automático
               const upgradeId = data.ambiguous ? data.candidates[0].id : data.id;
-              await fetch(`${BASE}/playlists/${id}/tracks/${t.trackId}`, {
+              await apiFetch(`/playlists/${id}/tracks/${t.trackId}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ newId: upgradeId })
               });
               qc.invalidateQueries({ queryKey: ['playlist', id] });
@@ -1334,11 +1354,20 @@ export default function Playlist() {
     },
   });
 
+  const orderStorageKey = `koko_order_${id}`;
   useEffect(() => {
-    if (pl?.tracks) {
+    if (!pl?.tracks) return;
+    if (!isVirtualPlaylist) {
       setLocalTracks(pl.tracks);
+      return;
     }
-  }, [pl?.tracks]);
+    let saved: string[] = [];
+    try { saved = JSON.parse(localStorage.getItem(orderStorageKey) || '[]'); } catch { /* noop */ }
+    const rank = new Map(saved.map((tid, i) => [tid, i]));
+    // Las que entran nuevas (sin orden guardado) van al final, en su orden original.
+    setLocalTracks([...pl.tracks].sort((a: any, b: any) =>
+      (rank.get(a.trackId) ?? Infinity) - (rank.get(b.trackId) ?? Infinity)));
+  }, [pl?.tracks, isVirtualPlaylist, orderStorageKey]);
 
   const updatePlaylistMutation = useMutation({
     mutationFn: (data: { name?: string; cover?: string }) => updatePlaylist(id!, data),
@@ -1357,7 +1386,46 @@ export default function Playlist() {
     },
   });
 
-  const handleDragStart = (e: React.DragEvent, idx: number) => {
+  // Las virtuales (En bucle…) las genera el servidor en cada carga: su orden
+  // personalizado se guarda en este dispositivo y se reaplica al recargar.
+  const saveOrder = (tracks: any[]) => {
+    setLocalTracks(tracks);
+    const ids = tracks.map((t) => t.trackId);
+    if (isVirtualPlaylist) {
+      try { localStorage.setItem(orderStorageKey, JSON.stringify(ids)); } catch { /* noop */ }
+    } else {
+      reorderMutation.mutate(ids);
+    }
+  };
+
+  const handleMove = (idx: number, delta: number) => {
+    const to = idx + delta;
+    if (to < 0 || to >= localTracks.length) return;
+    const next = [...localTracks];
+    const [moved] = next.splice(idx, 1);
+    next.splice(to, 0, moved);
+    saveOrder(next);
+  };
+
+  const handleShuffleOrder = () => {
+    const next = [...localTracks];
+    for (let i = next.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [next[i], next[j]] = [next[j], next[i]];
+    }
+    saveOrder(next);
+  };
+
+  const handleShufflePlay = () => {
+    if (localTracks.length === 0) return;
+    if (!usePlayerStore.getState().isShuffle) usePlayerStore.getState().setIsShuffle(true);
+    const random = localTracks[Math.floor(Math.random() * localTracks.length)];
+    const cached = qc.getQueryData<Track>(['track', random.trackId]);
+    if (cached) handlePlayQueue(cached);
+    else getTrack(random.trackId).then((t) => t && handlePlayQueue(t)).catch(console.error);
+  };
+
+  const handleDragStart =(e: React.DragEvent, idx: number) => {
     setDraggedIdx(idx);
     e.dataTransfer.effectAllowed = 'move';
   };
@@ -1385,8 +1453,14 @@ export default function Playlist() {
         qc.getQueryData<Track>(['track', t.trackId]) || getTrack(t.trackId)
       )).then(fullQueue => {
         const resolved = fullQueue.filter(Boolean) as Track[];
-        const currentId = usePlayerStore.getState().currentTrack?.id;
-        const idx = resolved.findIndex(t => t.id === currentId);
+        const { currentTrack: current, isShuffle } = usePlayerStore.getState();
+        if (isShuffle) {
+          // setQueue no baraja: hacerlo aquí para no deshacer el modo aleatorio.
+          usePlayerStore.getState().setQueue(shuffleArray(resolved, current), 0);
+          usePlayerStore.setState({ originalQueue: resolved });
+          return;
+        }
+        const idx = resolved.findIndex(t => t.id === current?.id);
         usePlayerStore.getState().setQueue(resolved, Math.max(0, idx));
       }).catch(console.error);
     }
@@ -1405,7 +1479,7 @@ export default function Playlist() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDraggedIdx(null);
-    reorderMutation.mutate(localTracks.map(t => t.trackId));
+    saveOrder(localTracks);
   };
 
   // Mezclas de DJ compartidas de la playlist colaborativa → al store local,
@@ -1762,6 +1836,16 @@ export default function Playlist() {
               onClick={() => handlePlayQueue()}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             </button>
+            <button onClick={handleShufflePlay} title="Reproducir en orden aleatorio" style={pillButtonStyle}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+              Aleatorio
+            </button>
+            {localTracks.length > 1 && (
+              <button onClick={handleShuffleOrder} title="Barajar la lista y guardar ese orden" style={pillButtonStyle}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>
+                Barajar orden
+              </button>
+            )}
             {/* Collab toggle */}
             {!isVirtualPlaylist && !collabCode && !pl?._isCollab && (
               <button
@@ -1960,6 +2044,7 @@ export default function Playlist() {
                 onDuplicateAlias={(track) => setDuplicateAliasTrack(track)}
                 addedByName={pl._isCollab && t.addedBy ? (t.addedBy === deviceId ? 'Ti' : pl.collaborators?.find((c: any) => c.user_id === t.addedBy)?.display_name || 'Desconocido') : undefined}
                 onDjMix={(from, to) => setDjModalTracks({ from, to })}
+                onMove={(delta) => handleMove(i, delta)}
                 draggable={!searchQ}
                 onDragStart={(e) => handleDragStart(e, i)}
                 onDragOver={(e) => handleDragOver(e, i)}

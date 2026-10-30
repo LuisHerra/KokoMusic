@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "La web no necesita permisos de Tauri: los atajos se gestionan en Rust.",
+  "windows": ["main"],
+  "permissions": []
+}

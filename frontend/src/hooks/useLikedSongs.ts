@@ -30,7 +30,8 @@ export function useLikedSongs() {
           });
           sendRecommendationFeedback(idStr, 'liked');
         } catch (err: any) {
-          if (err?.status !== 409 && !err?.message?.includes('409')) {
+          // apiFetch no expone el status: el 409 llega como "Track ya está en la playlist"
+          if (err?.status !== 409 && !err?.message?.includes('409') && !err?.message?.includes('ya está')) {
             throw err;
           }
         }

@@ -1,0 +1,21 @@
+[package]
+name = "kokomusic"
+version = "1.0.0"
+description = "KokoMusic para Windows (WebView2, bajo consumo)"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+
+# Binario pequeño: menos disco y menos memoria al cargarlo.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
