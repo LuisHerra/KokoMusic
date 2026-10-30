@@ -12,6 +12,11 @@ tauri = { version = "2", features = [] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 
+# Mismas versiones que usa tauri: acceso directo a WebView2 (permisos y memoria).
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"
+
 # Binario pequeño: menos disco y menos memoria al cargarlo.
 [profile.release]
 opt-level = "s"

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
-import { searchTracks, apiFetch } from '../lib/api';
+import { searchTracks, apiFetch, getTrackRadio } from '../lib/api';
+import { pickRecommendations } from '../lib/recommendationPicker';
 import { useLikedSongs } from './useLikedSongs';
 
 interface SpeechRecognitionEvent extends Event {
@@ -111,6 +112,22 @@ const HALLUCINATIONS = ['gracias', 'muchas gracias', 'thank you', 'thanks for wa
 function stripWords(cleanText: string, prefixNormalized: string): string {
   const n = prefixNormalized.trim().split(' ').filter(Boolean).length;
   return cleanText.split(' ').slice(n).join(' ').trim();
+}
+
+/** Pitido corto al empezar/terminar de escuchar: dentro de un juego no se ve el modal. */
+function beep(frequency: number) {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+    osc.onended = () => { ctx.close().catch(() => {}); };
+  } catch { /* sin audio: no pasa nada */ }
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -258,8 +275,20 @@ export function useVoiceControl(): VoiceControlState {
       }
 
       if (tracks.length > 0) {
-        setTrack(tracks[0], tracks);
-        setFeedback(`Reproduciendo "${tracks[0].title}" - ${tracks[0].artist}`);
+        // Solo la canción pedida: el resto de resultados son homónimos, no lo
+        // que quieres oír después. La cola sigue con su radio (recomendaciones).
+        const picked = tracks[0];
+        setTrack(picked, [picked]);
+        setFeedback(`Reproduciendo "${picked.title}" - ${picked.artist}`);
+        getTrackRadio(picked.id)
+          .then((radio) => {
+            const { queue, currentTrack: playing, sessionPlayedTrackIds } = usePlayerStore.getState();
+            if (playing?.id !== picked.id || !radio?.tracks?.length) return;
+            const existing = new Set([...queue.map((t) => t.id), ...(sessionPlayedTrackIds || [])]);
+            const fresh = pickRecommendations(radio.tracks, 10, existing);
+            if (fresh.length > 0) usePlayerStore.getState().appendQueue(fresh);
+          })
+          .catch(() => { /* la cola se rellena sola al terminar la canción */ });
         return;
       }
     } catch (err) {
@@ -424,6 +453,7 @@ export function useVoiceControl(): VoiceControlState {
     let executed = false;
 
     recognition.onstart = () => {
+      beep(880);
       executed = false;
       setIsListening(true);
       setError(null);
@@ -557,6 +587,7 @@ export function useVoiceControl(): VoiceControlState {
       recorderRef.current = null;
       setIsListening(false);
       if (!send) return;
+      beep(660);
       if (!heardSpeech) {
         setError('No se detectó voz. Intenta de nuevo.');
         return;
@@ -566,6 +597,7 @@ export function useVoiceControl(): VoiceControlState {
 
     recorderRef.current = { stop };
     recorder.start(250);
+    beep(880);
     setIsListening(true);
   }, [transcribe]);
 
