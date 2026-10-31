@@ -32,7 +32,7 @@ import { checkHealth as checkKokoLiteHealth } from './services/kokoLiteClient';
 import spotifyRouter from './routes/spotify';
 import shazamRouter from './routes/shazam';
 import voiceRouter from './routes/voice';
-import { supabaseKeyRole } from './services/supabaseService';
+import { supabase, supabaseKeyRole } from './services/supabaseService';
 import playbackRouter from './routes/playback';
 import pushRouter from './routes/push';
 
@@ -123,6 +123,14 @@ app.get('/api', (_req, res) => {
 
 app.get('/api/health', async (_req, res) => {
   const kokoLite = await checkKokoLiteHealth();
+  // Cuántas playlists ve este backend (solo el número): si sale 0 o error con
+  // datos en Supabase, este backend no está leyendo la base de datos buena.
+  let userPlaylists: number | string | null = null;
+  if (supabase) {
+    const { count, error } = await supabase.schema('kokomusic').from('user_playlists')
+      .select('key', { count: 'exact', head: true });
+    userPlaylists = error ? `error: ${error.message}` : count;
+  }
   res.json({
     status: 'ok',
     version: '1.0.0',
@@ -130,6 +138,9 @@ app.get('/api/health', async (_req, res) => {
     spotify: !!process.env.SPOTIFY_CLIENT_ID,
     // Debe ser "service_role" (ver supabaseService.ts)
     supabaseRole: supabaseKeyRole,
+    // Proyecto de Supabase (público): todos los backends deben usar el mismo
+    userPlaylists,
+    supabaseProject: (process.env.SUPABASE_URL || '').match(/^https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1] ?? null,
     voice: !!(process.env.GROQ_API_KEY || process.env.STT_API_KEY),
     kokoLite,
     metrics: metrics.snapshot(),
