@@ -32,6 +32,7 @@ import { checkHealth as checkKokoLiteHealth } from './services/kokoLiteClient';
 import spotifyRouter from './routes/spotify';
 import shazamRouter from './routes/shazam';
 import voiceRouter from './routes/voice';
+import { supabaseKeyRole } from './services/supabaseService';
 import playbackRouter from './routes/playback';
 import pushRouter from './routes/push';
 
@@ -127,6 +128,9 @@ app.get('/api/health', async (_req, res) => {
     version: '1.0.0',
     env: process.env.NODE_ENV ?? 'development',
     spotify: !!process.env.SPOTIFY_CLIENT_ID,
+    // Debe ser "service_role" (ver supabaseService.ts)
+    supabaseRole: supabaseKeyRole,
+    voice: !!(process.env.GROQ_API_KEY || process.env.STT_API_KEY),
     kokoLite,
     metrics: metrics.snapshot(),
     timestamp: new Date().toISOString(),

@@ -14,6 +14,27 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   console.warn('[Supabase] ⚠️  SUPABASE_URL o SUPABASE_SERVICE_KEY no configurados. El caché L2 estará desactivado.');
 }
 
+/**
+ * Rol de la clave configurada (sin exponerla). Tiene que ser 'service_role':
+ * con otra, RLS devuelve vacías las playlists y amistades sin dar error y las
+ * escrituras fallan, y parece que los datos del usuario han desaparecido.
+ */
+export const supabaseKeyRole: string | null = (() => {
+  if (!SUPABASE_SERVICE_KEY) return null;
+  if (SUPABASE_SERVICE_KEY.startsWith('sb_secret_')) return 'service_role';
+  if (SUPABASE_SERVICE_KEY.startsWith('sb_publishable_')) return 'anon';
+  try {
+    const payload = JSON.parse(Buffer.from(SUPABASE_SERVICE_KEY.split('.')[1], 'base64url').toString());
+    return payload.role ?? 'desconocido';
+  } catch {
+    return 'desconocido';
+  }
+})();
+
+if (supabaseKeyRole && supabaseKeyRole !== 'service_role') {
+  console.error(`[Supabase] ❌ SUPABASE_SERVICE_KEY tiene rol "${supabaseKeyRole}", no "service_role": playlists y amistades saldrán vacías y no se podrán guardar.`);
+}
+
 export const supabase = (SUPABASE_URL && SUPABASE_SERVICE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       auth: { persistSession: false },

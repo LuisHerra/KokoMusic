@@ -357,7 +357,10 @@ router.get('/callback', async (req: Request, res: Response) => {
           );
         }
       } catch (dbErr) {
-        console.warn('[Spotify OAuth] No se pudo persistir en Supabase, usando perfil local:', dbErr);
+        // Antes se seguía con un id aleatorio: el usuario entraba en una
+        // cuenta nueva y vacía y parecía que había perdido playlists y amigos.
+        console.error('[Spotify OAuth] No se pudo leer/crear el perfil en Supabase:', dbErr);
+        return sendResponse(false, { error: 'No se pudo acceder a tu cuenta. Inténtalo de nuevo.' });
       }
     }
 
