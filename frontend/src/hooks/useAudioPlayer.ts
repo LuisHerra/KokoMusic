@@ -80,12 +80,15 @@ function setMediaSessionState(state: 'playing' | 'paused' | 'none') {
 }
 
 function updateMediaSessionPosition(audio: HTMLAudioElement) {
-  if (!('mediaSession' in navigator) || !audio.duration) return;
+  if (!('mediaSession' in navigator)) return;
+  // En streams sin tamaño audio.duration es Infinity y setPositionState falla.
+  const duration = validDuration(audio.duration) ?? usePlayerStore.getState().duration;
+  if (!duration) return;
   try {
     navigator.mediaSession.setPositionState({
-      duration:     audio.duration,
+      duration,
       playbackRate: audio.playbackRate,
-      position:     audio.currentTime,
+      position:     Math.min(audio.currentTime, duration),
     });
   } catch { /* algunos navegadores antiguos no lo soportan */ }
 }
@@ -468,21 +471,38 @@ export function seekAudio(seconds: number) {
  * en cambios (canción, play/pausa, duración, salto): Android interpola la
  * posición solo, no hace falta enviarla cada segundo.
  */
+let lastAndroidTrackId: string | null = null;
+
 function pushAndroidPlayback() {
   const { currentTrack, isPlaying, duration } = usePlayerStore.getState();
   if (!currentTrack) {
+    lastAndroidTrackId = null;
     syncAndroidPlayback(null);
     return;
   }
   const audio = getActiveAudio();
+  // Justo al cambiar de canción el <audio> aún tiene la anterior: posición 0
+  // y la duración del catálogo, no la del audio viejo.
+  const trackChanged = lastAndroidTrackId !== currentTrack.id;
+  lastAndroidTrackId = currentTrack.id;
   syncAndroidPlayback({
     title: currentTrack.title,
     artist: currentTrack.artist,
     cover: currentTrack.cover || null,
     isPlaying,
-    positionS: audio.currentTime || 0,
-    durationS: audio.duration || duration || 0,
+    positionS: trackChanged ? 0 : audio.currentTime || 0,
+    durationS: trackChanged ? trackDurationS(currentTrack) : (validDuration(audio.duration) ?? (duration || trackDurationS(currentTrack))),
   });
+}
+
+/** null si el <audio> no sabe la duración (Infinity en streams sin tamaño, NaN sin cargar). */
+function validDuration(seconds: number): number | null {
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+/** Duración del catálogo (viene en ms). */
+function trackDurationS(track: { duration?: number } | null | undefined): number {
+  return track?.duration ? track.duration / 1000 : 0;
 }
 
 /**
@@ -778,7 +798,9 @@ export function useAudioPlayer() {
     };
     const onDurationChange = (e: Event) => {
       if (e.target !== getActiveAudio()) return;
-      setDuration((e.target as HTMLAudioElement).duration || 0);
+      // En streams sin tamaño el navegador da Infinity: usar la del catálogo.
+      setDuration(validDuration((e.target as HTMLAudioElement).duration)
+        ?? trackDurationS(usePlayerStore.getState().currentTrack));
     };
     const onWaiting = (e: Event) => {
       const audioEl = e.target as HTMLAudioElement;

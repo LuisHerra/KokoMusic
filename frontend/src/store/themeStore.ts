@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { syncAndroidAppIcon } from '../lib/androidApp';
 
 export type AccentColorKey = 'green' | 'cyan' | 'magenta' | 'purple' | 'amber' | 'crimson' | 'gold' | 'custom';
 export type BgStyleKey = 'dark' | 'glass' | 'ambient' | 'wallpaper' | 'custom';
@@ -64,6 +65,19 @@ export function getLogoHueFilter(hex: string): string {
   const diff = Math.round((targetHue - BASE_GREEN_HUE + 360) % 360);
   if (diff <= 4 || diff >= 356) return 'none';
   return `hue-rotate(${diff}deg)`;
+}
+
+/** Acento predefinido de tono más parecido (la APK solo trae iconos para esos). */
+function nearestPresetAccent(hex: string): string {
+  const hue = getHexHue(hex);
+  let best = 'green';
+  let bestDist = Infinity;
+  for (const [key, cfg] of Object.entries(ACCENT_COLORS)) {
+    const d = Math.abs(getHexHue(cfg.accent) - hue);
+    const dist = Math.min(d, 360 - d);
+    if (dist < bestDist) { bestDist = dist; best = key; }
+  }
+  return best;
 }
 
 let faviconTimer: any = null;
@@ -343,6 +357,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     root.style.setProperty('--logo-filter', logoFilter);
     root.style.setProperty('--logo-hue-deg', `${hueDiff}deg`);
     updateFaviconWithHue(hueDiff);
+    syncAndroidAppIcon(accentColor === 'custom' ? nearestPresetAccent(cfg.accent) : accentColor);
 
     // Dynamically update PWA / Direct Access Mobile Status Bar Theme Color
     try {

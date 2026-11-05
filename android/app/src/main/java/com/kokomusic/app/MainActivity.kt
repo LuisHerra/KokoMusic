@@ -1,6 +1,7 @@
 package com.kokomusic.app
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -37,12 +38,17 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val APP_URL = "https://kokoworks.es/kokoMusic/"
         private const val APP_HOST = "kokoworks.es"
+        // Acentos con icono propio (activity-alias .Icon<Acento> del manifiesto)
+        private val ICON_ACCENTS = listOf("green", "cyan", "magenta", "purple", "amber", "crimson", "gold")
+        private const val DEFAULT_ICON_ACCENT = "green"
     }
 
     private lateinit var binding: ActivityMainBinding
     /** Lo que la web dice que está sonando (ver updatePlayback). */
     @Volatile private var isPlaying = false
     private var webViewPaused = false
+    /** Icono pedido por la web; se aplica al salir de la app (ver applyPendingAppIcon). */
+    @Volatile private var pendingIconAccent: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -174,7 +180,33 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        applyPendingAppIcon()
         pauseWebViewIfIdle()
+    }
+
+    /**
+     * El icono del lanzador sigue al acento de la app, como el logo y el acceso
+     * directo de la web. Android no deja pintar el icono: se activa el
+     * activity-alias de ese acento. Se hace al salir porque algunos lanzadores
+     * cierran la app al cambiarlo.
+     */
+    private fun applyPendingAppIcon() {
+        val accent = pendingIconAccent ?: return
+        pendingIconAccent = null
+        val pm = packageManager
+        for (key in ICON_ACCENTS) {
+            val component = ComponentName(packageName, "com.kokomusic.app.Icon${key.replaceFirstChar { it.uppercase() }}")
+            val current = pm.getComponentEnabledSetting(component)
+            val enabledNow = current == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
+                (current == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && key == DEFAULT_ICON_ACCENT)
+            if (enabledNow == (key == accent)) continue
+            pm.setComponentEnabledSetting(
+                component,
+                if (key == accent) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP
+            )
+        }
     }
 
     /** Puente expuesto a la web como `window.KokoAndroid`. */
@@ -199,6 +231,11 @@ class MainActivity : AppCompatActivity() {
             if (!isPlaying) runOnUiThread {
                 if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) pauseWebViewIfIdle()
             }
+        }
+
+        @JavascriptInterface
+        fun setAppIcon(accent: String) {
+            if (accent in ICON_ACCENTS) pendingIconAccent = accent
         }
 
         @JavascriptInterface

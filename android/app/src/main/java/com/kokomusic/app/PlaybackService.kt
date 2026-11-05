@@ -122,7 +122,7 @@ class PlaybackService : Service() {
                     // Android exige startForeground igualmente antes de cerrarlo.
                     startForegroundCompat(
                         NotificationCompat.Builder(this, KokoApp.CHANNEL_ID)
-                            .setSmallIcon(R.drawable.ic_launcher_foreground)
+                            .setSmallIcon(R.drawable.ic_stat_koko)
                             .setContentTitle(getString(R.string.app_name))
                             .setSilent(true)
                             .build()
@@ -189,7 +189,7 @@ class PlaybackService : Service() {
                 MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY))
         }
         return NotificationCompat.Builder(this, KokoApp.CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_koko)
             .setContentTitle(s.title)
             .setContentText(s.artist)
             .setLargeIcon(artwork.takeIf { artworkUrl == s.cover })

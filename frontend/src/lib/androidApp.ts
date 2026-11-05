@@ -10,6 +10,8 @@ export interface KokoAndroidBridge {
   saveAudioToMusic(requestId: string, url: string, baseName: string): void;
   /** Estado para la notificación multimedia y la pantalla de bloqueo (APK sin servidor interno). */
   updatePlayback?(json: string): void;
+  /** Icono del lanzador según el acento (uno de los predefinidos). */
+  setAppIcon?(accent: string): void;
 }
 
 declare global {
@@ -50,3 +52,10 @@ export function syncAndroidPlayback(state: AndroidPlaybackState | null) {
 /** Solo tiene sentido ofrecer la APK fuera de la app y en Android o escritorio (no en iPhone). */
 export const canOfferAndroidApp = () =>
   typeof navigator !== 'undefined' && !isInsideAndroidApp() && !/iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+/** Pide a la APK el icono del acento `accent` (clave predefinida de themeStore). */
+export function syncAndroidAppIcon(accent: string) {
+  try {
+    window.KokoAndroid?.setAppIcon?.(accent);
+  } catch { /* APK antigua sin este método */ }
+}
