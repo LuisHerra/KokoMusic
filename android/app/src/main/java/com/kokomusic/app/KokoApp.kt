@@ -4,25 +4,15 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 
 class KokoApp : Application() {
 
     companion object {
-        const val CHANNEL_ID = "KokoServerChannel"
-        const val CHANNEL_NAME = "KokoMusic Local Server"
+        const val CHANNEL_ID = "KokoPlaybackChannel"
     }
 
     override fun onCreate() {
         super.onCreate()
-        
-        // 1. Inicializar Chaquopy Python
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(this))
-        }
-
-        // 2. Crear canal de notificaciones para el Foreground Service
         createNotificationChannel()
     }
 
@@ -30,13 +20,16 @@ class KokoApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                CHANNEL_NAME,
+                getString(R.string.playback_channel),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Mantiene vivo el servidor local yt-dlp de KokoMusic"
+                description = "Controles de la canción que suena"
+                setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java) ?: return
+            manager.createNotificationChannel(channel)
+            // Canal del antiguo servidor Python embebido (versiones anteriores de la APK)
+            manager.deleteNotificationChannel("KokoServerChannel")
         }
     }
 }

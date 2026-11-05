@@ -6,20 +6,8 @@
  * explorador de archivos y cualquier reproductor de música.
  */
 
-import { isInsideAndroidApp } from './androidApp';
+import { isInsideAndroidApp, type KokoAndroidBridge } from './androidApp';
 import { trackAudioUrl } from './offlineAudio';
-
-/** Puente nativo que expone MainActivity.kt en la APK (ver AudioExportBridge). */
-interface KokoAndroidBridge {
-  saveAudioToMusic(requestId: string, url: string, baseName: string): void;
-}
-
-declare global {
-  interface Window {
-    KokoAndroid?: KokoAndroidBridge;
-    __kokoAudioSaved?: (requestId: string, ok: boolean, message: string) => void;
-  }
-}
 
 const EXTENSION_BY_MIME: Record<string, string> = {
   'audio/mp4': 'm4a',

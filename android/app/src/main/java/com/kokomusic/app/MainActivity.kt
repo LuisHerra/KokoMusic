@@ -16,10 +16,10 @@ import android.webkit.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.kokomusic.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -27,11 +27,22 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * La APK es un WebView fino sobre la web publicada: sin Chrome (sin pestañas,
+ * sin su proceso de navegador) y sin el servidor Python que llevaban las
+ * versiones anteriores. Las actualizaciones de la web llegan sin reinstalar.
+ */
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val APP_URL = "https://kokoworks.es/kokoMusic/"
+        private const val APP_HOST = "kokoworks.es"
+    }
+
     private lateinit var binding: ActivityMainBinding
-    private val serverUrl = "http://127.0.0.1:3001"
-    private val healthUrl = "http://127.0.0.1:3001/health"
+    /** Lo que la web dice que está sonando (ver updatePlayback). */
+    @Volatile private var isPlaying = false
+    private var webViewPaused = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,25 +51,26 @@ class MainActivity : AppCompatActivity() {
 
         checkPermissions()
         setupWebView()
-        startKokoServerService()
 
-        binding.btnRetry.setOnClickListener {
-            binding.btnRetry.visibility = View.GONE
-            binding.progressBar.visibility = View.VISIBLE
-            binding.tvStatus.text = getString(R.string.server_starting_desc)
-            pollServerHealth()
+        PlaybackService.onAction = { action ->
+            runOnUiThread {
+                resumeWebView()
+                binding.webView.evaluateJavascript(
+                    "window.__kokoMediaAction && window.__kokoMediaAction(${JSONObject.quote(action)})", null
+                )
+            }
         }
 
-        pollServerHealth()
+        binding.btnRetry.setOnClickListener { loadApp() }
+        loadApp()
     }
 
-    private fun startKokoServerService() {
-        val intent = Intent(this, KokoServerService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+    private fun loadApp() {
+        binding.btnRetry.visibility = View.GONE
+        binding.progressBar.visibility = View.VISIBLE
+        binding.tvStatus.text = getString(R.string.loading_desc)
+        binding.loadingLayout.visibility = View.VISIBLE
+        binding.webView.loadUrl(APP_URL)
     }
 
     private fun checkPermissions() {
@@ -85,88 +97,110 @@ class MainActivity : AppCompatActivity() {
         binding.webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.databaseEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.allowFileAccess = true
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            settings.allowFileAccess = false
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            settings.userAgentString = "${settings.userAgentString} KokoMusicAndroid"
 
-            // Descargas "a mi dispositivo": un blob: del WebView no llega al gestor
-            // de descargas, así que la web pide aquí que se descargue y se guarde
-            // como archivo de audio (ver frontend/src/lib/deviceDownload.ts).
-            addJavascriptInterface(AudioExportBridge(), "KokoAndroid")
+            // window.KokoAndroid: descargas a Música y estado de la reproducción
+            // (ver frontend/src/lib/androidApp.ts).
+            addJavascriptInterface(KokoBridge(), "KokoAndroid")
 
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val uri = request?.url ?: return false
+                    // mailto:, tel:, intent:… a la app del sistema que toque.
+                    if (uri.scheme != "http" && uri.scheme != "https") {
+                        runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                        return true
+                    }
+                    return false
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    if (binding.btnRetry.visibility == View.VISIBLE) return
                     binding.loadingLayout.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
                 }
 
-                override fun onReceivedError(
-                    view: WebView?,
-                    request: WebResourceRequest?,
-                    error: WebResourceError?
-                ) {
-                    Log.e("WebView", "Error cargando URL: ${error?.description}")
+                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                    Log.e("WebView", "Error cargando ${request?.url}: ${error?.description}")
+                    if (request?.isForMainFrame != true) return
+                    binding.webView.visibility = View.GONE
+                    binding.loadingLayout.visibility = View.VISIBLE
+                    binding.progressBar.visibility = View.GONE
+                    binding.tvStatus.text = getString(R.string.offline_desc)
+                    binding.btnRetry.visibility = View.VISIBLE
                 }
             }
 
             webChromeClient = object : WebChromeClient() {
                 override fun onPermissionRequest(request: PermissionRequest?) {
+                    // Micrófono (voz, Eureka) solo para la propia web de KokoMusic.
                     runOnUiThread {
-                        request?.grant(request.resources)
+                        if (request?.origin?.host?.endsWith(APP_HOST) == true) request.grant(request.resources)
+                        else request?.deny()
                     }
-                }
-
-                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                    Log.d("WebViewConsole", "${consoleMessage?.message()} -- From line ${consoleMessage?.lineNumber()} of ${consoleMessage?.sourceId()}")
-                    return true
                 }
             }
         }
     }
 
-    private fun pollServerHealth() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            var attempts = 0
-            var serverReady = false
+    /**
+     * Con la app en segundo plano y la música parada, se detiene todo el
+     * JavaScript del WebView (temporizadores, sondeos, animaciones): es lo que
+     * más batería gastaba sin aportar nada. Mientras suena sigue vivo, porque
+     * la web decide la siguiente canción.
+     */
+    private fun pauseWebViewIfIdle() {
+        if (isPlaying || webViewPaused) return
+        binding.webView.onPause()
+        binding.webView.pauseTimers()
+        webViewPaused = true
+    }
 
-            while (attempts < 20 && !serverReady) {
-                attempts++
-                try {
-                    val connection = URL(healthUrl).openConnection() as HttpURLConnection
-                    connection.connectTimeout = 1000
-                    connection.readTimeout = 1000
-                    connection.requestMethod = "GET"
-                    val responseCode = connection.responseCode
+    private fun resumeWebView() {
+        if (!webViewPaused) return
+        binding.webView.resumeTimers()
+        binding.webView.onResume()
+        webViewPaused = false
+    }
 
-                    if (responseCode == 200) {
-                        serverReady = true
-                        Log.i("MainActivity", "Servidor embebido listo en el intento $attempts")
-                    }
-                } catch (e: Exception) {
-                    Log.d("MainActivity", "Esperando servidor... intento $attempts: ${e.message}")
-                }
+    override fun onResume() {
+        super.onResume()
+        resumeWebView()
+    }
 
-                if (!serverReady) {
-                    delay(1000)
-                }
-            }
-
-            withContext(Dispatchers.Main) {
-                if (serverReady) {
-                    binding.webView.loadUrl(serverUrl)
-                } else {
-                    binding.progressBar.visibility = View.GONE
-                    binding.btnRetry.visibility = View.VISIBLE
-                    binding.tvStatus.text = "No se pudo conectar con el servidor interno. Presiona reintentar."
-                }
-            }
-        }
+    override fun onStop() {
+        super.onStop()
+        pauseWebViewIfIdle()
     }
 
     /** Puente expuesto a la web como `window.KokoAndroid`. */
-    private inner class AudioExportBridge {
+    private inner class KokoBridge {
+        @JavascriptInterface
+        fun updatePlayback(json: String) {
+            val state = runCatching {
+                if (json == "null") null else JSONObject(json).let {
+                    PlaybackService.State(
+                        title = it.optString("title"),
+                        artist = it.optString("artist"),
+                        cover = it.optString("cover").takeIf { c -> c.isNotBlank() && c != "null" },
+                        isPlaying = it.optBoolean("isPlaying"),
+                        positionMs = (it.optDouble("positionS", 0.0) * 1000).toLong(),
+                        durationMs = (it.optDouble("durationS", 0.0) * 1000).toLong(),
+                    )
+                }
+            }.getOrNull()
+            isPlaying = state?.isPlaying == true
+            PlaybackService.update(applicationContext, state)
+            // Se ha parado con la app ya en segundo plano (p. ej. desde la notificación)
+            if (!isPlaying) runOnUiThread {
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) pauseWebViewIfIdle()
+            }
+        }
+
         @JavascriptInterface
         fun saveAudioToMusic(requestId: String, url: String, baseName: String) {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -266,20 +300,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (binding.webView.canGoBack()) {
             binding.webView.goBack()
         } else {
-            super.onBackPressed()
+            // Como cualquier reproductor: atrás manda la app al fondo sin cortar la música.
+            moveTaskToBack(true)
         }
     }
 
     override fun onDestroy() {
+        PlaybackService.onAction = null
+        if (isFinishing) PlaybackService.update(applicationContext, null)
+        binding.webView.destroy()
         super.onDestroy()
-        if (isFinishing) {
-            val intent = Intent(this, KokoServerService::class.java)
-            stopService(intent)
-        }
     }
 }
-

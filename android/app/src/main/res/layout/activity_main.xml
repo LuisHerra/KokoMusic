@@ -12,7 +12,7 @@
         android:layout_height="match_parent"
         android:visibility="gone" />
 
-    <!-- Overlay de Carga (Splash Screen) mientras el servidor Python arranca -->
+    <!-- Pantalla de carga mientras abre la web (y aviso si no hay conexión) -->
     <LinearLayout
         android:id="@+id/loadingLayout"
         android:layout_width="match_parent"
@@ -32,7 +32,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="@string/server_starting_title"
+            android:text="@string/loading_title"
             android:textColor="@color/text_primary"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -42,7 +42,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="@string/server_starting_desc"
+            android:text="@string/loading_desc"
             android:textColor="@color/text_secondary"
             android:textSize="14sp"
             android:gravity="center" />

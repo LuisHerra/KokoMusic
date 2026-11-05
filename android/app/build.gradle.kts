@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.chaquo.python")
 }
 
 android {
@@ -19,28 +18,6 @@ android {
         versionName = "1.0.$runNumber"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
-
-        chaquopy {
-            defaultConfig {
-                // Python del APK. Debe coincidir con el Python de compilación
-                // (py -3.11 en Windows, python3.11 en el CI): el 3.8 por defecto
-                // de Chaquopy 15 ya no lo soporta yt-dlp, y un Python 3.13 de
-                // compilación rompe el pip de Chaquopy (se eliminó el módulo cgi).
-                version = "3.11"
-                pip {
-                    // urllib3 sin pin — el pin v1.x rompe TLS 1.3 en Android moderno
-                    install("requests")
-                    // yt-dlp SIN pin de versión: YouTube cambia su protocolo con frecuencia
-                    // y versiones antiguas (ej. 2023.12.30) son bloqueadas por YouTube en 2025/2026
-                    install("yt-dlp")
-                    install("flask==3.0.0")
-                }
-            }
-        }
     }
 
     buildTypes {
@@ -71,6 +48,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.webkit:webkit:1.10.0")
 
-    // Coroutines para manejo asíncrono del servidor local
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    // MediaSession + notificación multimedia (pantalla de bloqueo, auriculares, Bluetooth)
+    implementation("androidx.media:media:1.7.0")
 }

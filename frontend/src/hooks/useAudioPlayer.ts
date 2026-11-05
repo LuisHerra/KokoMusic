@@ -17,6 +17,7 @@ import { isGuestMode } from '../lib/guest';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
 import { logToServer } from '../lib/logger';
+import { syncAndroidPlayback } from '../lib/androidApp';
 import { usePrefetchAudio } from './usePrefetchAudio';
 import { reportAudioStall, reportAudioHealthy } from '../lib/adaptiveBitrate';
 
@@ -459,6 +460,29 @@ export function seekAudio(seconds: number) {
     audio.currentTime = seconds;
   }
   usePlayerStore.getState().setProgress(seconds);
+  pushAndroidPlayback();
+}
+
+/**
+ * Estado actual a la APK (notificación y pantalla de bloqueo). Solo se llama
+ * en cambios (canción, play/pausa, duración, salto): Android interpola la
+ * posición solo, no hace falta enviarla cada segundo.
+ */
+function pushAndroidPlayback() {
+  const { currentTrack, isPlaying, duration } = usePlayerStore.getState();
+  if (!currentTrack) {
+    syncAndroidPlayback(null);
+    return;
+  }
+  const audio = getActiveAudio();
+  syncAndroidPlayback({
+    title: currentTrack.title,
+    artist: currentTrack.artist,
+    cover: currentTrack.cover || null,
+    isPlaying,
+    positionS: audio.currentTime || 0,
+    durationS: audio.duration || duration || 0,
+  });
 }
 
 /**
@@ -578,6 +602,31 @@ export function useAudioPlayer() {
     setMediaSessionState(isPlaying ? 'playing' : 'paused');
   }, [isPlaying]);
 
+  const duration = usePlayerStore((s) => s.duration);
+  useEffect(() => {
+    pushAndroidPlayback();
+  }, [currentTrack, isPlaying, duration]);
+
+  // Botones de la notificación de la APK, auriculares y Bluetooth.
+  useEffect(() => {
+    window.__kokoMediaAction = (action: string) => {
+      const store = usePlayerStore.getState();
+      if (action === 'play') { if (audioElementsUnlocked) store.setIsPlaying(true); }
+      else if (action === 'pause') store.setIsPlaying(false);
+      else if (action === 'next') store.nextTrack();
+      else if (action === 'prev') store.prevTrack();
+      else if (action.startsWith('seek:')) seekAudio(Number(action.slice(5)) || 0);
+    };
+    return () => { delete window.__kokoMediaAction; };
+  }, []);
+
+  // Al volver a la app, poner al día la barra (en segundo plano se actualiza cada 5 s).
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) setProgress(getActiveAudio().currentTime); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [setProgress]);
+
   const cdnPreloadTriggered = useRef<string | null>(null);
   const djBufferPreloaded = useRef<string | null>(null);
   const mixEventsArmed = useRef<string | null>(null);
@@ -586,7 +635,11 @@ export function useAudioPlayer() {
     const onTimeUpdate = (e: Event) => {
       if (e.target !== getActiveAudio()) return;
       const audio = e.target as HTMLAudioElement;
-      setProgress(audio.currentTime);
+      // Con la pantalla apagada nadie ve la barra: actualizar el store (y con él
+      // re-renders y persistencia) cada 5 s en vez de ~4 veces por segundo.
+      if (!document.hidden || Math.abs(audio.currentTime - usePlayerStore.getState().progress) >= 5) {
+        setProgress(audio.currentTime);
+      }
       // Actualizar barra de progreso del lock screen cada ~2 s (no cada frame)
       if (Math.round(audio.currentTime) % 2 === 0) {
         updateMediaSessionPosition(audio);

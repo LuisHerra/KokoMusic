@@ -896,18 +896,23 @@ onRadioSource((seedId, res) => {
 // Persistencia del reproductor en localStorage al cambiar de estado
 if (typeof window !== 'undefined') {
   let lastProgressSavedTime = 0;
-  usePlayerStore.subscribe((state) => {
+  // Se llama en CADA cambio del store (el progreso cambia ~4 veces por
+  // segundo): serializar y escribir la cola entera cada vez gastaba CPU y
+  // batería sin parar. Solo se escribe lo que ha cambiado.
+  usePlayerStore.subscribe((state, prev) => {
     try {
-      if (state.currentTrack) {
-        localStorage.setItem('koko_current_track', JSON.stringify(state.currentTrack));
-      } else {
-        localStorage.removeItem('koko_current_track');
+      if (state.currentTrack !== prev.currentTrack) {
+        if (state.currentTrack) {
+          localStorage.setItem('koko_current_track', JSON.stringify(state.currentTrack));
+        } else {
+          localStorage.removeItem('koko_current_track');
+        }
       }
-      localStorage.setItem('koko_queue', JSON.stringify(state.queue));
-      localStorage.setItem('koko_original_queue', JSON.stringify(state.originalQueue));
-      localStorage.setItem('koko_queue_index', String(state.queueIndex));
-      localStorage.setItem('koko_volume', String(state.volume));
-      localStorage.setItem('koko_duration', String(state.duration));
+      if (state.queue !== prev.queue) localStorage.setItem('koko_queue', JSON.stringify(state.queue));
+      if (state.originalQueue !== prev.originalQueue) localStorage.setItem('koko_original_queue', JSON.stringify(state.originalQueue));
+      if (state.queueIndex !== prev.queueIndex) localStorage.setItem('koko_queue_index', String(state.queueIndex));
+      if (state.volume !== prev.volume) localStorage.setItem('koko_volume', String(state.volume));
+      if (state.duration !== prev.duration) localStorage.setItem('koko_duration', String(state.duration));
       
       const now = Date.now();
       // Guardar el progreso cada 1 segundo máximo para optimizar I/O

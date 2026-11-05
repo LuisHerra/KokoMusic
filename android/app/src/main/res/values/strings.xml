@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">KokoMusic</string>
-    <string name="server_starting_title">Iniciando KokoMusic...</string>
-    <string name="server_starting_desc">Cargando servidor Python embebido y yt-dlp. Esto tomará solo unos segundos.</string>
-    <string name="server_running_notification">Servidor KokoMusic activo en segundo plano</string>
-    <string name="server_running_subtext">Presiona para abrir el reproductor</string>
-    <string name="error_retry">Reintentar conexión</string>
+    <string name="loading_title">Abriendo KokoMusic…</string>
+    <string name="loading_desc">Cargando la app.</string>
+    <string name="offline_desc">No hay conexión. Comprueba tu internet y vuelve a intentarlo.</string>
+    <string name="error_retry">Reintentar</string>
+    <string name="playback_channel">Reproducción</string>
 </resources>

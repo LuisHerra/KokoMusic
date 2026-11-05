@@ -1,10 +1,14 @@
-name: Build Android APK (Chaquopy Embebido)
+name: Build Android APK
 
+# La APK carga la web publicada: los cambios del frontend le llegan sin
+# recompilarla. Solo se reconstruye cuando cambia el código Android.
 on:
   push:
     branches: [ "master", "main" ]
+    paths: [ "android/**", ".github/workflows/android.yml" ]
   pull_request:
     branches: [ "master", "main" ]
+    paths: [ "android/**", ".github/workflows/android.yml" ]
   workflow_dispatch:
 
 jobs:
@@ -18,47 +22,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # La APK sirve su propia copia de la web desde el servidor embebido
-      # (android/app/src/main/python/static). Se recompila en cada build para
-      # que la app lleve siempre la última versión del frontend.
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build frontend for the APK (base "/")
-        working-directory: frontend
-        env:
-          VITE_BUILD_MODE: local
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_API_URL_FALLBACK: ${{ secrets.VITE_API_URL_FALLBACK }}
-          VITE_TICKETMASTER_KEY: ${{ secrets.VITE_TICKETMASTER_KEY }}
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: |
-          npm ci
-          npm run build
-
-      - name: Embed frontend into the APK
-        run: |
-          rm -rf android/app/src/main/python/static
-          cp -r frontend/dist android/app/src/main/python/static
-          ls android/app/src/main/python/static
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-
-      # Chaquopy exige que el Python de compilación sea la misma versión que
-      # el del APK (android/app/build.gradle.kts → chaquopy.version = "3.11")
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
 
       # La versión del wrapper del proyecto (gradle-wrapper.properties); el
       # Gradle "latest" del runner no es compatible con AGP 8.2

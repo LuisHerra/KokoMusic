@@ -4,6 +4,12 @@
  * Aparece automáticamente cuando Chrome detecta que la app es instalable.
  */
 import { useState, useEffect } from 'react';
+import { ANDROID_APK_URL, isInsideAndroidApp } from '../lib/androidApp';
+
+// En Android se ofrece la APK en vez de instalar la web desde Chrome: dentro de
+// Chrome la app gasta bastante más batería (ver android/README_ANDROID.md).
+const isAndroidBrowser = () =>
+  /Android/i.test(navigator.userAgent) && !isInsideAndroidApp();
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -20,6 +26,13 @@ export default function InstallPrompt() {
     if (window.matchMedia('(display-mode: standalone)').matches) return;
     // No mostrar si el usuario ya la rechazó
     if (localStorage.getItem('koko_pwa_dismissed')) return;
+    if (isAndroidBrowser()) {
+      // Que Chrome no ofrezca además su propia instalación de la web.
+      const suppress = (e: Event) => e.preventDefault();
+      window.addEventListener('beforeinstallprompt', suppress);
+      setVisible(true);
+      return () => window.removeEventListener('beforeinstallprompt', suppress);
+    }
 
     const handler = (e: Event) => {
       e.preventDefault();
@@ -34,6 +47,11 @@ export default function InstallPrompt() {
   }, []);
 
   const handleInstall = async () => {
+    if (isAndroidBrowser()) {
+      window.location.href = ANDROID_APK_URL;
+      setVisible(false);
+      return;
+    }
     if (!installEvent) return;
     installEvent.prompt();
     const { outcome } = await installEvent.userChoice;
@@ -88,7 +106,9 @@ export default function InstallPrompt() {
           Instalar KokoMusic
         </div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.4 }}>
-          Añade la app a tu pantalla de inicio
+          {isAndroidBrowser()
+            ? 'Descarga la app de Android: gasta menos batería que Chrome'
+            : 'Añade la app a tu pantalla de inicio'}
         </div>
       </div>
 
@@ -112,7 +132,7 @@ export default function InstallPrompt() {
             fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}
         >
-          Instalar
+          {isAndroidBrowser() ? 'Descargar' : 'Instalar'}
         </button>
       </div>
     </div>
