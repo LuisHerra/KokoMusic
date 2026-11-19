@@ -247,7 +247,9 @@ export async function searchVideos(query: string): Promise<VideoSearchResult[]> 
 
     recordSuccess();
     const data = (await res.json()) as { count?: number; results?: VideoSearchResult[] };
-    return Array.isArray(data?.results) ? data.results : [];
+    // Versiones de lite sin soporte del formato LockupView de YouTube devolvían
+    // resultados sin id: no sirven para nada y se tomaban por buenos.
+    return Array.isArray(data?.results) ? data.results.filter((r) => typeof r?.id === 'string' && r.id.length === 11) : [];
   } catch (err: any) {
     recordFailure();
     console.error(`[KokoLiteClient] Error en búsqueda para "${query}":`, err.message || err);

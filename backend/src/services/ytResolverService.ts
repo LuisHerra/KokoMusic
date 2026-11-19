@@ -191,7 +191,21 @@ function firstNonEmpty<T>(promises: Promise<T[]>[]): Promise<T[]> {
   });
 }
 
+/**
+ * Solo resultados con id de vídeo. KokoMusic-lite llegó a devolver 15
+ * resultados vacíos ({"title":"(sin título)"}) cuando YouTube cambió el
+ * formato: se elegía uno, el id quedaba undefined y la canción daba 404 (y
+ * esa resolución vacía se quedaba 30 días en caché).
+ */
+function withVideoId(videos: any[]): any[] {
+  return videos.filter((v) => typeof (v?.id || v?.videoId) === 'string' && (v.id || v.videoId).length === 11);
+}
+
 export async function searchYoutubeVideos(query: string, limit = 15): Promise<any[]> {
+  return withVideoId(await searchYoutubeVideosRaw(query, limit));
+}
+
+async function searchYoutubeVideosRaw(query: string, limit: number): Promise<any[]> {
   const { searchLite } = await import('./kokoLiteService');
 
   // yt-search no tiene timeout propio: con el proxy lento una búsqueda podía
@@ -214,13 +228,17 @@ export async function searchYoutubeVideos(query: string, limit = 15): Promise<an
   const early = await Promise.race([viaYts, new Promise<null>((r) => setTimeout(() => r(null), YTS_HEDGE_AFTER_MS))]);
   if (early && early.length > 0) return early;
 
+  // Filtrar dentro de la carrera: unos resultados de lite sin id no deben
+  // ganarle a un yt-search más lento pero bueno.
+  const viaLite = () => searchLite(query).then(withVideoId).catch(() => []);
+
   if (early !== null) {
     console.log(`[YTResolver] yt-search vacío — buscando via KokoMusic-lite: "${query}"`);
-    return searchLite(query);
+    return viaLite();
   }
 
   console.log(`[YTResolver] yt-search lento — lanzando KokoMusic-lite en paralelo: "${query}"`);
-  return firstNonEmpty([viaYts, searchLite(query).catch(() => [])]);
+  return firstNonEmpty([viaYts.then(withVideoId), viaLite()]);
 }
 
 /**
@@ -244,12 +262,16 @@ export async function resolveYoutubeIdWithAlternates(
   // L1: memoria
   const inMemory = cache.get(cacheKey);
   if (inMemory) {
-    try { return JSON.parse(inMemory) as YoutubeResolution; } catch {}
+    try {
+      const parsed = JSON.parse(inMemory) as YoutubeResolution;
+      // Una resolución sin id (búsqueda rota) no vale: se vuelve a buscar.
+      if (parsed.primary) return parsed;
+    } catch {}
   }
 
   // L2: Supabase
   const fromDB = await getYouTubeResolutionFull(itunesId);
-  if (fromDB) {
+  if (fromDB?.youtube_id) {
     const resolution: YoutubeResolution = { primary: fromDB.youtube_id, alternates: fromDB.alt_youtube_ids || [] };
     cache.setex(cacheKey, 86400 * 30, JSON.stringify(resolution)); // recalentar L1 (30 días)
     return resolution;
@@ -261,6 +283,8 @@ export async function resolveYoutubeIdWithAlternates(
     const query = `${artistName} ${trackName} official audio`;
     const videos = await searchYoutubeVideos(query, 15);
 
+    // searchYoutubeVideos ya descarta los resultados sin id; si no queda
+    // ninguno, no se cachea nada para poder reintentarlo en la próxima petición.
     if (videos.length === 0) return null;
 
     // Puntuar todos los candidatos y ordenar de mayor a menor score
