@@ -44,6 +44,7 @@ import AuthModal from './components/Auth/AuthModal';
 import GuestHome from './pages/GuestHome';
 import TimeCapsules from './pages/TimeCapsules';
 import LocalVideos from './pages/LocalVideos';
+import Changelog from './pages/Changelog';
 import SongDropOverlay from './components/SongDropOverlay';
 import { isGuestMode, enterGuestMode, exitGuestMode, loadGuestPlayableIds } from './lib/guest';
 import GuidedTour from './components/GuidedTour';
@@ -614,6 +615,7 @@ function AppShell() {
             <Route path="/stats" element={<Stats />} />
             <Route path="/capsules" element={<TimeCapsules />} />
             <Route path="/videos" element={<LocalVideos />} />
+            <Route path="/novedades" element={<Changelog />} />
             <Route path="/dj" element={<DjMode />} />
             <Route path="/karaoke" element={<KaraokeStudioPage />} />
           </Routes>

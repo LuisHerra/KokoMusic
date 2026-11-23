@@ -6,8 +6,9 @@ import { usePlayerStore } from '../store/playerStore';
 import { getMyProfile } from '../lib/api';
 import { IconKaraoke } from './Icons/NavIcons';
 
-import { ANDROID_APK_URL, canOfferAndroidApp, isInsideAndroidApp } from '../lib/androidApp';
-import { IconHourglass, IconVideo } from './SocialIcons';
+import { isInsideAndroidApp } from '../lib/androidApp';
+import { IconHourglass, IconSparkles, IconVideo } from './SocialIcons';
+import { useUnseenChangelog } from '../lib/changelog';
 import { isGuestMode } from '../lib/guest';
 function IconHome() {
   return (
@@ -88,6 +89,7 @@ export default function BottomNav() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const { setIsQueueOpen, setIsVideoOpen, setIsLyricsOpen } = usePlayerStore();
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const changelogUnseen = useUnseenChangelog();
 
   const deviceId = localStorage.getItem('koko_device_id') || '';
   const [isArtist, setIsArtist] = useState(() => localStorage.getItem('koko_is_artist') === 'true');
@@ -130,7 +132,7 @@ export default function BottomNav() {
     navigate(path);
   };
 
-  const moreActive = ['/stats', '/dj', '/following', '/events', '/profile', '/capsules', '/videos'].includes(location.pathname);
+  const moreActive = ['/stats', '/dj', '/following', '/events', '/profile', '/capsules', '/videos', '/novedades'].includes(location.pathname);
 
   if (isGuestMode()) {
     return (
@@ -264,14 +266,13 @@ export default function BottomNav() {
               <span>Mi Perfil</span>
             </button>
 
-            {canOfferAndroidApp() && (
-              <a href={ANDROID_APK_URL} className="bottom-sheet-item" onClick={() => setIsOpen(false)} rel="noopener" style={{ textDecoration: 'none' }}>
-                <div className="bottom-sheet-icon-wrap">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 7v7M9 11l3 3 3-3M10 18h4" /></svg>
-                </div>
-                <span>App Android</span>
-              </a>
-            )}
+            <button onClick={() => handleNav('/novedades')} className={`bottom-sheet-item ${location.pathname === '/novedades' ? 'active' : ''}`}>
+              <div className="bottom-sheet-icon-wrap" style={{ position: 'relative' }}>
+                <IconSparkles size={20} />
+                {changelogUnseen && <span className="nav-new-dot" aria-label="Hay novedades" />}
+              </div>
+              <span>Novedades</span>
+            </button>
           </div>
         </div>
       </div>

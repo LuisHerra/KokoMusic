@@ -12,7 +12,8 @@ import { useResizableSidebar } from '../../hooks/useResizable';
 import kokoLogo from '../../assets/koko-logo.png';
 import { IconKaraoke } from '../Icons/NavIcons';
 
-import { ANDROID_APK_URL, canOfferAndroidApp } from '../../lib/androidApp';
+import { useUnseenChangelog } from '../../lib/changelog';
+import { IconSparkles } from '../SocialIcons';
 import { isGuestMode } from '../../lib/guest';
 function IconHome() {
   return (
@@ -96,6 +97,7 @@ function IconDj() {
 
 export default function Sidebar() {
   const navigate = useNavigate();
+  const changelogUnseen = useUnseenChangelog();
   const queryClient = useQueryClient();
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
@@ -359,14 +361,12 @@ export default function Sidebar() {
             </NavLink>
           </li>
         )}
-        {canOfferAndroidApp() && (
-          <li className="sidebar-nav-item">
-            <a href={ANDROID_APK_URL} rel="noopener" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Descargar app Android" : "Descarga la APK para Android"}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 7v7M9 11l3 3 3-3M10 18h4" /></svg>
-              {!isCollapsed && "App Android"}
-            </a>
-          </li>
-        )}
+        <li className="sidebar-nav-item">
+          <NavLink to="/novedades" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Novedades" : undefined}>
+            <IconSparkles size={22} /> {!isCollapsed && "Novedades"}
+            {changelogUnseen && <span className="nav-new-dot" aria-label="Hay novedades" />}
+          </NavLink>
+        </li>
       </ul>
 
 

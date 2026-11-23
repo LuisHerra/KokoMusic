@@ -7264,3 +7264,27 @@ input:checked + .autoplay-slider:before {
 .pin figcaption strong { font-size: 12px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pin figcaption small { font-size: 10px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) { .pin-disc { transition: none; } }
+
+/* ── Novedades (changelog) ───────────────────────────────────────────────── */
+.changelog-page { max-width: 720px; margin: 0 auto; padding: 24px 16px 140px; color: #fff; }
+.changelog-h1 { font-size: 30px; font-weight: 900; letter-spacing: -0.02em; margin: 0 0 6px; }
+.changelog-sub { font-size: 14px; color: var(--text-secondary); margin: 0 0 24px; line-height: 1.5; }
+.changelog-list { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid rgba(255,255,255,0.08); }
+.changelog-entry { position: relative; padding: 0 0 28px 16px; }
+.changelog-entry::before {
+  content: ''; position: absolute; left: -25px; top: 4px; width: 12px; height: 12px; border-radius: 50%;
+  background: rgba(255,255,255,0.25); box-shadow: 0 0 0 4px var(--bg-primary, #0a0a0c);
+}
+.changelog-entry.is-latest::before { background: var(--accent); box-shadow: 0 0 0 4px var(--bg-primary, #0a0a0c), 0 0 14px var(--accent); }
+.changelog-date { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+.changelog-latest { padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #000; background: var(--accent); }
+.changelog-title { font-size: 19px; font-weight: 800; margin: 6px 0 12px; }
+.changelog-group { margin-bottom: 12px; }
+.changelog-kind { display: inline-block; margin-bottom: 6px; padding: 2px 9px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.kind-nuevo { color: #000; background: var(--accent); }
+.kind-mejora { color: #9ecbff; background: rgba(80, 150, 255, 0.15); }
+.kind-arreglo { color: #ffc98a; background: rgba(255, 160, 60, 0.15); }
+.changelog-group ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.changelog-group li { font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.88); }
+.nav-new-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); margin-left: 6px; vertical-align: middle; }
+.bottom-sheet-icon-wrap .nav-new-dot { position: absolute; top: -2px; right: -2px; margin: 0; }
