@@ -22,10 +22,21 @@ export default function FriendsList({ userId, onChat }: Props) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['friends', userId],
-    queryFn: () => getFriends(userId),
+    queryFn: async () => {
+      const res = await getFriends(userId);
+      try { localStorage.setItem(`koko_friends_cache_${userId}`, JSON.stringify(res)); } catch { /* sin storage */ }
+      return res;
+    },
     enabled: !!userId,
     staleTime: 60000,
     refetchInterval: 30000,
+    // Última lista guardada: la sección se pinta al instante y luego se refresca
+    placeholderData: () => {
+      try {
+        const raw = localStorage.getItem(`koko_friends_cache_${userId}`);
+        return raw ? JSON.parse(raw) : undefined;
+      } catch { return undefined; }
+    },
   });
   const removeMut = useMutation({
     mutationFn: (friendId: string) => removeFriend(userId, friendId),

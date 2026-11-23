@@ -543,12 +543,17 @@ router.get('/', async (req, res) => {
 
   if (friendIds.length === 0) return res.json({ friends: [] });
 
-  // Fetch profiles
-  const { data: profiles } = await supabase!
-    .schema('kokomusic')
-    .from('koko_profiles')
-    .select('id, username, display_name, avatar_url, bio')
-    .in('id', friendIds);
+  // Perfiles y mensajes sin leer a la vez (antes iban uno detrás de otro)
+  const [{ data: profiles }, { data: unreadData }] = await Promise.all([
+    supabase!.schema('kokomusic').from('koko_profiles')
+      .select('id, username, display_name, avatar_url, bio')
+      .in('id', friendIds),
+    supabase!.schema('kokomusic').from('messages')
+      .select('sender_id')
+      .eq('receiver_id', userId)
+      .eq('is_read', false)
+      .in('sender_id', friendIds),
+  ]);
 
   const profileMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
 
@@ -560,15 +565,6 @@ router.get('/', async (req, res) => {
       ...profileMap[friendId],
     };
   });
-
-  // Count unread messages per friend
-  const { data: unreadData } = await supabase!
-    .schema('kokomusic')
-    .from('messages')
-    .select('sender_id')
-    .eq('receiver_id', userId)
-    .eq('is_read', false)
-    .in('sender_id', friendIds);
 
   const unreadCounts: Record<string, number> = {};
   for (const msg of unreadData ?? []) {

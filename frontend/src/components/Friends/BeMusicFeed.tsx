@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { usePlayerStore, setPendingStart } from '../../store/playerStore';
+import { toggleBMusicPreview, stopBMusicPreview, useBMusicPreview } from '../../lib/bmusicPreview';
 import { searchTracks, resolveImageUrl, postDailyDrop, type Track } from '../../lib/api';
 import { getApiUrl } from '../../lib/backendResolver';
 import VinylLauncher from './VinylLauncher';
@@ -51,7 +52,7 @@ const trackSeconds = (t: Track | null) => {
 };
 
 export default function BeMusicFeed({ userId }: BeMusicFeedProps) {
-  const { currentTrack, isPlaying, setTrack, progress } = usePlayerStore();
+  const { currentTrack, setTrack, progress } = usePlayerStore();
   // Load cached feed for instant 0ms initial display
   const cacheKey = `koko_bemusic_cache_${userId}`;
   const cachedData = (() => {
@@ -194,20 +195,12 @@ export default function BeMusicFeed({ userId }: BeMusicFeedProps) {
     }
   };
 
+  // Escuchar un B-Music pausa lo que suena pero no cambia la canción del reproductor
   const playDrop = (d: Pick<DailyDrop, 'track_id' | 'title' | 'artist' | 'cover' | 'start_s'>) => {
-    const t: Track = {
-      id: d.track_id,
-      title: d.title,
-      artist: d.artist,
-      album: 'Sencillo',
-      cover: d.cover || '',
-      duration: 180,
-      popularity: 80,
-      preview_url: null,
-    };
-    setPendingStart(Number(d.start_s) || 0);
-    setTrack(t, [t]);
+    toggleBMusicPreview(d.track_id, Number(d.start_s) || 0);
   };
+  const preview = useBMusicPreview();
+  useEffect(() => () => stopBMusicPreview(), []);
 
   const previewMoment = () => {
     if (!selectedTrack) return;
@@ -372,7 +365,7 @@ export default function BeMusicFeed({ userId }: BeMusicFeedProps) {
           <div className="bm-feed">
             {friendDrops.map((drop, idx) => {
               const isMe = drop.user_id === userId;
-              const nowPlaying = isPlaying && currentTrack?.id === drop.track_id;
+              const nowPlaying = preview.playing && preview.trackId === drop.track_id;
               const comments = expandedComments[drop.id] ? drop.comments : drop.comments.slice(-2);
               const hidden = drop.comments.length - comments.length;
               const draft = commentInputs[drop.id] || '';
