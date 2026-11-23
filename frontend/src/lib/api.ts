@@ -1164,6 +1164,8 @@ export interface TimeCapsule {
   isOpen: boolean;
   trackCount: number;
   tracks: SharedTrack[];
+  /** Cerrada y recibida: una portada para mostrar difuminada. */
+  teaserCover?: string | null;
 }
 
 export const getTimeCapsules = () => apiFetch<{ sent: TimeCapsule[]; received: TimeCapsule[] }>('/social/capsules');
@@ -1173,7 +1175,10 @@ export const createTimeCapsule = (body: { tracks: SharedTrack[]; message?: strin
 
 export const deleteTimeCapsule = (id: string) => apiFetch<{ ok: boolean }>(`/social/capsules/${id}`, { method: 'DELETE' });
 
-export interface ProfileBadge { id: string; icon: string; label: string; description: string; tier: 'bronze' | 'silver' | 'gold' }
+export interface ProfileBadge {
+  id: string; icon: string; label: string; description: string; tier: 'bronze' | 'silver' | 'gold';
+  kind?: 'artist' | 'achievement'; artist?: string; image?: string | null;
+}
 
 export const getProfileBadges = (userId: string) =>
   apiFetch<{ badges: ProfileBadge[] }>(`/social/badges/${encodeURIComponent(userId)}`);

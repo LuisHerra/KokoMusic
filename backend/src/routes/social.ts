@@ -163,6 +163,9 @@ router.get('/capsules', async (req, res) => {
       trackCount: (c.tracks ?? []).length,
       // El contenido es sorpresa hasta la fecha (salvo para quien la creó)
       tracks: open || c.owner_id === userId ? c.tracks : [],
+      // Cerrada para quien la recibe: solo una portada, que la app muestra muy
+      // difuminada (da el color de la cápsula sin desvelar la canción)
+      teaserCover: !open && c.owner_id !== userId ? (c.tracks ?? [])[0]?.cover ?? null : null,
     };
   };
   res.json({
@@ -218,7 +221,11 @@ export function startCapsuleDelivery() {
 
 // ── Emblemas ──────────────────────────────────────────────────────────────────
 
-interface Badge { id: string; icon: string; label: string; description: string; tier: 'bronze' | 'silver' | 'gold' }
+interface Badge {
+  id: string; icon: string; label: string; description: string; tier: 'bronze' | 'silver' | 'gold';
+  /** Pin de artista: foto del artista (o su portada más escuchada) y nombre */
+  image?: string | null; artist?: string; kind?: 'artist' | 'achievement';
+}
 
 const ARTIST_TIERS: [number, Badge['tier'], string][] = [[500, 'gold', 'Superfan'], [150, 'silver', 'Fan'], [50, 'bronze', 'Oyente fiel']];
 const ACHIEVEMENTS: { id: string; icon: string; label: string; metric: 'plays' | 'artists' | 'friends' | 'likes' | 'capsules'; thresholds: [number, number, number] ; unit: string }[] = [
@@ -240,7 +247,7 @@ router.get('/badges/:userId', async (req, res) => {
 
   try {
     const [{ data: plays }, { count: friends }, { data: liked }, { count: capsules }] = await Promise.all([
-      db().from('play_events').select('artist').eq('user_id', userId).limit(20000),
+      db().from('play_events').select('artist, cover').eq('user_id', userId).limit(20000),
       db().from('friendships').select('id', { count: 'exact', head: true })
         .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`).eq('status', 'accepted'),
       db().from('user_playlists').select('data').eq('key', `liked-songs-${userId}`).maybeSingle(),
@@ -248,14 +255,28 @@ router.get('/badges/:userId', async (req, res) => {
     ]);
 
     const byArtist = new Map<string, number>();
-    for (const p of (plays ?? []) as { artist: string | null }[]) {
+    const coverCount = new Map<string, Map<string, number>>();
+    for (const p of (plays ?? []) as { artist: string | null; cover: string | null }[]) {
       const a = (p.artist || '').split(/,|&| feat\.?| ft\.?/i)[0].trim();
-      if (a) byArtist.set(a, (byArtist.get(a) ?? 0) + 1);
+      if (!a) continue;
+      byArtist.set(a, (byArtist.get(a) ?? 0) + 1);
+      if (p.cover) {
+        const m = coverCount.get(a) ?? new Map<string, number>();
+        m.set(p.cover, (m.get(p.cover) ?? 0) + 1);
+        coverCount.set(a, m);
+      }
     }
+    const topArtists = [...byArtist.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+    // Foto del artista si el usuario lo sigue; si no, la portada que más ha escuchado suya
+    const { data: followed } = topArtists.length
+      ? await db().from('follows').select('artist_name, artist_image').eq('user_id', userId).in('artist_name', topArtists.map(([a]) => a))
+      : { data: [] as any[] };
+    const photo = new Map((followed ?? []).filter((f: any) => f.artist_image).map((f: any) => [f.artist_name, f.artist_image]));
+    const imageFor = (a: string) => photo.get(a) || [...(coverCount.get(a) ?? new Map()).entries()].sort((x, y) => y[1] - x[1])[0]?.[0] || null;
     const badges: Badge[] = [];
-    [...byArtist.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).forEach(([artist, n]) => {
+    topArtists.forEach(([artist, n]) => {
       const tier = ARTIST_TIERS.find(([min]) => n >= min);
-      if (tier) badges.push({ id: `artist:${artist}`, icon: 'artist', label: `${tier[2]} de ${artist}`, description: `${n} escuchas de ${artist}`, tier: tier[1] });
+      if (tier) badges.push({ id: `artist:${artist}`, kind: 'artist', icon: 'artist', label: tier[2], artist, image: imageFor(artist), description: `${n} escuchas de ${artist}`, tier: tier[1] });
     });
     const metrics = {
       plays: plays?.length ?? 0,
@@ -269,7 +290,7 @@ router.get('/badges/:userId', async (req, res) => {
       const level = a.thresholds.filter((t) => v >= t).length;
       if (!level) continue;
       const tier = (['bronze', 'silver', 'gold'] as const)[level - 1];
-      badges.push({ id: a.id, icon: a.icon, label: a.label, description: `${v} ${a.unit}`, tier });
+      badges.push({ id: a.id, kind: 'achievement', icon: a.icon, label: a.label, description: `${v} ${a.unit}`, tier });
     }
     badgeCache.set(userId, { at: Date.now(), badges });
     res.json({ badges });
