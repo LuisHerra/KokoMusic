@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getLyrics, resolveImageUrl, getTrackVideo, searchTracks, type Lyrics, type VideoData, formatYoutubeEmbedUrl, BASE } from '../../lib/api';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { isTrackOffline, saveTrackOffline, deleteOfflineTrack } from '../../lib/offlineAudio';
-import { saveTrackToDevice } from '../../lib/deviceDownload';
+import { saveTrackToDevice, saveTrackVideoToDevice } from '../../lib/deviceDownload';
 import DownloadChoiceSheet from '../Common/DownloadChoiceSheet';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
@@ -243,6 +243,20 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     } catch (err: any) {
       console.error('[MobilePlayer] Error al descargar al dispositivo:', err);
       setError(err?.message || 'Error al descargar');
+    } finally {
+      setSavingToDevice(false);
+    }
+  };
+
+  const handleVideoDownload = async () => {
+    if (!currentTrack) return;
+    const { setError } = usePlayerStore.getState();
+    setSavingToDevice(true);
+    setError('Guardando el vídeo…');
+    try {
+      setError(await saveTrackVideoToDevice(currentTrack.id, { title: currentTrack.title, artist: currentTrack.artist }));
+    } catch (err: any) {
+      setError(err?.message || 'No se pudo guardar el vídeo');
     } finally {
       setSavingToDevice(false);
     }
@@ -728,6 +742,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
               internalSaved={downloadStatus === 'downloaded'}
               onInternal={() => (downloadStatus === 'downloaded' ? handleRemoveOffline() : handleDownload())}
               onExternal={handleDeviceDownload}
+              onVideo={handleVideoDownload}
             />
           )}
 

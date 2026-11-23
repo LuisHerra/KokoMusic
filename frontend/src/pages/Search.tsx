@@ -285,13 +285,15 @@ export default function Search() {
 
   const [recentSearches, setRecentSearches] = useState<any[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem('koko_recent_searches') || '[]');
+      const saved = JSON.parse(localStorage.getItem('koko_recent_searches') || '[]');
+      // Solo canciones: el texto tecleado no se muestra como resultado reciente
+      return Array.isArray(saved) ? saved.filter((p: any) => p?.type === 'track') : [];
     } catch {
       return [];
     }
   });
 
-  const { data, isLoading } = useQuery<{ tracks: Track[]; source: string; artist?: InferredArtist | null }>({
+  const { data, isLoading } = useQuery<{ tracks: Track[]; source: string; artist?: InferredArtist | null; partial?: boolean }>({
     queryKey: ['search', query, source, mood],
     queryFn: ({ signal }) => {
       if (mood && !query) {
@@ -301,6 +303,9 @@ export default function Search() {
     },
     enabled: query.trim().length > 0 || (!!mood && !query),
     staleTime: 10 * 60 * 1000,
+    // Resultado parcial (iTunes ya, YouTube aún en camino): se vuelve a pedir
+    // en breve para completar la lista. Como mucho dos veces.
+    refetchInterval: (q) => (q.state.data?.partial && q.state.dataUpdateCount < 3 ? 1800 : false),
   });
 
   // Precarga inmediata del perfil de artista inferido en background (0ms latency al hacer click)
@@ -333,6 +338,7 @@ export default function Search() {
   }, [query, mood, setSearchParams]);
 
   const addRecentSearch = (item: any) => {
+    if (item?.type !== 'track') return;
     setRecentSearches(prev => {
       const filtered = prev.filter(p => {
         if (item.type === 'keyword' && p.type === 'keyword') {
@@ -343,7 +349,7 @@ export default function Search() {
         }
         return true;
       });
-      const updated = [item, ...filtered].slice(0, 8);
+      const updated = [item, ...filtered].slice(0, 50);
       localStorage.setItem('koko_recent_searches', JSON.stringify(updated));
       return updated;
     });

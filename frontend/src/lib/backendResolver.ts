@@ -63,71 +63,93 @@ async function probe(base: string, requireKokoSignature = false): Promise<boolea
   }
 }
 
-/** Resuelve el backend una única vez y cachea el resultado. */
-async function resolveBackend(): Promise<string> {
-  // 1. Override manual del usuario (Settings panel o URL de tunnel copiada)
-  const override = localStorage.getItem(STORAGE_OVERRIDE_KEY);
-  if (override) {
-    const base = override.replace(/\/api$/, '').replace(/\/$/, '');
-    const ok = await probe(base);
-    if (ok) {
-      console.info(`[BackendResolver] ✅ Override: ${base}`);
-      return base;
-    }
-    console.warn(`[BackendResolver] ⚠️  Override ${base} no responde — ignorado`);
-  }
+const clean = (u: string) => u.replace(/\/api\/?$/, '').replace(/\/$/, '');
 
-  // 2. Origen actual del navegador (si el frontend es servido por el backend o proxy)
+// Túnel de Cloudflare fijo (p. ej. https://api.midominio.com → backend en casa,
+// IP residencial: YouTube no lo bloquea y busca más rápido que el cloud).
+// Se define al compilar con VITE_TUNNEL_URL; vacío = desactivado.
+const BUILD_TUNNEL_BASE = clean(((import.meta.env.VITE_TUNNEL_URL as string | undefined) ?? '').trim());
+
+const LAST_GOOD_KEY = 'koko_last_backend';
+
+interface Candidate { base: string; label: string; signature: boolean; onFail?: () => void }
+
+function candidates(): Candidate[] {
+  const list: Candidate[] = [];
+  const override = localStorage.getItem(STORAGE_OVERRIDE_KEY);
+  if (override) list.push({ base: clean(override), label: 'Override', signature: false });
+
   if (typeof window !== 'undefined' && window.location) {
     const originBase = window.location.origin;
-    const isViteDev = originBase.includes(':5173') || originBase.includes(':3000'); // Puertos típicos de dev
-    if (!isViteDev) {
-      const ok = await probe(originBase, true);
-      if (ok) {
-        console.info(`[BackendResolver] ✅ Origen actual es backend: ${originBase}`);
-        return originBase;
-      }
-    }
+    const isViteDev = originBase.includes(':5173') || originBase.includes(':3000');
+    if (!isViteDev) list.push({ base: originBase, label: 'Origen actual', signature: true });
   }
 
-  // 3. Local (residential IP — sin bloqueo YouTube)
-  const localBase = LOCAL_URL.replace(/\/api$/, '');
-  if (await probe(localBase)) {
-    console.info('[BackendResolver] ✅ Backend local detectado');
-    return localBase;
+  // Desde una página https el navegador bloquea http://localhost (contenido mixto)
+  const pageIsHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  if (!pageIsHttps || /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
+    list.push({ base: clean(LOCAL_URL), label: 'Local', signature: false });
   }
 
-  // 3. Cloudflare Tunnel guardado en localStorage
   const tunnelUrl = localStorage.getItem(STORAGE_TUNNEL_KEY);
   if (tunnelUrl) {
-    const tunnelBase = tunnelUrl.replace(/\/api$/, '').replace(/\/$/, '');
-    if (await probe(tunnelBase)) {
-      console.info(`[BackendResolver] ✅ Tunnel activo: ${tunnelBase}`);
-      return tunnelBase;
-    }
-    console.warn('[BackendResolver] ⚠️  Tunnel guardado no responde — limpiando');
-    localStorage.removeItem(STORAGE_TUNNEL_KEY);
+    list.push({ base: clean(tunnelUrl), label: 'Tunnel guardado', signature: false, onFail: () => localStorage.removeItem(STORAGE_TUNNEL_KEY) });
   }
+  if (BUILD_TUNNEL_BASE) list.push({ base: BUILD_TUNNEL_BASE, label: 'Cloudflare Tunnel', signature: true });
 
-  // 4. Backend cloud (VITE_API_URL), con respaldo opcional (VITE_API_URL_FALLBACK)
-  if (FALLBACK_BASE && FALLBACK_BASE !== HF_BASE) {
-    if (await probe(HF_BASE, true)) {
-      console.info(`[BackendResolver] ✅ Backend cloud: ${HF_BASE}`);
-      return HF_BASE;
+  list.push({ base: HF_BASE, label: 'Cloud', signature: true });
+  if (FALLBACK_BASE && FALLBACK_BASE !== HF_BASE) list.push({ base: FALLBACK_BASE, label: 'Respaldo', signature: true });
+
+  // Sin duplicados (conserva la prioridad)
+  return list.filter((c, i) => list.findIndex((o) => o.base === c.base) === i);
+}
+
+/**
+ * Resuelve el backend una única vez. Antes cada candidato se probaba en serie
+ * (hasta 3 s cada uno), así que la primera búsqueda podía esperar 6-9 s.
+ * Ahora se prueban todos a la vez y gana el de más prioridad que responda.
+ */
+async function resolveBackend(): Promise<string> {
+  const list = candidates();
+  const probes = list.map((c) => probe(c.base, c.signature));
+  for (let i = 0; i < list.length; i++) {
+    if (await probes[i]) {
+      console.info(`[BackendResolver] ✅ ${list[i].label}: ${list[i].base}`);
+      try { localStorage.setItem(LAST_GOOD_KEY, list[i].base); } catch { /* sin storage */ }
+      return list[i].base;
     }
-    if (await probe(FALLBACK_BASE, true)) {
-      console.warn(`[BackendResolver] ⚠️  ${HF_BASE} no responde — usando respaldo ${FALLBACK_BASE}`);
-      return FALLBACK_BASE;
-    }
+    list[i].onFail?.();
   }
-  console.info(`[BackendResolver] ℹ️  Usando backend cloud: ${HF_BASE}`);
+  console.info(`[BackendResolver] ℹ️  Ninguno respondió; usando backend cloud: ${HF_BASE}`);
   return HF_BASE;
+}
+
+/**
+ * Arranque sin espera: si el último backend bueno sigue siendo candidato se usa
+ * ya y se revalida en segundo plano; si la revalidación elige otro, se cambia.
+ */
+function optimisticBackend(): string | null {
+  try {
+    const last = localStorage.getItem(LAST_GOOD_KEY);
+    if (last && candidates().some((c) => c.base === last)) return last;
+  } catch { /* sin storage */ }
+  return null;
 }
 
 /** Devuelve la URL base resuelta (sin /api al final). */
 export async function getBaseUrl(): Promise<string> {
   if (resolvedBase) return resolvedBase;
   if (resolving)    return resolving;
+
+  const optimistic = optimisticBackend();
+  if (optimistic) {
+    resolvedBase = optimistic;
+    resolveBackend().then((url) => {
+      if (url !== resolvedBase) console.info(`[BackendResolver] 🔁 Cambio de backend: ${resolvedBase} → ${url}`);
+      resolvedBase = url;
+    }).catch(() => {});
+    return optimistic;
+  }
 
   resolving = resolveBackend().then((url) => {
     resolvedBase = url;

@@ -6,7 +6,9 @@
  * explorador de archivos y cualquier reproductor de música.
  */
 
-import { isInsideAndroidApp, type KokoAndroidBridge } from './androidApp';
+import { isInsideAndroidApp, canSaveVideosOnDevice, saveVideoToDevice, type KokoAndroidBridge } from './androidApp';
+import { getTrackVideo } from './api';
+import { getApiUrl } from './backendResolver';
 import { trackAudioUrl } from './offlineAudio';
 
 const EXTENSION_BY_MIME: Record<string, string> = {
@@ -107,4 +109,22 @@ export async function saveTrackToDevice(
   // Margen para que el navegador termine de leer el blob antes de liberarlo.
   setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   return 'Descargada en tu dispositivo';
+}
+
+/**
+ * Guarda el vídeo musical del track en el dispositivo (Películas/KokoMusic).
+ * Solo en la APK: el vídeo no se descarga en el navegador ni se guarda en el
+ * servidor. Se ve en la pestaña "Mis vídeos".
+ */
+export async function saveTrackVideoToDevice(
+  trackId: string,
+  meta: { title: string; artist: string }
+): Promise<string> {
+  if (!canSaveVideosOnDevice()) throw new Error('Los vídeos solo se pueden guardar desde la app de Android');
+  const video = await getTrackVideo(trackId);
+  if (!video?.youtubeId) throw new Error('Esta canción no tiene vídeo');
+  const base = await getApiUrl();
+  const url = new URL(`${base}/tracks/video-file/${encodeURIComponent(video.youtubeId)}`, window.location.href).toString();
+  await saveVideoToDevice(url, fileBaseName(meta));
+  return 'Vídeo guardado en Mis vídeos';
 }

@@ -27,7 +27,7 @@ ACCENTS = {
     "gold": "#FFD700",
 }
 BASE_GREEN_HUE = 141.2  # tono del logo original (themeStore.ts)
-BG = (9, 9, 11, 255)    # @color/bg_dark
+BG = (255, 255, 255, 255)  # @color/icon_bg (blanco, como el acceso directo)
 
 DENSITIES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
@@ -90,7 +90,7 @@ def main():
             tinted = hue_rotate(logo, diff)
             fit(tinted, layer_px, LAYER_RATIO).save(mipmap / f"ic_launcher_fg_{key}.png", optimize=True)
 
-            # Android 7.x (sin iconos adaptativos): cuadrado redondeado oscuro con el logo
+            # Android 7.x (sin iconos adaptativos): cuadrado redondeado blanco con el logo
             legacy = Image.new("RGBA", (legacy_px, legacy_px), (0, 0, 0, 0))
             ImageDraw.Draw(legacy).rounded_rectangle(
                 [0, 0, legacy_px - 1, legacy_px - 1], radius=round(legacy_px * 0.22), fill=BG)
@@ -109,7 +109,7 @@ def main():
             '<?xml version="1.0" encoding="utf-8"?>\n'
             '<!-- Generado por android/tools/generate_icons.py -->\n'
             '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
-            '    <background android:drawable="@color/bg_dark" />\n'
+            '    <background android:drawable="@color/icon_bg" />\n'
             f'    <foreground android:drawable="@mipmap/ic_launcher_fg_{key}" />\n'
             '    <monochrome android:drawable="@mipmap/ic_launcher_mono" />\n'
             '</adaptive-icon>\n',

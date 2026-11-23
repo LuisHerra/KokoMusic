@@ -1,3 +1,5 @@
+import ProfileBadges from '../components/ProfileBadges';
+import { getSocialSettings, updateSocialSettings } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -163,6 +165,21 @@ function Section({ id, title, icon, children }: { id?: string; title: string; ic
       </div>
       {children}
     </div>
+  );
+}
+
+/** Recibir canciones "en vivo" de amigos (con animación). Activado por defecto. */
+function SongDropToggle() {
+  const [allow, setAllow] = useState<boolean | null>(null);
+  useEffect(() => { getSocialSettings().then((s) => setAllow(s.allowSongDrops)).catch(() => setAllow(true)); }, []);
+  if (allow === null) return null;
+  return (
+    <ToggleRow
+      label="Recibir canciones en vivo de amigos"
+      description="Tus amigos pueden enviarte una canción que te aparece al momento con una animación."
+      checked={allow}
+      onChange={(v: boolean) => { setAllow(v); updateSocialSettings(v).catch(() => setAllow(!v)); }}
+    />
   );
 }
 
@@ -757,6 +774,7 @@ export default function ProfilePage() {
                   {profile.bio}
                 </p>
               )}
+              {savedId && <ProfileBadges userId={savedId} />}
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   onClick={() => setEditing(true)}
@@ -1265,6 +1283,8 @@ export default function ProfilePage() {
                 localStorage.setItem('koko_algo_avoid_repeat_recs', String(val));
               }}
             />
+
+            <SongDropToggle />
 
             <ToggleRow
               label="Aplicar Transiciones DJ Guardadas Fuera de Modo DJ"

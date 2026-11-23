@@ -19,6 +19,8 @@ export interface AppNotification {
   senderName?: string;
   status?: string;
   userId?: string;
+  /** Datos extra (canción en vivo, cápsula...) */
+  payload?: any;
 }
 
 interface NotificationState {

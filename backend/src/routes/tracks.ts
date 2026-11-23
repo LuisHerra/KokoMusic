@@ -1307,6 +1307,45 @@ function stringToSafeIntegerHash(str: string): number {
   return Math.abs(hash % 4503599627370495);
 }
 
+// GET /api/tracks/video-file/:youtubeId — el vídeo (mp4 ≤720p con audio) para
+// guardarlo en el dispositivo desde la APK. No se guarda nada en el servidor:
+// yt-dlp lo emite por stdout y se reenvía tal cual.
+router.get('/video-file/:youtubeId', async (req: Request, res: Response) => {
+  const { youtubeId } = req.params;
+  if (!/^[A-Za-z0-9_-]{11}$/.test(youtubeId)) return res.status(400).json({ error: 'youtubeId no válido' });
+  const { spawn } = await import('child_process');
+  const { getCookiesArg } = await import('../services/ytdlpService');
+  const cookies = getCookiesArg().match(/^--cookies "(.+)"$/)?.[1];
+  const args = [
+    ...(cookies ? ['--cookies', cookies] : []),
+    '--force-ipv4', '--no-playlist', '--quiet', '--no-warnings',
+    // Formato progresivo (vídeo+audio en un archivo): se puede emitir sin ffmpeg
+    '-f', 'b[ext=mp4][vcodec^=avc1][height<=720]/b[ext=mp4][height<=720]/b[ext=mp4]',
+    '-o', '-',
+    `https://www.youtube.com/watch?v=${youtubeId}`,
+  ];
+  const child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let started = false;
+  let stderr = '';
+  child.stderr.on('data', (d) => { stderr += d.toString(); });
+  child.stdout.once('data', () => {
+    started = true;
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="${youtubeId}.mp4"`);
+  });
+  child.stdout.pipe(res);
+  child.on('error', (e) => {
+    if (!started && !res.headersSent) res.status(500).json({ error: `yt-dlp no disponible: ${e.message}` });
+  });
+  child.on('close', (code) => {
+    if (code !== 0 && !started && !res.headersSent) {
+      console.error('[VideoFile] yt-dlp falló:', stderr.slice(0, 500));
+      res.status(502).json({ error: 'No se pudo obtener el vídeo' });
+    }
+  });
+  req.on('close', () => { if (!child.killed) child.kill('SIGKILL'); });
+});
+
 // GET /api/tracks/:id/video — Obtener video de YouTube y videos relacionados
 router.get('/:id/video', async (req: Request, res: Response) => {
   const { id } = req.params;

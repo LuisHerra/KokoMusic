@@ -17,7 +17,7 @@ import { isGuestMode } from '../lib/guest';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
 import { logToServer } from '../lib/logger';
-import { syncAndroidPlayback } from '../lib/androidApp';
+import { syncAndroidPlayback, isInsideAndroidApp } from '../lib/androidApp';
 import { usePrefetchAudio } from './usePrefetchAudio';
 import { reportAudioStall, reportAudioHealthy } from '../lib/adaptiveBitrate';
 
@@ -474,7 +474,7 @@ export function seekAudio(seconds: number) {
 let lastAndroidTrackId: string | null = null;
 
 function pushAndroidPlayback() {
-  const { currentTrack, isPlaying, duration } = usePlayerStore.getState();
+  const { currentTrack, isPlaying, isLoading, duration } = usePlayerStore.getState();
   if (!currentTrack) {
     lastAndroidTrackId = null;
     syncAndroidPlayback(null);
@@ -490,6 +490,8 @@ function pushAndroidPlayback() {
     artist: currentTrack.artist,
     cover: currentTrack.cover || null,
     isPlaying,
+    // Cargando la siguiente: la APK mantiene vivos el WebView y el servicio
+    isLoading: !!isLoading || (isPlaying && audio.readyState < 3),
     positionS: trackChanged ? 0 : audio.currentTime || 0,
     durationS: trackChanged ? trackDurationS(currentTrack) : (validDuration(audio.duration) ?? (duration || trackDurationS(currentTrack))),
   });
@@ -623,9 +625,23 @@ export function useAudioPlayer() {
   }, [isPlaying]);
 
   const duration = usePlayerStore((s) => s.duration);
+  const isLoadingStore = usePlayerStore((s) => s.isLoading);
   useEffect(() => {
     pushAndroidPlayback();
-  }, [currentTrack, isPlaying, duration]);
+  }, [currentTrack, isPlaying, duration, isLoadingStore]);
+
+  // La APK necesita saber cuándo la nueva canción suena de verdad para
+  // soltar el modo "cargando".
+  useEffect(() => {
+    if (!isInsideAndroidApp()) return;
+    const onPlaying = () => pushAndroidPlayback();
+    audio1.addEventListener('playing', onPlaying);
+    audio2.addEventListener('playing', onPlaying);
+    return () => {
+      audio1.removeEventListener('playing', onPlaying);
+      audio2.removeEventListener('playing', onPlaying);
+    };
+  }, []);
 
   // Botones de la notificación de la APK, auriculares y Bluetooth.
   useEffect(() => {
@@ -689,9 +705,12 @@ export function useAudioPlayer() {
           else if (state.repeatMode === 'all') nextT = queue[0];
         }
 
-        // 30s Predictive CDN Upload Pass
+        // Predictive CDN Upload Pass. En la APK o en segundo plano se adelanta a
+        // 120 s: si la siguiente no está en el CDN, resolverla con la app oculta
+        // (timers estrangulados) dejaba la música parada hasta abrir la app.
         const remainingSec = audio.duration - audio.currentTime;
-        if (remainingSec > 0 && remainingSec <= 30 && nextT) {
+        const cdnLeadSec = (isInsideAndroidApp() || document.hidden) ? 120 : 30;
+        if (remainingSec > 0 && remainingSec <= cdnLeadSec && nextT) {
           if (cdnPreloadTriggered.current !== nextT.id) {
             cdnPreloadTriggered.current = nextT.id;
             logToServer('INFO', `[useAudioPlayer] 🚀 30s before end — triggering predictive CDN pre-upload for next track: ${nextT.title} (${nextT.id})`);
@@ -851,6 +870,10 @@ export function useAudioPlayer() {
         // on what was the active audio at that moment. This must NOT set isPlaying=false
         // because the new track is about to start playing.
         if (isLoadingNewTrackRef.current) return;
+        // Al terminar una canción el navegador también emite "pause": no es una
+        // pausa del usuario. Marcarla como tal paraba la APK en segundo plano
+        // (congelaba el WebView) mientras se resolvía la siguiente.
+        if (audioEl.ended) return;
         // Modo mando: esta pausa es el silenciado al conectarse; isPlaying
         // refleja al principal y no debe tocarse aquí.
         if (usePlayerStore.getState().remoteDeviceId) return;

@@ -31,6 +31,7 @@ export interface Notification {
   senderName?: string;
   status?: string;
   userId?: string;
+  payload?: any;
 }
 
 // ── Follow CRUD ───────────────────────────────────────────────────────────────
@@ -141,6 +142,7 @@ export async function getNotifications(userId?: string, limit = 30): Promise<Not
     senderName: row.sender_name,
     status: row.status,
     userId: row.user_id,
+    payload: row.payload ?? null,
   }));
 }
 

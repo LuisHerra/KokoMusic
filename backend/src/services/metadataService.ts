@@ -18,6 +18,8 @@ import {
   type TrackRow,
 } from './supabaseService';
 import { searchYoutubeVideos } from './ytResolverService';
+import { setSearchCache } from './searchCacheService';
+import { itunesCoolingDown, noteItunesStatus, takeBackgroundItunesSlot } from './itunesGate';
 import { metrics } from './metricsService';
 
 const ITUNES_BASE = 'https://itunes.apple.com';
@@ -227,10 +229,15 @@ export async function enrichTrackWithExternalAPIs(track: TrackMetadata, allowNet
   const cached = cache.get(cacheKey);
   if (cached) return { ...track, ...JSON.parse(cached) };
 
+  const fallback = { title: cleanTitle, artist: cleanArtist, genre: track.genre || 'Urbano / Pop' };
+
   try {
-    if (!allowNetwork) throw new Error('skip');
+    // Consulta secundaria: solo si hay cupo y iTunes no nos está limitando
+    // (ver itunesGate.ts). Sin cupo se devuelve el título/artista limpiados.
+    if (!allowNetwork || !takeBackgroundItunesSlot()) throw new Error('skip');
     const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(cleanArtist + ' ' + cleanTitle)}&media=music&entity=musicTrack&limit=1`;
     const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    noteItunesStatus(res.status);
     if (res.ok) {
       const data = await res.json() as any;
       const match = data.results?.[0];
@@ -248,17 +255,15 @@ export async function enrichTrackWithExternalAPIs(track: TrackMetadata, allowNet
         cache.setex(cacheKey, 86400, JSON.stringify(enriched));
         return { ...track, ...enriched };
       }
+      // iTunes respondió pero no tiene la canción: recordarlo 6 h para no
+      // volver a preguntar en cada búsqueda (antes se repetía siempre).
+      cache.setex(cacheKey, 6 * 3600, JSON.stringify(fallback));
     }
   } catch (err) {
     // ignore lookup error
   }
 
-  return {
-    ...track,
-    title: cleanTitle,
-    artist: cleanArtist,
-    genre: track.genre || 'Urbano / Pop',
-  };
+  return { ...track, ...fallback };
 }
 
 /**
@@ -380,6 +385,10 @@ export async function searchTracks(
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
     };
+    // iTunes nos está limitando: ir directo a Deezer (el catch de abajo) en vez
+    // de gastar un intento + reintento que también acabarían en 429.
+    if (itunesCoolingDown()) throw new Error('iTunes en pausa por límite de peticiones');
+
     let res = await fetch(url, { headers: defaultHeaders, signal: AbortSignal.timeout(8000) });
 
     // If rate-limited (429), retry once after a short 350ms backoff
@@ -388,6 +397,7 @@ export async function searchTracks(
       await new Promise(resolve => setTimeout(resolve, 350));
       res = await fetch(url, { headers: defaultHeaders, signal: AbortSignal.timeout(8000) });
     }
+    noteItunesStatus(res.status);
 
     if (!res.ok) throw new Error(`iTunes API error: ${res.status}`);
 
@@ -437,10 +447,20 @@ export async function searchTracks(
         ? query.trim().split(/\s+/).slice(0, Math.ceil(queryTokens.length / 2)).join(' ')
         : null;
       const runTrimmed = !!trimmedQuery && trimmedQuery.toLowerCase() !== query.trim().toLowerCase();
-      const [trimmedResult, ytResult] = await Promise.allSettled([
-        runTrimmed ? fetchItunesRaw(trimmedQuery!, limit) : Promise.resolve([] as TrackMetadata[]),
-        searchYouTube(query, limit),
+      // Límite de tiempo al complemento: antes la búsqueda de catálogo esperaba
+      // a YouTube entero (hasta ~7 s). Si no llega en YT_COMPLEMENT_BUDGET_MS se
+      // responde con iTunes marcando el resultado como parcial; al terminar
+      // YouTube se guarda la lista completa en caché y la app la vuelve a pedir.
+      const ytPromise = searchYouTube(query, limit);
+      const budget = <T,>(p: Promise<T>) =>
+        Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), YT_COMPLEMENT_BUDGET_MS))]);
+      const [trimmedResult, ytRaced] = await Promise.allSettled([
+        runTrimmed ? budget(fetchItunesRaw(trimmedQuery!, limit)).then((r) => r ?? []) : Promise.resolve([] as TrackMetadata[]),
+        budget(ytPromise),
       ]);
+      const ytLate = ytRaced.status === 'fulfilled' && ytRaced.value === null;
+      const ytResult: PromiseSettledResult<TrackMetadata[]> =
+        ytRaced.status === 'rejected' ? ytRaced : { status: 'fulfilled', value: ytRaced.value ?? [] };
 
       if (trimmedResult.status === 'rejected') {
         console.warn('[Metadata] Error en reintento con query recortada:', trimmedResult.reason);
@@ -458,30 +478,23 @@ export async function searchTracks(
 
       try {
         if (ytResult.status === 'rejected') throw ytResult.reason;
-        const ytTracks = ytResult.value;
-        if (ytTracks.length > 0) {
-          const existingFingerprints = new Set(tracks.map(trackFingerprint));
-          for (const yt of ytTracks) {
-            const fp = trackFingerprint(yt);
-            if (!existingFingerprints.has(fp)) {
-              existingFingerprints.add(fp);
-              tracks.push(yt);
-            }
-          }
-
-          // Reordenar por relevancia de coincidencia con los términos de búsqueda
-          if (queryTokens.length > 0) {
-            tracks.sort((a, b) => {
-              const aText = `${a.title} ${a.artist}`.toLowerCase();
-              const bText = `${b.title} ${b.artist}`.toLowerCase();
-              const aMatches = queryTokens.reduce((acc, tok) => acc + (aText.includes(tok) ? 1 : 0), 0);
-              const bMatches = queryTokens.reduce((acc, tok) => acc + (bText.includes(tok) ? 1 : 0), 0);
-              return bMatches - aMatches;
-            });
-          }
-        }
+        mergeYoutubeComplement(tracks, ytResult.value, queryTokens);
       } catch (err) {
         console.warn('[Metadata] Error en fallback YouTube complementario:', err);
+      }
+
+      if (ytLate) {
+        // Respuesta parcial: no se cachea así. Al llegar YouTube se guarda la
+        // lista completa en L1 + L2 y la app la vuelve a pedir.
+        const base = [...tracks];
+        ytPromise.then((ytTracks) => {
+          const complete = mergeYoutubeComplement([...base], ytTracks, queryTokens);
+          cache.setex(cacheKey, 3600, JSON.stringify(complete));
+          setSearchCache('itunes', query.toLowerCase().trim(), complete).catch(() => {});
+        }).catch(() => {});
+        upsertTracks(tracks.map(trackToRow)).catch(() => {});
+        partialSearchResults.add(tracks);
+        return tracks;
       }
     }
 
@@ -515,11 +528,42 @@ export async function searchTracks(
   }
 }
 
+/** Tiempo máximo que una búsqueda de catálogo espera al complemento de YouTube. */
+const YT_COMPLEMENT_BUDGET_MS = 1200;
+
+/** Resultados devueltos sin el complemento de YouTube (llegará a la caché en breve). */
+const partialSearchResults = new WeakSet<TrackMetadata[]>();
+export const isPartialSearch = (tracks: TrackMetadata[]) => partialSearchResults.has(tracks);
+
+/** Añade los resultados de YouTube que no estén ya y reordena por coincidencia con la búsqueda. */
+function mergeYoutubeComplement(tracks: TrackMetadata[], ytTracks: TrackMetadata[], queryTokens: string[]): TrackMetadata[] {
+  if (ytTracks.length === 0) return tracks;
+  const existing = new Set(tracks.map(trackFingerprint));
+  for (const yt of ytTracks) {
+    const fp = trackFingerprint(yt);
+    if (!existing.has(fp)) {
+      existing.add(fp);
+      tracks.push(yt);
+    }
+  }
+  if (queryTokens.length > 0) {
+    tracks.sort((a, b) => {
+      const aText = `${a.title} ${a.artist}`.toLowerCase();
+      const bText = `${b.title} ${b.artist}`.toLowerCase();
+      const aMatches = queryTokens.reduce((acc, tok) => acc + (aText.includes(tok) ? 1 : 0), 0);
+      const bMatches = queryTokens.reduce((acc, tok) => acc + (bText.includes(tok) ? 1 : 0), 0);
+      return bMatches - aMatches;
+    });
+  }
+  return tracks;
+}
+
 /**
  * Búsqueda "cruda" en iTunes, sin fallbacks ni post-procesado — la usa tanto
  * el flujo principal como el reintento con query recortada (ver más abajo).
  */
 async function fetchItunesRaw(term: string, limit: number): Promise<TrackMetadata[]> {
+  if (itunesCoolingDown()) return [];
   const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(term)}&entity=musicTrack&limit=${limit}&media=music`;
   const res = await fetch(url, {
     headers: {
@@ -529,6 +573,7 @@ async function fetchItunesRaw(term: string, limit: number): Promise<TrackMetadat
     },
     signal: AbortSignal.timeout(8000),
   });
+  noteItunesStatus(res.status);
   if (!res.ok) return [];
   const data = (await res.json()) as any;
   const results: any[] = data.results ?? [];
@@ -722,6 +767,8 @@ async function searchLyrics(query: string, limit: number, cacheKey: string): Pro
  * PoToken adjunto — a diferencia del endpoint de player, que sí funciona
  * (ver ytResolverService.searchYoutubeVideos para el detalle).
  */
+const ENRICH_BUDGET_MS = 400;
+
 export async function searchYouTube(query: string, limit: number, cacheKey?: string): Promise<TrackMetadata[]> {
   try {
     const videos = await searchYoutubeVideos(query, limit);
@@ -753,10 +800,31 @@ export async function searchYouTube(query: string, limit: number, cacheKey?: str
     // Cross-resolve YouTube metadata with iTunes & Last.fm to populate real genres, official artist names, release dates and album art
     // Solo los primeros resultados van a iTunes: con limit=50 eran 50 lookups
     // paralelos (rate-limit de iTunes) y la respuesta esperaba al más lento.
-    const ENRICH_NETWORK_MAX = 12;
+    // Los 6 primeros son los que el usuario ve sin hacer scroll; antes eran 12
+    // consultas a iTunes por búsqueda y bastaban para provocar sus 429.
+    const ENRICH_NETWORK_MAX = 6;
+    const enrichPromises = rawTracks.map((t, idx) => enrichTrackWithExternalAPIs(t, idx < ENRICH_NETWORK_MAX));
+
+    // Presupuesto: antes la respuesta esperaba al más lento de los 12 lookups
+    // de iTunes (1-3 s). Ahora se responde con lo que haya llegado en
+    // ENRICH_BUDGET_MS y el resto (título/artista ya limpiados) se completa en
+    // segundo plano, actualizando la caché para la siguiente búsqueda.
+    const deadline = new Promise<null>((r) => setTimeout(() => r(null), ENRICH_BUDGET_MS));
+    const settled = await Promise.all(enrichPromises.map((p) => Promise.race([p, deadline])));
     const enrichedTracks = await Promise.all(
-      rawTracks.map((t, idx) => enrichTrackWithExternalAPIs(t, idx < ENRICH_NETWORK_MAX))
+      settled.map((e, i) => e ?? enrichTrackWithExternalAPIs(rawTracks[i], false))
     );
+    if (settled.some((e) => e === null)) {
+      Promise.all(enrichPromises).then((full) => {
+        const complete = deduplicateTracks(full);
+        cacheTracksById(complete);
+        if (cacheKey && complete.length > 0) {
+          cache.setex(cacheKey, 3600, JSON.stringify(complete));
+          const q = cacheKey.replace(/^search:youtube:/, '');
+          if (q !== cacheKey) setSearchCache('youtube', q, complete).catch(() => {});
+        }
+      }).catch(() => {});
+    }
 
     // Deduplicar DESPUÉS de enriquecer, no antes: dos vídeos de YouTube con
     // título/canal distintos (p. ej. "OTRO FILI (Audio)" de un canal random y

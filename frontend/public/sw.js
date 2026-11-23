@@ -12,6 +12,8 @@ const NEVER_CACHE = [
   '/api/',
   '/stream/',
   'localhost:3001',
+  // Vídeos guardados en el dispositivo: los sirve la APK (LocalVideos.kt)
+  '/__koko_local_video/',
 ];
 
 // ── Install: cachear el shell ─────────────────────────────
@@ -60,7 +62,16 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
-        .catch(() => caches.match(`${base}index.html`))
+        .then((response) => {
+          // Guardar el index.html vigente: el de la instalación apuntaba a los
+          // assets de un build viejo y sin conexión la app no llegaba a pintar.
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(`${base}index.html`, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(`${base}index.html`, { ignoreSearch: true }))
     );
     return;
   }

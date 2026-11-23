@@ -12,7 +12,44 @@ export interface KokoAndroidBridge {
   updatePlayback?(json: string): void;
   /** Icono del lanzador según el acento (uno de los predefinidos). */
   setAppIcon?(accent: string): void;
+  /** Backend y usuario para que la APK publique notificaciones nativas (amigos, avisos). */
+  setNotificationSource?(apiBase: string, userId: string): void;
+  /** Guarda un vídeo en Películas/KokoMusic (solo en el dispositivo). */
+  saveVideoToDevice?(requestId: string, url: string, baseName: string): void;
+  /** JSON con los vídeos guardados: [{id, name, size, durationMs, addedAt}] */
+  listVideos?(): string;
+  deleteVideo?(id: string): boolean;
 }
+
+export interface LocalVideo { id: number; name: string; size: number; durationMs: number; addedAt: number }
+
+/** La APK con soporte de vídeos locales. */
+export const canSaveVideosOnDevice = () => !!window.KokoAndroid?.saveVideoToDevice;
+
+/** Descarga un vídeo al dispositivo (solo APK). Resuelve con el nombre del archivo. */
+export function saveVideoToDevice(url: string, baseName: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const bridge = window.KokoAndroid;
+    if (!bridge?.saveVideoToDevice) return reject(new Error('Solo disponible en la app de Android'));
+    const requestId = `v${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+    const prev = window.__kokoVideoSaved;
+    window.__kokoVideoSaved = (id, ok, message) => {
+      if (id !== requestId) return prev?.(id, ok, message);
+      window.__kokoVideoSaved = prev;
+      ok ? resolve(message) : reject(new Error(message));
+    };
+    bridge.saveVideoToDevice(requestId, url, baseName);
+  });
+}
+
+export function listLocalVideos(): LocalVideo[] {
+  try { return JSON.parse(window.KokoAndroid?.listVideos?.() || '[]'); } catch { return []; }
+}
+
+export const deleteLocalVideo = (id: number) => !!window.KokoAndroid?.deleteVideo?.(String(id));
+
+/** URL que la APK sirve desde el almacenamiento del dispositivo. */
+export const localVideoUrl = (id: number) => `${window.location.origin}/__koko_local_video/${id}`;
 
 declare global {
   interface Window {
@@ -20,7 +57,17 @@ declare global {
     __kokoAudioSaved?: (requestId: string, ok: boolean, message: string) => void;
     /** La APK llama aquí con los botones de la notificación, auriculares o Bluetooth. */
     __kokoMediaAction?: (action: string) => void;
+    /** La APK llama aquí al tocar una notificación social: abre la campana. */
+    __kokoOpenNotifications?: () => void;
+    __kokoVideoSaved?: (requestId: string, ok: boolean, message: string) => void;
   }
+}
+
+/** Indica a la APK a qué backend y usuario preguntar por avisos. Fuera de la APK no hace nada. */
+export function syncAndroidNotificationSource(apiBase: string, userId: string) {
+  try {
+    window.KokoAndroid?.setNotificationSource?.(apiBase, userId);
+  } catch { /* APK antigua sin este método */ }
 }
 
 /**
@@ -38,6 +85,8 @@ export interface AndroidPlaybackState {
   artist: string;
   cover: string | null;
   isPlaying: boolean;
+  /** Resolviendo/cargando la siguiente canción: la APK no debe congelarse. */
+  isLoading?: boolean;
   positionS: number;
   durationS: number;
 }

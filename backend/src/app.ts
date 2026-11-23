@@ -35,6 +35,7 @@ import voiceRouter from './routes/voice';
 import { supabase, supabaseKeyRole } from './services/supabaseService';
 import playbackRouter from './routes/playback';
 import pushRouter from './routes/push';
+import socialRouter, { startCapsuleDelivery } from './routes/social';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -170,6 +171,7 @@ app.use('/api/shazam', shazamRouter);
 app.use('/api/eureka', shazamRouter);
 app.use('/api/playback', playbackRouter);
 app.use('/api/push', pushRouter);
+app.use('/api/social', socialRouter);
 app.use('/api/voice', voiceRouter);
 
 // ── Remote logging from frontend for mobile debugging ──────────────────────────
@@ -188,6 +190,7 @@ app.use((_req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 // ── Background Services ──────────────────────────────────────────────────────
 startReleaseChecker();
+startCapsuleDelivery();
 startBackgroundJobs(); // Starts charts pre-fetcher + recommendation pipeline scheduler
 
 import { checkLiteHealth } from './services/kokoLiteService';

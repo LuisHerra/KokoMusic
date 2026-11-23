@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { searchTracks, getTrackById, searchYouTube, type SearchSource, type TrackMetadata } from '../services/metadataService';
+import { itunesCoolingDown, noteItunesStatus } from '../services/itunesGate';
+import { searchTracks, getTrackById, searchYouTube, isPartialSearch, type SearchSource, type TrackMetadata } from '../services/metadataService';
 import { getHistoryForUser, type HistoryEntry } from '../services/historyService';
 import { boostSearchResults, splitArtistNames, tokenizeQuery } from '../services/trendingService';
 import { hashStringToInteger } from '../services/artistService';
@@ -153,8 +154,11 @@ async function inferArtistFromSearch(query: string, tracks: any[]): Promise<Infe
   // C) Verificar con iTunes entity=musicArtist para imagen en HD e ID oficial
   let result: InferredArtist | null = null;
   try {
+    // Con iTunes limitándonos (429) no se pregunta: se usa el candidato local.
+    if (itunesCoolingDown()) throw new Error('iTunes en pausa');
     const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=musicArtist&limit=4`;
     const itunesRes = await fetch(itunesUrl, { signal: AbortSignal.timeout(2500) });
+    noteItunesStatus(itunesRes.status);
     if (itunesRes.ok) {
       const itunesData = (await itunesRes.json()) as any;
       const artists = (itunesData.results || []).filter((r: any) => r.wrapperType === 'artist' && r.artistId);
@@ -487,7 +491,10 @@ router.get('/', async (req: Request, res: Response) => {
     // caído) más que "esta query no tiene resultados de verdad" — cachearlo
     // igual que un hit real dejaba la búsqueda envenenada durante todo el TTL
     // (6h en Supabase) aunque el problema de fondo ya estuviera resuelto.
-    if (rawTracks.length > 0) {
+    // Parcial (sin el complemento de YouTube): metadataService guardará la
+    // lista completa al llegar; cachear esta la dejaría incompleta todo el TTL.
+    const partial = isPartialSearch(rawTracks);
+    if (rawTracks.length > 0 && !partial) {
       cache.setex(l1Key, L1_TTL[searchSource], JSON.stringify({ tracks: rawTracks, artist: inferredArtist }));
       setSearchCache(searchSource, normalizedQ, rawTracks).catch(() => {});
     }
@@ -496,7 +503,7 @@ router.get('/', async (req: Request, res: Response) => {
     // que el play sea casi instantáneo en el caso común (no bloquea la respuesta).
     prewarmTopTracks(tracks);
 
-    return res.json({ tracks, artist: inferredArtist, source: searchSource });
+    return res.json({ tracks, artist: inferredArtist, source: searchSource, ...(partial ? { partial: true } : {}) });
   } catch (err) {
     console.error('[Search] Error:', err);
     return res.status(500).json({ error: 'Error al buscar' });

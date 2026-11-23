@@ -14,6 +14,7 @@ class KokoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        SocialNotifier.createChannel(this)
     }
 
     private fun createNotificationChannel() {

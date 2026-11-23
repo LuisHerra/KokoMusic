@@ -51,4 +51,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     // MediaSession + notificación multimedia (pantalla de bloqueo, auriculares, Bluetooth)
     implementation("androidx.media:media:1.7.0")
+    // Sondeo de avisos sociales con la app cerrada (SocialNotifier)
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }

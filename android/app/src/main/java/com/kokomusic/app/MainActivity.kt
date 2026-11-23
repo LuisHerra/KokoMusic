@@ -6,6 +6,8 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -21,6 +23,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.kokomusic.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -41,6 +46,10 @@ class MainActivity : AppCompatActivity() {
         // Acentos con icono propio (activity-alias .Icon<Acento> del manifiesto)
         private val ICON_ACCENTS = listOf("green", "cyan", "magenta", "purple", "amber", "crimson", "gold")
         private const val DEFAULT_ICON_ACCENT = "green"
+        const val EXTRA_OPEN_NOTIFICATIONS = "open_notifications"
+        private const val SOCIAL_POLL_MS = 30_000L
+        /** Margen antes de congelar el WebView tras una pausa en segundo plano. */
+        private const val IDLE_PAUSE_GRACE_MS = 20_000L
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -49,6 +58,8 @@ class MainActivity : AppCompatActivity() {
     private var webViewPaused = false
     /** Icono pedido por la web; se aplica al salir de la app (ver applyPendingAppIcon). */
     @Volatile private var pendingIconAccent: String? = null
+    /** Sondeo de avisos sociales mientras la app está en segundo plano (ver SocialNotifier). */
+    private var socialPollJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +80,38 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnRetry.setOnClickListener { loadApp() }
         loadApp()
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Al tocar una notificación social se abre la campana. */
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_NOTIFICATIONS, false) != true) return
+        intent.removeExtra(EXTRA_OPEN_NOTIFICATIONS)
+        binding.webView.postDelayed({
+            binding.webView.evaluateJavascript("window.__kokoOpenNotifications && window.__kokoOpenNotifications()", null)
+        }, 600)
+    }
+
+    private fun startSocialPolling() {
+        if (socialPollJob?.isActive == true) return
+        socialPollJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(SOCIAL_POLL_MS)
+                SocialNotifier.poll(applicationContext, notify = true)
+            }
+        }
+    }
+
+    private fun stopSocialPolling() {
+        socialPollJob?.cancel()
+        socialPollJob = null
+        // En primer plano los avisos ya se ven en la campana: se marcan como vistos
+        lifecycleScope.launch(Dispatchers.IO) { SocialNotifier.poll(applicationContext, notify = false) }
     }
 
     private fun loadApp() {
@@ -76,7 +119,24 @@ class MainActivity : AppCompatActivity() {
         binding.progressBar.visibility = View.VISIBLE
         binding.tvStatus.text = getString(R.string.loading_desc)
         binding.loadingLayout.visibility = View.VISIBLE
+        triedOfflineCache = false
+        // Sin red se carga la app guardada (service worker + caché HTTP) para
+        // poder escuchar las canciones descargadas.
+        binding.webView.settings.cacheMode =
+            if (isOnline()) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_CACHE_ELSE_NETWORK
         binding.webView.loadUrl(APP_URL)
+    }
+
+    private var triedOfflineCache = false
+
+    private fun isOnline(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
+        @Suppress("DEPRECATION")
+        return cm.activeNetworkInfo?.isConnected == true
     }
 
     private fun checkPermissions() {
@@ -113,6 +173,15 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(KokoBridge(), "KokoAndroid")
 
             webViewClient = object : WebViewClient() {
+                // Vídeos guardados en el dispositivo (pestaña "Mis vídeos")
+                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                    val url = request?.url ?: return null
+                    if (url.host != APP_HOST || url.path?.startsWith(LocalVideos.LOCAL_PREFIX) != true) return null
+                    val id = url.lastPathSegment?.toLongOrNull() ?: return null
+                    val range = request.requestHeaders?.entries?.firstOrNull { it.key.equals("Range", true) }?.value
+                    return LocalVideos.response(applicationContext, id, range)
+                }
+
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val uri = request?.url ?: return false
                     // mailto:, tel:, intent:… a la app del sistema que toque.
@@ -125,6 +194,8 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    // Cargada la app (de red o de caché), las peticiones siguientes van a la red
+                    binding.webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
                     if (binding.btnRetry.visibility == View.VISIBLE) return
                     binding.loadingLayout.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
@@ -133,6 +204,13 @@ class MainActivity : AppCompatActivity() {
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                     Log.e("WebView", "Error cargando ${request?.url}: ${error?.description}")
                     if (request?.isForMainFrame != true) return
+                    // Primer fallo sin conexión: reintentar con la copia en caché
+                    if (!triedOfflineCache) {
+                        triedOfflineCache = true
+                        binding.webView.settings.cacheMode = WebSettings.LOAD_CACHE_ONLY
+                        binding.webView.loadUrl(APP_URL)
+                        return
+                    }
                     binding.webView.visibility = View.GONE
                     binding.loadingLayout.visibility = View.VISIBLE
                     binding.progressBar.visibility = View.GONE
@@ -166,6 +244,10 @@ class MainActivity : AppCompatActivity() {
         webViewPaused = true
     }
 
+    private val pauseIfStillIdle = Runnable {
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) pauseWebViewIfIdle()
+    }
+
     private fun resumeWebView() {
         if (!webViewPaused) return
         binding.webView.resumeTimers()
@@ -176,12 +258,14 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         resumeWebView()
+        stopSocialPolling()
     }
 
     override fun onStop() {
         super.onStop()
         applyPendingAppIcon()
         pauseWebViewIfIdle()
+        startSocialPolling()
     }
 
     /**
@@ -222,15 +306,47 @@ class MainActivity : AppCompatActivity() {
                         isPlaying = it.optBoolean("isPlaying"),
                         positionMs = (it.optDouble("positionS", 0.0) * 1000).toLong(),
                         durationMs = (it.optDouble("durationS", 0.0) * 1000).toLong(),
+                        isLoading = it.optBoolean("isLoading"),
                     )
                 }
             }.getOrNull()
-            isPlaying = state?.isPlaying == true
+            isPlaying = state?.isBusy == true
             PlaybackService.update(applicationContext, state)
-            // Se ha parado con la app ya en segundo plano (p. ej. desde la notificación)
-            if (!isPlaying) runOnUiThread {
-                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) pauseWebViewIfIdle()
+            // Se ha parado con la app ya en segundo plano (p. ej. desde la notificación).
+            // Con margen: entre canción y canción hay pausas breves que no deben
+            // congelar el WebView mientras resuelve la siguiente.
+            runOnUiThread {
+                binding.webView.removeCallbacks(pauseIfStillIdle)
+                if (!isPlaying) binding.webView.postDelayed(pauseIfStillIdle, IDLE_PAUSE_GRACE_MS)
             }
+        }
+
+        @JavascriptInterface
+        fun saveVideoToDevice(requestId: String, url: String, baseName: String) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val result = runCatching { LocalVideos.download(applicationContext, url, baseName) }
+                result.exceptionOrNull()?.let { Log.e("VideoExport", "No se pudo guardar $url", it) }
+                val message = result.getOrElse { it.message ?: "No se pudo guardar el vídeo" }
+                withContext(Dispatchers.Main) {
+                    binding.webView.evaluateJavascript(
+                        "window.__kokoVideoSaved && window.__kokoVideoSaved(" +
+                            "${JSONObject.quote(requestId)}, ${result.isSuccess}, ${JSONObject.quote(message)})",
+                        null
+                    )
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun listVideos(): String = runCatching { LocalVideos.list(applicationContext) }.getOrDefault("[]")
+
+        @JavascriptInterface
+        fun deleteVideo(id: String): Boolean = id.toLongOrNull()?.let { LocalVideos.delete(applicationContext, it) } ?: false
+
+        /** Backend y usuario para las notificaciones nativas de amigos y avisos. */
+        @JavascriptInterface
+        fun setNotificationSource(apiBase: String, userId: String) {
+            SocialNotifier.configure(applicationContext, apiBase, userId)
         }
 
         @JavascriptInterface

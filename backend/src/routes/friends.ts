@@ -805,6 +805,36 @@ router.post('/messages', async (req, res) => {
 
   if (error) return err(res, error.message);
   res.json({ message });
+
+  // Aviso en la campana + push (web) / notificación nativa (APK). Antes los
+  // mensajes no generaban ningún aviso y el amigo no se enteraba.
+  try {
+    const { data: me } = await supabase!
+      .schema('kokomusic')
+      .from('koko_profiles')
+      .select('username, display_name, avatar_url')
+      .eq('id', senderId)
+      .maybeSingle();
+    const senderName = me?.display_name || me?.username || 'Un amigo';
+    const preview = content.trim().slice(0, 140);
+    await supabase!.schema('kokomusic').from('notifications').insert({
+      type: 'message',
+      user_id: receiverId,
+      sender_name: senderName,
+      message: preview,
+      cover_url: me?.avatar_url || null,
+      is_read: false,
+    });
+    sendPushToUser(receiverId, {
+      title: senderName,
+      body: preview,
+      icon: me?.avatar_url || undefined,
+      url: 'friends',
+      tag: `msg-${senderId}`,
+    });
+  } catch (e) {
+    console.error('[Friends] Aviso de mensaje falló:', e);
+  }
 });
 
 // ── GET /api/friends/profile/:userId/artists ──────────────────────────────────

@@ -169,7 +169,29 @@ const MAX_ALTERNATES = 3;
  * puntual (vía perfil de artista) sí funcionaba al pasar primero por aquí.
  */
 const YTS_TIMEOUT_MS = 8000;
-const YTS_HEDGE_AFTER_MS = 3500;
+
+// Antes se esperaba SIEMPRE 3,5 s a yt-search antes de probar KokoMusic-lite.
+// Desde Render yt-search suele ir lento o fallar, así que casi toda búsqueda
+// de YouTube pagaba esos 3,5 s. Ahora la espera se adapta a cómo le va a
+// yt-search: si viene respondiendo rápido se le da un margen corto (sale más
+// barato: lite es otro servicio con su propio límite); si viene lento o
+// fallando, ambos salen a la vez y gana el primero con resultados.
+let ytsLatencyEwma: number | null = null;
+let ytsRecentFailures = 0;
+
+function noteYtsOutcome(ok: boolean, ms: number) {
+  if (ok) {
+    ytsLatencyEwma = ytsLatencyEwma === null ? ms : ytsLatencyEwma * 0.7 + ms * 0.3;
+    ytsRecentFailures = Math.max(0, ytsRecentFailures - 1);
+  } else {
+    ytsRecentFailures = Math.min(5, ytsRecentFailures + 1);
+  }
+}
+
+function ytsHedgeDelayMs(): number {
+  if (ytsRecentFailures >= 2 || ytsLatencyEwma === null || ytsLatencyEwma > 2500) return 0;
+  return Math.min(1500, Math.round(ytsLatencyEwma * 1.3));
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -214,30 +236,38 @@ async function searchYoutubeVideosRaw(query: string, limit: number): Promise<any
   const viaYts: Promise<any[]> = isYtSearchDisabled()
     ? Promise.resolve([])
     : (async () => {
+        const startedAt = Date.now();
         try {
           rotateYtProxy();
           const result = await withTimeout(yts(query), YTS_TIMEOUT_MS);
           recordYtSearchSuccess();
+          noteYtsOutcome(result.videos.length > 0, Date.now() - startedAt);
           return result.videos.slice(0, limit);
         } catch {
           recordYtSearchFailure();
+          noteYtsOutcome(false, Date.now() - startedAt);
           return [];
         }
       })();
 
-  const early = await Promise.race([viaYts, new Promise<null>((r) => setTimeout(() => r(null), YTS_HEDGE_AFTER_MS))]);
-  if (early && early.length > 0) return early;
-
   // Filtrar dentro de la carrera: unos resultados de lite sin id no deben
   // ganarle a un yt-search más lento pero bueno.
   const viaLite = () => searchLite(query).then(withVideoId).catch(() => []);
+
+  const hedgeMs = isYtSearchDisabled() ? 0 : ytsHedgeDelayMs();
+  if (hedgeMs === 0) {
+    return firstNonEmpty([viaYts.then(withVideoId), viaLite()]);
+  }
+
+  const early = await Promise.race([viaYts, new Promise<null>((r) => setTimeout(() => r(null), hedgeMs))]);
+  if (early && early.length > 0) return early;
 
   if (early !== null) {
     console.log(`[YTResolver] yt-search vacío — buscando via KokoMusic-lite: "${query}"`);
     return viaLite();
   }
 
-  console.log(`[YTResolver] yt-search lento — lanzando KokoMusic-lite en paralelo: "${query}"`);
+  console.log(`[YTResolver] yt-search tarda más de ${hedgeMs} ms — lanzando KokoMusic-lite en paralelo: "${query}"`);
   return firstNonEmpty([viaYts.then(withVideoId), viaLite()]);
 }
 

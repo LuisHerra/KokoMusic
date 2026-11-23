@@ -42,6 +42,9 @@ import SpotifyImportModal from './components/Import/SpotifyImportModal';
 import { usePrecacheStore } from './store/precacheStore';
 import AuthModal from './components/Auth/AuthModal';
 import GuestHome from './pages/GuestHome';
+import TimeCapsules from './pages/TimeCapsules';
+import LocalVideos from './pages/LocalVideos';
+import SongDropOverlay from './components/SongDropOverlay';
 import { isGuestMode, enterGuestMode, exitGuestMode, loadGuestPlayableIds } from './lib/guest';
 import GuidedTour from './components/GuidedTour';
 import { useThemeStore } from './store/themeStore';
@@ -95,7 +98,8 @@ function DeviceSyncEngine() {
 // Polls backend for new-release notifications
 function NotificationPoller() {
   useNotifications();
-  return null;
+  // Canciones "en vivo" que envían los amigos
+  return <SongDropOverlay />;
 }
 
 function GlobalSearch({ onFocusChange }: { onFocusChange?: (focused: boolean) => void }) {
@@ -251,6 +255,19 @@ function AppShell() {
   });
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Sin conexión: directo a las canciones descargadas, lo único que funciona
+  // sin red (al abrir la app offline o al perder la conexión en Inicio).
+  useEffect(() => {
+    const goOffline = () => {
+      if (!navigator.onLine && window.location.pathname.replace(import.meta.env.BASE_URL, '/').replace(/\/+$/, '') === '') {
+        navigate('/playlist/local-downloads', { replace: true });
+      }
+    };
+    goOffline();
+    window.addEventListener('offline', goOffline);
+    return () => window.removeEventListener('offline', goOffline);
+  }, [navigate]);
 
   const joinJamCode = searchParams.get('join_jam');
   const [hasAutoJoined, setHasAutoJoined] = useState(false);
@@ -595,6 +612,8 @@ function AppShell() {
             <Route path="/artist-studio" element={<ArtistStudio />} />
             <Route path="/events" element={<Events />} />
             <Route path="/stats" element={<Stats />} />
+            <Route path="/capsules" element={<TimeCapsules />} />
+            <Route path="/videos" element={<LocalVideos />} />
             <Route path="/dj" element={<DjMode />} />
             <Route path="/karaoke" element={<KaraokeStudioPage />} />
           </Routes>

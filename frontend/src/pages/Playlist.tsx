@@ -1069,6 +1069,9 @@ export default function Playlist() {
   const { data: pl, isLoading, error } = useQuery({
     queryKey: [isCollabRoute ? 'collabPlaylist' : 'playlist', id],
     enabled: !!id,
+    // Las descargas salen de IndexedDB: deben cargar también sin conexión
+    // (por defecto react-query pausa las consultas offline).
+    networkMode: id === 'local-downloads' ? 'always' : 'online',
     queryFn: async (): Promise<any> => {
       if (id === 'local-downloads') {
         const offlineTracks = await getAllOfflineTracks();
@@ -1239,7 +1242,9 @@ export default function Playlist() {
           if (res.ok) {
             const data = await res.json();
             
-            if (data.ambiguous && !autoAcceptUpgrade) {
+            // En "Tus me gusta" nunca se acepta a ciegas una coincidencia dudosa:
+            // cambiaba o hacía desaparecer canciones que el usuario había marcado.
+            if (data.ambiguous && (!autoAcceptUpgrade || id === 'liked-songs')) {
               // Ambiguo: preguntar al usuario
               const chosenId = await new Promise<string | null>((resolve) => {
                 setUpgradeDisambiguation({

@@ -35,6 +35,8 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           VITE_API_URL_FALLBACK: ${{ secrets.VITE_API_URL_FALLBACK }}
+          # Túnel de Cloudflare al backend de casa (preferido si responde). Vacío = sin túnel.
+          VITE_TUNNEL_URL: ${{ secrets.VITE_TUNNEL_URL }}
           VITE_TICKETMASTER_KEY: ${{ secrets.VITE_TICKETMASTER_KEY }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}

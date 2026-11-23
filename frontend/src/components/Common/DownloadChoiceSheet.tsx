@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { canSaveVideosOnDevice } from '../../lib/androidApp';
 
 /**
  * Pregunta dónde guardar una canción:
@@ -13,6 +14,7 @@ export default function DownloadChoiceSheet({
   internalSaved,
   onInternal,
   onExternal,
+  onVideo,
 }: {
   open: boolean;
   onClose: () => void;
@@ -21,6 +23,8 @@ export default function DownloadChoiceSheet({
   internalSaved: boolean;
   onInternal: () => void;
   onExternal: () => void;
+  /** Guardar el vídeo musical en el dispositivo (solo se muestra en la APK). */
+  onVideo?: () => void;
 }) {
   if (!open) return null;
 
@@ -75,6 +79,19 @@ export default function DownloadChoiceSheet({
               <small>Descarga el archivo de audio para tenerlo fuera de la app</small>
             </span>
           </button>
+
+          {onVideo && canSaveVideosOnDevice() && (
+            <button className="track-action-sheet-btn download-choice-option" onClick={pick(onVideo)}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="5" width="15" height="14" rx="2" />
+                <path d="m17 10 5-3v10l-5-3" />
+              </svg>
+              <span className="download-choice-text">
+                <strong>Vídeo en mi dispositivo</strong>
+                <small>Guarda el videoclip en el móvil y míralo en “Mis vídeos”</small>
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </div>,

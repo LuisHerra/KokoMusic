@@ -65,7 +65,54 @@ async function loadUserPlaylists(userId: string): Promise<void> {
     if (pl.userId === userId && !keys.has(key)) playlists.delete(key);
   }
   for (const row of rows) playlists.set(row.key, row.data);
+  await healLikedSongs(userId);
   loadedAt.set(userId, startedAt);
+}
+
+// ── Registro de likes (kokomusic.user_like_events) ────────────────────────────
+// La playlist se guarda como un JSON entero; si dos procesos (o un emparejado
+// erróneo) la pisan, un like se perdía sin dejar rastro. Cada like/unlike se
+// apunta aquí (solo se inserta, nunca se sobrescribe) y al cargar las playlists
+// se reponen los likes cuyo último evento es "like" y faltan en la lista.
+// Si la tabla no existe todavía (migración add_like_events.sql) se ignora.
+type LikeAction = 'like' | 'unlike';
+let likeEventsAvailable = true;
+
+async function logLikeEvents(userId: string, events: { trackId: string; action: LikeAction }[]): Promise<void> {
+  if (!supabase || !likeEventsAvailable || !events.length || !userId || userId === 'default') return;
+  const now = Date.now();
+  const { error } = await supabase.schema('kokomusic').from('user_like_events').insert(
+    // Milisegundos distintos para conservar el orden dentro del mismo lote
+    events.map((e, i) => ({ user_id: userId, track_id: e.trackId, action: e.action, created_at: new Date(now + i).toISOString() })),
+  );
+  if (error) {
+    if (/does not exist|relation|schema cache/i.test(error.message)) likeEventsAvailable = false;
+    console.warn('[Playlists] No se pudo registrar el like:', error.message);
+  }
+}
+
+/** Repone en "Tus me gusta" los likes vigentes según el registro. */
+async function healLikedSongs(userId: string): Promise<void> {
+  if (!supabase || !likeEventsAvailable) return;
+  const { data, error } = await supabase.schema('kokomusic').from('user_like_events')
+    .select('track_id, action, created_at').eq('user_id', userId).order('created_at', { ascending: true }).limit(10000);
+  if (error) {
+    if (/does not exist|relation|schema cache/i.test(error.message)) likeEventsAvailable = false;
+    return;
+  }
+  const last = new Map<string, { action: LikeAction; at: string }>();
+  for (const r of (data ?? []) as { track_id: string; action: LikeAction; created_at: string }[]) {
+    last.set(r.track_id, { action: r.action, at: r.created_at });
+  }
+  const pl = getOrCreatePlaylist('liked-songs', userId);
+  if (!pl) return;
+  const have = new Set(pl.tracks.map((t) => t.trackId));
+  const missing = [...last.entries()].filter(([id, v]) => v.action === 'like' && !have.has(id));
+  if (!missing.length) return;
+  for (const [trackId, v] of missing) pl.tracks.push({ trackId, position: pl.tracks.length, addedAt: v.at });
+  pl.updatedAt = new Date().toISOString();
+  console.warn(`[Playlists] Repuestos ${missing.length} me gusta perdidos de ${userId}`);
+  await persistPlaylist(pl);
 }
 
 /**
@@ -118,6 +165,11 @@ function withUserPlaylists(handler: Handler) {
   return async (req: Request, res: Response) => {
     const userId = (req.headers['x-user-id'] || 'default') as string;
     const isWrite = req.method !== 'GET';
+    // Sin usuario, los cambios iban a una cuenta compartida "default" y el
+    // usuario creía haber dado like a algo que luego no veía.
+    if (isWrite && userId === 'default') {
+      return res.status(401).json({ error: 'Inicia sesión para guardar tus playlists' });
+    }
     try {
       await withUserLock(userId, async () => {
         await ensureUserPlaylistsLoaded(userId, isWrite ? 0 : READ_MAX_AGE_MS);
@@ -183,6 +235,7 @@ export function addTracksToLikedSongs(userId: string, trackIds: string[]): Promi
     }
     pl.updatedAt = new Date().toISOString();
     await persistPlaylist(pl);
+    await logLikeEvents(userId, trackIds.filter(Boolean).map((trackId) => ({ trackId: String(trackId), action: 'like' as const })));
   });
 }
 
@@ -277,6 +330,7 @@ router.post('/:id/tracks', withUserPlaylists(async (req, res, userId) => {
   pl.tracks.push({ trackId, position: pl.tracks.length, addedAt: new Date().toISOString() });
   pl.updatedAt = new Date().toISOString();
   await persistPlaylist(pl);
+  if (pl.id === 'liked-songs') await logLikeEvents(userId, [{ trackId, action: 'like' }]);
   res.json(pl);
 }));
 
@@ -289,6 +343,7 @@ router.delete('/:id/tracks/:trackId', withUserPlaylists(async (req, res, userId)
   pl.tracks.forEach((t, i) => (t.position = i)); // reindexar
   pl.updatedAt = new Date().toISOString();
   await persistPlaylist(pl);
+  if (pl.id === 'liked-songs') await logLikeEvents(userId, [{ trackId: req.params.trackId, action: 'unlike' }]);
   res.json(pl);
 }));
 
@@ -301,16 +356,16 @@ router.put('/:id/tracks/:oldId', withUserPlaylists(async (req, res, userId) => {
   if (!newId) return res.status(400).json({ error: 'newId requerido' });
 
   const track = pl.tracks.find((t) => t.trackId === req.params.oldId);
-  if (track) {
-    if (pl.tracks.some((t) => t.trackId === newId)) {
-      // Ya estaba la versión nueva: quitar la vieja en vez de duplicar.
-      pl.tracks = pl.tracks.filter((t) => t !== track);
-      pl.tracks.forEach((t, i) => (t.position = i));
-    } else {
-      track.trackId = newId;
-    }
+  // Si la versión "nueva" ya está en la lista NO se borra la vieja: el
+  // emparejado automático a veces asigna el mismo id a dos canciones distintas
+  // y así desaparecían canciones de "Tus me gusta". Mejor un duplicado que perderla.
+  if (track && !pl.tracks.some((t) => t.trackId === newId)) {
+    track.trackId = newId;
     pl.updatedAt = new Date().toISOString();
     await persistPlaylist(pl);
+    if (pl.id === 'liked-songs') {
+      void logLikeEvents(userId, [{ trackId: req.params.oldId, action: 'unlike' }, { trackId: newId, action: 'like' }]);
+    }
   }
   res.json(pl);
 }));

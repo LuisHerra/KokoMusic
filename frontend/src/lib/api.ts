@@ -103,7 +103,7 @@ export interface InferredArtist {
 
 // ── Search ────────────────────────────────────────────────────────────────────
 export const searchTracks = (q: string, limit = 20, source: 'itunes' | 'youtube' | 'lyrics' = 'itunes', signal?: AbortSignal) =>
-  apiFetch<{ tracks: Track[]; source: string; artist?: InferredArtist | null }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`, { signal });
+  apiFetch<{ tracks: Track[]; source: string; artist?: InferredArtist | null; partial?: boolean }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}&source=${source}`, { signal });
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 export const getTrack = async (id: string) => {
@@ -1139,3 +1139,41 @@ export const saveCollabTransition = (code: string, userId: string, key: string, 
     method: 'PUT',
     body: JSON.stringify({ userId, key, rule }),
   });
+
+// ── Social: canción en vivo, cápsulas del tiempo, emblemas (/api/social) ─────
+
+export interface SharedTrack { id: string; title: string; artist: string; cover?: string | null }
+
+export const sendSongDrop = (receiverId: string, track: SharedTrack, note?: string) =>
+  apiFetch<{ ok: boolean }>('/social/song-drop', { method: 'POST', body: JSON.stringify({ receiverId, track, note }) });
+
+export const getSocialSettings = () => apiFetch<{ allowSongDrops: boolean }>('/social/settings');
+
+export const updateSocialSettings = (allowSongDrops: boolean) =>
+  apiFetch<{ allowSongDrops: boolean }>('/social/settings', { method: 'PATCH', body: JSON.stringify({ allowSongDrops }) });
+
+export interface TimeCapsule {
+  id: string;
+  ownerId: string;
+  ownerName: string | null;
+  ownerAvatar: string | null;
+  recipientIds: string[];
+  message: string | null;
+  openAt: string;
+  createdAt: string;
+  isOpen: boolean;
+  trackCount: number;
+  tracks: SharedTrack[];
+}
+
+export const getTimeCapsules = () => apiFetch<{ sent: TimeCapsule[]; received: TimeCapsule[] }>('/social/capsules');
+
+export const createTimeCapsule = (body: { tracks: SharedTrack[]; message?: string; openAt: string; recipientIds?: string[] }) =>
+  apiFetch<{ capsule: unknown }>('/social/capsules', { method: 'POST', body: JSON.stringify(body) });
+
+export const deleteTimeCapsule = (id: string) => apiFetch<{ ok: boolean }>(`/social/capsules/${id}`, { method: 'DELETE' });
+
+export interface ProfileBadge { id: string; icon: string; label: string; description: string; tier: 'bronze' | 'silver' | 'gold' }
+
+export const getProfileBadges = (userId: string) =>
+  apiFetch<{ badges: ProfileBadge[] }>(`/social/badges/${encodeURIComponent(userId)}`);

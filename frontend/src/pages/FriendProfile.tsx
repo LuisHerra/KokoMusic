@@ -1,4 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
+import ProfileBadges from '../components/ProfileBadges';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getFriendProfile, getFriendArtists, getFriendshipStatus, sendFriendRequest, removeFriend, getProfileNames, cleanName, resolveImageUrl } from '../lib/api';
 
@@ -75,6 +76,7 @@ export default function FriendProfile() {
           <h1 style={{ margin: '0 0 4px', fontSize: 28, fontWeight: 800 }}>{names.primary}</h1>
           {names.secondary && <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 8 }}>{names.secondary}</div>}
           {profile.bio && <p style={{ color: 'var(--text-secondary)', fontSize: 14, margin: '0 0 12px', lineHeight: 1.5 }}>{profile.bio}</p>}
+          {targetId && <ProfileBadges userId={targetId} />}
           <div style={{ display: 'flex', gap: 20 }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontWeight: 800, fontSize: 22, color: 'var(--accent)' }}>{artists.length}</div>

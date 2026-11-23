@@ -44,7 +44,11 @@ class PlaybackService : Service() {
         val isPlaying: Boolean,
         val positionMs: Long,
         val durationMs: Long,
-    )
+        /** La web resuelve/carga la siguiente canción: hay que seguir en foreground. */
+        val isLoading: Boolean = false,
+    ) {
+        val isBusy get() = isPlaying || isLoading
+    }
 
     companion object {
         private const val TAG = "PlaybackService"
@@ -66,11 +70,11 @@ class PlaybackService : Service() {
                 return
             }
             // Arrancarlo en pausa no aporta nada (y desde segundo plano Android no lo permite).
-            if (!running && !state.isPlaying) return
+            if (!running && !state.isBusy) return
             pending = state
             val intent = Intent(context, PlaybackService::class.java).setAction(ACTION_UPDATE)
             try {
-                if (state.isPlaying) ContextCompat.startForegroundService(context, intent)
+                if (state.isBusy) ContextCompat.startForegroundService(context, intent)
                 else context.startService(intent)
             } catch (e: Exception) {
                 Log.w(TAG, "No se pudo actualizar el servicio de reproducción", e)
@@ -167,7 +171,9 @@ class PlaybackService : Service() {
 
         val notification = buildNotification(newState)
         handler.removeCallbacks(stopWhenIdle)
-        if (newState.isPlaying) {
+        if (newState.isBusy) {
+            // También mientras carga la siguiente: sin foreground Android congela
+            // la app y la canción que no está en el CDN nunca terminaba de resolverse.
             startForegroundCompat(notification)
         } else {
             // Deja de ser foreground (Android puede congelar la app) pero la
@@ -198,7 +204,7 @@ class PlaybackService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setSilent(true)
-            .setOngoing(s.isPlaying)
+            .setOngoing(s.isBusy)
             .addAction(android.R.drawable.ic_media_previous, "Anterior",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS))
             .addAction(playPause)
