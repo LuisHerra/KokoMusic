@@ -4,7 +4,7 @@
  * All user identification uses Koko Account UUID (from auth.users / koko_device_id)
  */
 
-import { sendPushToUser } from '../services/pushService';
+import { sendPushToUser, sendPushToUsers } from '../services/pushService';
 import { Router } from 'express';
 import { supabase } from '../services/supabaseService';
 import multer from 'multer';
@@ -1150,6 +1150,36 @@ async function getDailyDropStreak(userId: string): Promise<number> {
   }
 }
 
+/** Aviso en la campana + push a los amigos cuando alguien sube su B-Music. */
+async function notifyFriendsOfDailyDrop(userId: string, title: string, artist: string, cover?: string) {
+  const db = supabase!.schema('kokomusic');
+  const [{ data: rows }, { data: me }] = await Promise.all([
+    db.from('friendships').select('requester_id, addressee_id')
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`).eq('status', 'accepted'),
+    db.from('koko_profiles').select('username, display_name, avatar_url').eq('id', userId).maybeSingle(),
+  ]);
+  const friendIds = [...new Set((rows ?? []).map((r: any) => (r.requester_id === userId ? r.addressee_id : r.requester_id)))];
+  if (!friendIds.length) return;
+  const name = me?.display_name || me?.username || 'Un amigo';
+  const message = `${name} ha subido su B-Music: "${title}" de ${artist}`;
+  await db.from('notifications').insert(friendIds.map((fid) => ({
+    type: 'daily_drop',
+    user_id: fid,
+    sender_name: name,
+    message,
+    track_name: title,
+    cover_url: cover || me?.avatar_url || null,
+    is_read: false,
+  })));
+  sendPushToUsers(friendIds, {
+    title: `${name} ha subido su B-Music`,
+    body: `${title} · ${artist}`,
+    icon: cover || undefined,
+    url: 'friends',
+    tag: `bmusic-${userId}`,
+  });
+}
+
 // ── POST /api/friends/daily-drop ───────────────────────────────────────────────
 // Post or update today's BeMusic song drop
 router.post('/daily-drop', async (req, res) => {
@@ -1214,6 +1244,10 @@ router.post('/daily-drop', async (req, res) => {
 
     const streak = await getDailyDropStreak(userId);
     res.json({ drop, streak, success: true });
+
+    // Primer B-Music del día: avisar a los amigos (cambiarlo luego no repite el aviso)
+    if (!existing) notifyFriendsOfDailyDrop(userId, title, artist, cover).catch((e) =>
+      console.error('[BMusic] Aviso a amigos falló:', e));
   } catch (e: any) {
     console.error('Error posting daily drop:', e);
     err(res, e.message || 'Error al publicar canción del día');

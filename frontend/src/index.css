@@ -2462,6 +2462,26 @@ select:focus {
 
 #notification-panel {
   animation: slideDown var(--duration-base) var(--ease-smooth) forwards;
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+}
+#notification-panel > :last-child { overflow-y: auto; overscroll-behavior: contain; }
+
+/* Móvil: el panel (340 px anclado a la campana) se salía por la izquierda.
+   Ocupa el ancho de la pantalla con margen, bajo la cabecera. */
+@media (max-width: 768px) {
+  #notification-panel {
+    position: fixed !important;
+    top: calc(env(safe-area-inset-top, 0px) + 64px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-height: calc(100dvh - 64px - 96px - env(safe-area-inset-top, 0px));
+    border-radius: 18px !important;
+    z-index: 3000 !important;
+  }
+  #notification-panel .notification-list { max-height: none !important; flex: 1; min-height: 0; }
 }
 
 /* ── Collaborative Playlist / Jam UI placeholders ───────────────────────────── */

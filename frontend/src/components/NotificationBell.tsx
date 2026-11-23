@@ -186,7 +186,7 @@ export default function NotificationBell() {
 
           {/* List */}
           <div
-            className="custom-scrollbar"
+            className="custom-scrollbar notification-list"
             style={{ maxHeight: 380, overflowY: 'auto' }}
           >
             {notifications.length === 0 ? (
