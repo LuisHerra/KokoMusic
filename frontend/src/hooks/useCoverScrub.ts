@@ -85,8 +85,10 @@ export function useCoverScrub() {
 
   /** Para envolver el onClick de la portada: ignora el "click" que sigue a un arrastre. */
   const guardClick = (fn: () => void) => () => { if (!suppressClick.current) fn(); };
+  /** true justo después de un arrastre (para ignorar el click que lo sigue). */
+  const wasDragging = () => suppressClick.current;
 
-  return { scrub, handlers: { onTouchStart, onTouchMove, onTouchEnd }, guardClick };
+  return { scrub, handlers: { onTouchStart, onTouchMove, onTouchEnd }, guardClick, wasDragging };
 }
 
 export const fmtScrubTime = (s: number) => {

@@ -12,6 +12,7 @@ import {
   IconRadio, IconEqualizer, IconGroupListen, IconGamepad, IconAddCircle, IconHeart, IconDevices,
 } from './PlayerIcons';
 import { seekAudio, recordEarlySkip } from '../../hooks/useAudioPlayer';
+import { useCoverScrub, fmtScrubTime } from '../../hooks/useCoverScrub';
 import { useLikedSongs } from '../../hooks/useLikedSongs';
 import { sendRecommendationFeedback, triggerRecommendationEvent } from '../../lib/api';
 import SleepTimer from './SleepTimer';
@@ -217,7 +218,13 @@ export default function Player() {
     position: 'relative' as const,
   };
 
+  // Móvil: deslizar sobre la barra mini (visible en cualquier sección) mueve la
+  // canción; un deslizamiento largo o rápido pasa a la siguiente o la anterior.
+  const barScrub = useCoverScrub();
+  const isMobileBar = typeof window !== 'undefined' && window.innerWidth <= 768;
+
   const handlePlayerBarClick = (e: React.MouseEvent) => {
+    if (barScrub.wasDragging()) return;
     // On mobile, tapping the mini-bar opens the full Spotify-style player (VideoPanel)
     if (window.innerWidth <= 768) {
       const target = e.target as HTMLElement;
@@ -228,7 +235,25 @@ export default function Player() {
   };
 
   return (
-    <div className="player" style={playerStyle} onClick={handlePlayerBarClick}>
+    <div
+      className={`player ${isMobileBar ? 'player-scrub-zone' : ''}`}
+      style={playerStyle}
+      onClick={handlePlayerBarClick}
+      {...(isMobileBar && currentTrack ? barScrub.handlers : {})}
+    >
+      {barScrub.scrub.active && (
+        <div className={`player-scrub-hud mode-${barScrub.scrub.mode}`}>
+          {barScrub.scrub.mode === 'seek' ? (
+            <>
+              <strong>{fmtScrubTime(barScrub.scrub.targetS)}</strong>
+              <small>{barScrub.scrub.deltaS >= 0 ? '+' : '-'}{fmtScrubTime(Math.abs(barScrub.scrub.deltaS))}</small>
+              <span className="player-scrub-bar"><i style={{ width: `${duration ? (barScrub.scrub.targetS / duration) * 100 : 0}%` }} /></span>
+            </>
+          ) : (
+            <strong>{barScrub.scrub.mode === 'next' ? 'Siguiente' : 'Anterior'}</strong>
+          )}
+        </div>
+      )}
       {remoteDeviceId && !activeJamCode && (
         <div className="remote-output-strip player-remote-strip" onClick={(e) => e.stopPropagation()}>
           <IconDevices size={13} /> Sonando en {remoteDeviceName || 'otro dispositivo'} — controlando desde aquí

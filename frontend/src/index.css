@@ -7311,3 +7311,17 @@ input:checked + .autoplay-slider:before {
 .mfp-scrub-hud small { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.7); font-variant-numeric: tabular-nums; }
 .mfp-scrub-hud.mode-next, .mfp-scrub-hud.mode-prev { background: color-mix(in srgb, var(--accent) 85%, #000); color: #000; }
 .mfp-scrub-hud.mode-next strong, .mfp-scrub-hud.mode-prev strong { font-size: 20px; }
+
+/* Deslizar sobre la barra mini del reproductor (móvil) */
+.player-scrub-zone { touch-action: pan-y; }
+.player-scrub-hud {
+  position: absolute; left: 12px; right: 12px; bottom: calc(100% + 10px); z-index: 50; pointer-events: none;
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; color: #fff;
+  background: rgba(10,10,12,0.88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: songDropFade .12s ease-out;
+}
+.player-scrub-hud strong { font-size: 18px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.player-scrub-hud small { font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.65); font-variant-numeric: tabular-nums; }
+.player-scrub-bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); overflow: hidden; }
+.player-scrub-bar i { display: block; height: 100%; background: var(--accent); }
+.player-scrub-hud.mode-next, .player-scrub-hud.mode-prev { justify-content: center; background: color-mix(in srgb, var(--accent) 88%, #000); color: #000; }

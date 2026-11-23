@@ -20,8 +20,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-11-23',
     title: 'Gestos en el reproductor y atajo de voz',
     changes: [
-      { kind: 'nuevo', text: 'En el reproductor del móvil, desliza sobre la portada para ir a otro momento de la canción. Con un deslizamiento largo o rápido pasas a la siguiente o vuelves a la anterior.' },
+      { kind: 'nuevo', text: 'En el móvil, desliza sobre la barra del reproductor desde cualquier sección (o sobre la portada con el reproductor abierto) para ir a otro momento de la canción. Con un deslizamiento largo o rápido pasas a la siguiente o vuelves a la anterior.' },
       { kind: 'nuevo', text: 'En la app de Android, pulsa volumen arriba y volumen abajo a la vez para hablar con KokoMusic. Con la app en segundo plano aparece un aviso "Toca para hablar".' },
+      { kind: 'mejora', text: 'Para guardar un videoclip en el móvil, toca descargar en el reproductor y elige "Vídeo en mi dispositivo". Los encontrarás en "Mis vídeos", dentro del menú "Más". El atajo de voz y los vídeos necesitan la última versión de la app de Android.' },
     ],
   },
   {

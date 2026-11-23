@@ -132,7 +132,10 @@ async function resolveBackend(): Promise<string> {
 function optimisticBackend(): string | null {
   try {
     const last = localStorage.getItem(LAST_GOOD_KEY);
-    if (last && candidates().some((c) => c.base === last)) return last;
+    // Nunca arrancar contra el respaldo: solo se usa si el principal falla en
+    // este momento (y puede estar suspendido por haber superado su límite).
+    if (last && last === FALLBACK_BASE) { localStorage.removeItem(LAST_GOOD_KEY); return null; }
+    if (last && candidates().some((c) => c.base === last && !c.lazy)) return last;
   } catch { /* sin storage */ }
   return null;
 }
