@@ -72,7 +72,8 @@ const BUILD_TUNNEL_BASE = clean(((import.meta.env.VITE_TUNNEL_URL as string | un
 
 const LAST_GOOD_KEY = 'koko_last_backend';
 
-interface Candidate { base: string; label: string; signature: boolean; onFail?: () => void }
+/** lazy: solo se prueba si fallan los anteriores (el respaldo no admite CORS desde la web y ensuciaba la consola). */
+interface Candidate { base: string; label: string; signature: boolean; onFail?: () => void; lazy?: boolean }
 
 function candidates(): Candidate[] {
   const list: Candidate[] = [];
@@ -98,7 +99,7 @@ function candidates(): Candidate[] {
   if (BUILD_TUNNEL_BASE) list.push({ base: BUILD_TUNNEL_BASE, label: 'Cloudflare Tunnel', signature: true });
 
   list.push({ base: HF_BASE, label: 'Cloud', signature: true });
-  if (FALLBACK_BASE && FALLBACK_BASE !== HF_BASE) list.push({ base: FALLBACK_BASE, label: 'Respaldo', signature: true });
+  if (FALLBACK_BASE && FALLBACK_BASE !== HF_BASE) list.push({ base: FALLBACK_BASE, label: 'Respaldo', signature: true, lazy: true });
 
   // Sin duplicados (conserva la prioridad)
   return list.filter((c, i) => list.findIndex((o) => o.base === c.base) === i);
@@ -111,9 +112,9 @@ function candidates(): Candidate[] {
  */
 async function resolveBackend(): Promise<string> {
   const list = candidates();
-  const probes = list.map((c) => probe(c.base, c.signature));
+  const probes = list.map((c) => (c.lazy ? null : probe(c.base, c.signature)));
   for (let i = 0; i < list.length; i++) {
-    if (await probes[i]) {
+    if (await (probes[i] ?? probe(list[i].base, list[i].signature))) {
       console.info(`[BackendResolver] ✅ ${list[i].label}: ${list[i].base}`);
       try { localStorage.setItem(LAST_GOOD_KEY, list[i].base); } catch { /* sin storage */ }
       return list[i].base;

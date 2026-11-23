@@ -200,6 +200,16 @@ checkLiteHealth().then(h => {
   else console.warn(`   KokoMusic-lite: ⚠️ No disponible: ${h.error}`);
 }).catch(() => {});
 
+// Mantener despierto KokoMusic-lite: en Render gratis se duerme tras 15 min sin
+// tráfico y despertarlo tarda ~20 s, así que la primera canción fuera del CDN
+// no cargaba (el stream agotaba el tiempo esperando a lite).
+const LITE_KEEPALIVE_MS = 10 * 60 * 1000;
+setInterval(() => {
+  checkLiteHealth().then((h) => {
+    if (!h.ok) console.warn(`[KokoLite] Aviso periódico sin respuesta: ${h.error}`);
+  }).catch(() => {});
+}, LITE_KEEPALIVE_MS).unref();
+
 import { backfillLocalHistoryToCloud, hydrateLocalHistoryFromCloud } from './services/historyService';
 
 app.listen(PORT, () => {
