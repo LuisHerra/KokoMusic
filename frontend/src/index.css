@@ -7325,3 +7325,15 @@ input:checked + .autoplay-slider:before {
 .player-scrub-bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); overflow: hidden; }
 .player-scrub-bar i { display: block; height: 100%; background: var(--accent); }
 .player-scrub-hud.mode-next, .player-scrub-hud.mode-prev { justify-content: center; background: color-mix(in srgb, var(--accent) 88%, #000); color: #000; }
+
+/* Configuración: descargar la APK (solo en la web) */
+.android-app-card { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.android-app-card > div { flex: 1 1 220px; }
+.android-app-card strong { font-size: 15px; color: #fff; }
+.android-app-card p { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+.android-app-btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; text-decoration: none;
+  font-size: 14px; font-weight: 800; color: #000; background: var(--accent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.android-app-btn:active { transform: scale(0.97); }

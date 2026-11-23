@@ -1,5 +1,6 @@
 import ProfileBadges from '../components/ProfileBadges';
 import { getSocialSettings, updateSocialSettings } from '../lib/api';
+import { ANDROID_APK_URL, canOfferAndroidApp } from '../lib/androidApp';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -165,6 +166,14 @@ function Section({ id, title, icon, children }: { id?: string; title: string; ic
       </div>
       {children}
     </div>
+  );
+}
+
+function IconDownloadApp() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 7v7M9 11l3 3 3-3M10 18h4" />
+    </svg>
   );
 }
 
@@ -1476,6 +1485,21 @@ export default function ProfilePage() {
                 <option value="10" style={{ background: '#181818' }}>10 veces</option>
                 <option value="999999" style={{ background: '#181818' }}>Nunca</option>
               </select>
+            </div>
+          </Section>
+        )}
+
+        {/* SECTION: App de Android (solo desde la web, no dentro de la APK ni en iPhone) */}
+        {canOfferAndroidApp() && (activeFilter === 'all' || activeFilter === 'playback') && (
+          <Section id="sec-android" title="App de Android" icon={<IconDownloadApp />}>
+            <div className="android-app-card">
+              <div style={{ minWidth: 0 }}>
+                <strong>Descarga la app para Android</strong>
+                <p>Reproductor propio sin Chrome, gasta menos batería, sigue sonando en segundo plano, avisos de amigos y vídeos guardados en el móvil.</p>
+              </div>
+              <a className="android-app-btn" href={ANDROID_APK_URL} rel="noopener">
+                <IconDownloadApp /> Descargar APK
+              </a>
             </div>
           </Section>
         )}
