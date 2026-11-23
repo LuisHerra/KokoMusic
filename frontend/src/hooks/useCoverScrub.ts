@@ -1,8 +1,8 @@
 /**
  * Gestos sobre la portada del reproductor móvil:
  *  - Deslizar en horizontal: mueve la canción (adelante a la derecha, atrás a
- *    la izquierda). Recorrer el 55 % del ancho equivale a la canción entera.
- *  - Swipe largo (pasar del 55 % del ancho) o rápido: siguiente / anterior.
+ *    la izquierda). El ancho de la pantalla equivale a ~1/3 de la canción.
+ *  - Swipe largo (pasar del 60 % del ancho) o muy rápido: siguiente / anterior.
  * Un toque sin arrastre sigue funcionando como antes (abre el vídeo).
  */
 import { useRef, useState } from 'react';
@@ -10,9 +10,9 @@ import { seekAudio } from './useAudioPlayer';
 import { usePlayerStore } from '../store/playerStore';
 
 const START_PX = 12;          // movimiento mínimo para considerar que se arrastra
-const TRACK_SWITCH_RATIO = 0.55;
-const FLING_PX_PER_MS = 0.9;  // gesto rápido: cambia de canción aunque sea corto
-const FLING_MIN_PX = 70;
+const TRACK_SWITCH_RATIO = 0.6;   // pasar del 60 % del ancho: siguiente / anterior
+const FLING_PX_PER_MS = 1.4;      // gesto muy rápido: cambia de canción aunque sea más corto
+const FLING_MIN_PX = 110;
 
 export interface ScrubState {
   active: boolean;
@@ -30,10 +30,12 @@ export function useCoverScrub() {
   const [scrub, setScrub] = useState<ScrubState>({ active: false, mode: 'seek', targetS: 0, deltaS: 0, dx: 0 });
 
   const compute = (dx: number, width: number, progress: number, duration: number, velocity = 0): ScrubState => {
-    const ratio = dx / (width * TRACK_SWITCH_RATIO);
+    // Precisión: el ancho de la pantalla equivale a ~1/3 de la canción (antes,
+    // medio ancho era la canción entera y 70 px ya saltaban minuto y medio).
+    const secPerPx = Math.min(0.6, Math.max(0.12, duration / (width * 3)));
     const fling = Math.abs(velocity) > FLING_PX_PER_MS && Math.abs(dx) > FLING_MIN_PX;
-    const mode: ScrubState['mode'] = Math.abs(ratio) >= 1 || fling ? (dx > 0 ? 'next' : 'prev') : 'seek';
-    const targetS = Math.max(0, Math.min(Math.max(0, duration - 1), progress + ratio * duration));
+    const mode: ScrubState['mode'] = Math.abs(dx) >= width * TRACK_SWITCH_RATIO || fling ? (dx > 0 ? 'next' : 'prev') : 'seek';
+    const targetS = Math.max(0, Math.min(Math.max(0, duration - 1), progress + dx * secPerPx));
     return { active: true, mode, targetS, deltaS: targetS - progress, dx };
   };
 

@@ -25,6 +25,35 @@ import androidx.core.content.ContextCompat
  */
 object VoiceShortcut {
     const val COMBO_WINDOW_MS = 400L
+    /** Tiempo máximo para la secuencia arriba-abajo-arriba (o abajo-arriba-abajo). */
+    const val SEQUENCE_WINDOW_MS = 1200L
+
+    /**
+     * Detecta el atajo con las teclas de volumen. Pulsar las dos a la vez no
+     * sirve: Android reserva esa combinación para el atajo de accesibilidad y
+     * no llega a las apps. Por eso el atajo es una secuencia rápida alternando:
+     * arriba, abajo, arriba (o abajo, arriba, abajo). Las dos primeras pulsaciones
+     * se anulan entre sí y la tercera no se aplica, así que el volumen no cambia.
+     */
+    class Detector {
+        private val presses = ArrayDeque<Pair<Int, Long>>()
+
+        /** direction: +1 subir, -1 bajar. Devuelve true si completa el atajo. */
+        fun onPress(direction: Int, now: Long): Boolean {
+            presses.addLast(direction to now)
+            while (presses.size > 3) presses.removeFirst()
+            if (presses.size < 3) return false
+            val (d1, t1) = presses[0]
+            val (d2, _) = presses[1]
+            val (d3, t3) = presses[2]
+            val alternating = d1 == -d2 && d2 == -d3
+            if (alternating && t3 - t1 <= SEQUENCE_WINDOW_MS) {
+                presses.clear()
+                return true
+            }
+            return false
+        }
+    }
     private const val CHANNEL_ID = "KokoVoiceChannel"
     private const val NOTIFICATION_ID = 2002
 

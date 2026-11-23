@@ -116,8 +116,7 @@ class PlaybackService : Service() {
     // app esté en segundo plano (mientras suena). Cada pulsación se aplica al
     // volumen de música como siempre; si llegan subir y bajar casi a la vez, se
     // lanza el control por voz.
-    private var lastVolUpAt = 0L
-    private var lastVolDownAt = 0L
+    private val voiceDetector = VoiceShortcut.Detector()
 
     private fun setupVolumeShortcut() {
         val audio = getSystemService(AudioManager::class.java) ?: return
@@ -125,13 +124,8 @@ class PlaybackService : Service() {
         val provider = object : VolumeProviderCompat(VOLUME_CONTROL_RELATIVE, max, audio.getStreamVolume(AudioManager.STREAM_MUSIC)) {
             override fun onAdjustVolume(direction: Int) {
                 if (direction == 0) return
-                val now = SystemClock.uptimeMillis()
-                if (direction > 0) lastVolUpAt = now else lastVolDownAt = now
-                if (lastVolUpAt > 0 && lastVolDownAt > 0 && kotlin.math.abs(lastVolUpAt - lastVolDownAt) < VoiceShortcut.COMBO_WINDOW_MS) {
-                    lastVolUpAt = 0; lastVolDownAt = 0
-                    // Deshacer el paso de volumen de la primera tecla del atajo
-                    audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, -direction, 0)
-                    currentVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                if (voiceDetector.onPress(if (direction > 0) 1 else -1, SystemClock.uptimeMillis())) {
+                    // La tercera pulsación no se aplica: el volumen queda como estaba
                     VoiceShortcut.launchFromBackground(applicationContext)
                     return
                 }

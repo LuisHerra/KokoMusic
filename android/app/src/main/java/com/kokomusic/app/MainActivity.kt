@@ -111,24 +111,19 @@ class MainActivity : AppCompatActivity() {
         binding.webView.evaluateJavascript("window.__kokoVoiceShortcut && window.__kokoVoiceShortcut()", null)
     }
 
-    // Volumen arriba + volumen abajo a la vez (con la app delante) = control por voz.
-    // Una sola tecla sigue cambiando el volumen como siempre.
-    private var volUpDownAt = 0L
-    private var volDownDownAt = 0L
+    // Atajo de voz con la app delante: volumen arriba, abajo, arriba (o abajo,
+    // arriba, abajo) rápido. Ver VoiceShortcut.Detector. Una sola tecla sigue
+    // cambiando el volumen como siempre.
+    private val voiceDetector = VoiceShortcut.Detector()
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
-        if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                val now = SystemClock.uptimeMillis()
-                if (code == KeyEvent.KEYCODE_VOLUME_UP) volUpDownAt = now else volDownDownAt = now
-                if (volUpDownAt > 0 && volDownDownAt > 0 && kotlin.math.abs(volUpDownAt - volDownDownAt) < VoiceShortcut.COMBO_WINDOW_MS) {
-                    volUpDownAt = 0; volDownDownAt = 0
-                    triggerVoice()
-                    return true
-                }
-            } else if (event.action == KeyEvent.ACTION_UP) {
-                if (code == KeyEvent.KEYCODE_VOLUME_UP) volUpDownAt = 0 else volDownDownAt = 0
+        if ((code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) &&
+            event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            val direction = if (code == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
+            if (voiceDetector.onPress(direction, SystemClock.uptimeMillis())) {
+                triggerVoice()
+                return true // la tercera pulsación no cambia el volumen
             }
         }
         return super.dispatchKeyEvent(event)

@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore, type CrossfadeCurve, registerUnlockHandler, registerSeekHandler, consumePendingStart, isNeutralFx, NEUTRAL_DJ_FX, type DjFxSnapshot, type TransitionRule, sendRemoteCommandIfConnected } from '../store/playerStore';
-import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback } from '../lib/api';
+import { getStreamUrl, logTrackPlay, triggerRecommendationEvent, sendRecommendationFeedback, resolveImageUrl } from '../lib/api';
 import { isGuestMode } from '../lib/guest';
 import { getOfflineTrack, isTrackOffline, saveTrackOffline } from '../lib/offlineAudio';
 import { getApiUrl } from '../lib/backendResolver';
@@ -50,19 +50,26 @@ function updateMediaSession(
     return;
   }
 
+  // Panel multimedia del sistema (PWA en Chrome). Si la imagen no es válida,
+  // Android pone en su lugar el icono de Chrome. Por eso: URL absoluta, sin
+  // forzar el tipo (antes se decía image/jpeg aunque fuera PNG/WebP) y la
+  // portada de iTunes a 512 px reales. El icono de la app queda de respaldo.
+  const appIcon = new URL(`${import.meta.env.BASE_URL}icons/icon-512.png`, window.location.href).href;
+  const coverUrl = (() => {
+    const raw = resolveImageUrl(track.cover || '') || '';
+    if (!raw) return '';
+    try {
+      return new URL(raw.replace(/\/\d+x\d+(bb)?\.(jpg|png|webp)$/, '/512x512bb.$2'), window.location.href).href;
+    } catch { return ''; }
+  })();
   navigator.mediaSession.metadata = new MediaMetadata({
     title:  track.title,
     artist: track.artist,
-    album:  track.album ?? 'KokoMusic',
-    artwork: track.cover
-      ? [
-          { src: track.cover, sizes: '512x512', type: 'image/jpeg' },
-          { src: track.cover, sizes: '256x256', type: 'image/jpeg' },
-        ]
-      : [
-          // Sin portada, Android mostraría el icono de Chrome en el panel multimedia
-          { src: new URL(`${import.meta.env.BASE_URL}icons/icon-512.png`, window.location.href).href, sizes: '512x512', type: 'image/png' },
-        ],
+    album:  track.album || 'KokoMusic',
+    artwork: [
+      ...(coverUrl ? [{ src: coverUrl, sizes: '512x512' }, { src: coverUrl, sizes: '256x256' }] : []),
+      { src: appIcon, sizes: '512x512', type: 'image/png' },
+    ],
   });
 
   // Handlers de transporte — el SO los invoca desde el lock screen / auriculares
