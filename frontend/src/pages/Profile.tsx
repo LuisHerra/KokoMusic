@@ -994,6 +994,22 @@ export default function ProfilePage() {
       {/* ── Content Disposal: Clean Stacked Vertical Sections ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', boxSizing: 'border-box' }}>
 
+        {/* SECTION: App de Android — arriba y en todos los filtros. Solo desde la
+            web: no aparece dentro de la APK (ya la tienes) ni en iPhone. */}
+        {canOfferAndroidApp() && (
+          <Section id="sec-android" title="App de Android" icon={<IconDownloadApp />}>
+            <div className="android-app-card">
+              <div style={{ minWidth: 0 }}>
+                <strong>Descarga la app para Android</strong>
+                <p>Reproductor propio sin Chrome, gasta menos batería, sigue sonando en segundo plano, avisos de amigos y vídeos guardados en el móvil.</p>
+              </div>
+              <a className="android-app-btn" href={ANDROID_APK_URL} rel="noopener">
+                <IconDownloadApp /> Descargar APK
+              </a>
+            </div>
+          </Section>
+        )}
+
         {/* SECTION: Personalización del Algoritmo (Visible when 'all' or 'algorithm') */}
         {(activeFilter === 'all' || activeFilter === 'algorithm') && (
           <Section id="sec-algorithm" title="Personalización del Algoritmo" icon={<IconSliders size={16} color="var(--accent)" />}>
@@ -1485,21 +1501,6 @@ export default function ProfilePage() {
                 <option value="10" style={{ background: '#181818' }}>10 veces</option>
                 <option value="999999" style={{ background: '#181818' }}>Nunca</option>
               </select>
-            </div>
-          </Section>
-        )}
-
-        {/* SECTION: App de Android (solo desde la web, no dentro de la APK ni en iPhone) */}
-        {canOfferAndroidApp() && (activeFilter === 'all' || activeFilter === 'playback') && (
-          <Section id="sec-android" title="App de Android" icon={<IconDownloadApp />}>
-            <div className="android-app-card">
-              <div style={{ minWidth: 0 }}>
-                <strong>Descarga la app para Android</strong>
-                <p>Reproductor propio sin Chrome, gasta menos batería, sigue sonando en segundo plano, avisos de amigos y vídeos guardados en el móvil.</p>
-              </div>
-              <a className="android-app-btn" href={ANDROID_APK_URL} rel="noopener">
-                <IconDownloadApp /> Descargar APK
-              </a>
             </div>
           </Section>
         )}
