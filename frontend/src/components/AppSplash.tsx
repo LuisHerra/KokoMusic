@@ -102,7 +102,7 @@ export default function AppSplash({ onReady }: Props) {
           KokoMusic
         </div>
         <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>
-          Conectando con el backend{dots}
+          Conectando al environment{dots}
         </div>
       </div>
 

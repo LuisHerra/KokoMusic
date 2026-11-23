@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-23-2',
+    date: '2026-11-23',
+    title: 'B-Music sin interrupciones y Amigos más rápido',
+    changes: [
+      { kind: 'nuevo', text: 'Sección de Novedades con un contador cuando hay una versión que aún no has visto.' },
+      { kind: 'nuevo', text: 'La Cápsula del tiempo llega al móvil, en el menú "Más", con un diseño hecho a partir de las portadas de sus canciones.' },
+      { kind: 'mejora', text: 'Escuchar el B-Music de un amigo ya no cambia la canción que tenías puesta: solo la pausa, y al volver a darle al play sigue donde estaba.' },
+      { kind: 'mejora', text: 'La sección de Amigos carga mucho más rápido.' },
+      { kind: 'mejora', text: 'Las insignias del perfil son ahora pines con la foto de tus artistas y un borde de bronce, plata u oro.' },
+      { kind: 'mejora', text: 'La app arranca más rápido.' },
+      { kind: 'arreglo', text: 'Las canciones que no estaban guardadas en KokoMusic a veces no llegaban a sonar; ahora cargan sin esperas.' },
+    ],
+  },
+  {
     id: '2026-11-23',
     date: '2026-11-23',
     title: 'Cápsulas, canciones en vivo e insignias',

@@ -643,7 +643,12 @@ function AppShell() {
 }
 
 export default function App() {
-  const [backendReady, setBackendReady] = useState(false);
+  // La pantalla de conexión solo hace falta la primera vez: si ya conocemos un
+  // backend que funcionó (backendResolver lo recuerda) o no hay red (modo sin
+  // conexión), se entra directamente y la app se revalida por debajo.
+  const [backendReady, setBackendReady] = useState(() => {
+    try { return !!localStorage.getItem('koko_last_backend') || !navigator.onLine; } catch { return false; }
+  });
   const handleReady = useCallback(() => setBackendReady(true), []);
 
   const rawBase = import.meta.env.BASE_URL || '/';
