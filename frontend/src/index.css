@@ -7297,3 +7297,17 @@ input:checked + .autoplay-slider:before {
   box-shadow: 0 0 0 2px var(--bg-elevated, #121216);
 }
 .bottom-sheet-icon-wrap .nav-new-count, .nav-new-count-corner { position: absolute; top: -6px; right: -9px; margin: 0; }
+
+/* ── Deslizar sobre la portada (useCoverScrub) ───────────────────────────── */
+.mfp-scrub-zone { position: relative; touch-action: pan-y; }
+.mfp-scrub-hud {
+  position: absolute; left: 50%; top: 50%; z-index: 5; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none;
+  padding: 12px 20px; border-radius: 16px; color: #fff; text-align: center;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: songDropFade .12s ease-out;
+}
+.mfp-scrub-hud strong { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.mfp-scrub-hud small { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.7); font-variant-numeric: tabular-nums; }
+.mfp-scrub-hud.mode-next, .mfp-scrub-hud.mode-prev { background: color-mix(in srgb, var(--accent) 85%, #000); color: #000; }
+.mfp-scrub-hud.mode-next strong, .mfp-scrub-hud.mode-prev strong { font-size: 20px; }

@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Sidebar from './components/Sidebar/Sidebar';
 import Player from './components/Player/Player';
@@ -221,6 +221,18 @@ function AppShell() {
 
   const voiceControl = useVoiceControl();
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+
+  // APK: volumen arriba + volumen abajo a la vez abre el control por voz
+  // (MainActivity / PlaybackService llaman a window.__kokoVoiceShortcut).
+  const startListeningRef = useRef(voiceControl.startListening);
+  startListeningRef.current = voiceControl.startListening;
+  useEffect(() => {
+    window.__kokoVoiceShortcut = () => {
+      setIsVoiceModalOpen(true);
+      startListeningRef.current();
+    };
+    return () => { window.__kokoVoiceShortcut = undefined; };
+  }, []);
 
   useEffect(() => {
     useThemeStore.getState().applyThemeToDOM();

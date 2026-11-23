@@ -6,6 +6,7 @@ import HeartButton from '../Common/HeartButton';
 import ParticleBurst from '../Common/ParticleBurst';
 import ArtistLinks from '../Common/ArtistLinks';
 import { seekAudio } from '../../hooks/useAudioPlayer';
+import { useCoverScrub, fmtScrubTime } from '../../hooks/useCoverScrub';
 import { useQuery } from '@tanstack/react-query';
 import { getLyrics, resolveImageUrl, getTrackVideo, searchTracks, type Lyrics, type VideoData, formatYoutubeEmbedUrl, BASE } from '../../lib/api';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
@@ -369,6 +370,9 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     setIsDragging(false);
   };
 
+  // Deslizar sobre la portada: mover la canción o cambiar de canción
+  const coverScrub = useCoverScrub();
+
   // Swipe-down to dismiss gesture
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -617,7 +621,19 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
           </div>
         ) : (
           /* ── Cover art / Embed / Background video view ── */
-          <div className="mfp-cover-wrap">
+          <div className="mfp-cover-wrap mfp-scrub-zone" {...coverScrub.handlers}>
+            {coverScrub.scrub.active && (
+              <div className={`mfp-scrub-hud mode-${coverScrub.scrub.mode}`}>
+                {coverScrub.scrub.mode === 'seek' ? (
+                  <>
+                    <strong>{fmtScrubTime(coverScrub.scrub.targetS)}</strong>
+                    <small>{coverScrub.scrub.deltaS >= 0 ? '+' : '-'}{fmtScrubTime(Math.abs(coverScrub.scrub.deltaS))}</small>
+                  </>
+                ) : (
+                  <strong>{coverScrub.scrub.mode === 'next' ? 'Siguiente' : 'Anterior'}</strong>
+                )}
+              </div>
+            )}
             {isEmbedMode && embedYoutubeId ? (
               <div className="mfp-cover-container embed-active" style={{ width: '100%', aspectRatio: '16/9', overflow: 'hidden', borderRadius: 'var(--radius-lg)' }}>
                 <iframe
@@ -639,7 +655,7 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
                  pestaña — solo el auto-detectado se puede cerrar con un toque. */
               <div
                 className="mfp-cover-video-active"
-                onClick={() => !manualVideoId && setShowBackgroundVideo(false)}
+                onClick={coverScrub.guardClick(() => !manualVideoId && setShowBackgroundVideo(false))}
                 title={manualVideoId ? undefined : 'Toca para volver a la portada'}
               >
                 {activeIndex >= 0 && parsedLines[activeIndex] ? (
@@ -653,7 +669,8 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
             ) : (
               <div
                 className="mfp-cover-container"
-                onClick={() => backgroundYoutubeId && setShowBackgroundVideo(true)}
+                style={coverScrub.scrub.active ? { transform: `translateX(${coverScrub.scrub.dx * 0.25}px) rotate(${coverScrub.scrub.dx * 0.02}deg)`, transition: 'none' } : undefined}
+                onClick={coverScrub.guardClick(() => backgroundYoutubeId && setShowBackgroundVideo(true))}
                 title={backgroundYoutubeId ? 'Toca para ver el vídeo musical' : undefined}
               >
                 <img

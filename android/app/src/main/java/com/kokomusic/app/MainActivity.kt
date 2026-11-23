@@ -12,6 +12,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.SystemClock
+import android.view.KeyEvent
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
@@ -47,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         private val ICON_ACCENTS = listOf("green", "cyan", "magenta", "purple", "amber", "crimson", "gold")
         private const val DEFAULT_ICON_ACCENT = "green"
         const val EXTRA_OPEN_NOTIFICATIONS = "open_notifications"
+        const val EXTRA_START_VOICE = "start_voice"
         private const val SOCIAL_POLL_MS = 30_000L
         /** Margen antes de congelar el WebView tras una pausa en segundo plano. */
         private const val IDLE_PAUSE_GRACE_MS = 20_000L
@@ -90,11 +93,45 @@ class MainActivity : AppCompatActivity() {
 
     /** Al tocar una notificación social se abre la campana. */
     private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_START_VOICE, false) == true) {
+            intent.removeExtra(EXTRA_START_VOICE)
+            VoiceShortcut.cancelNotification(this)
+            binding.webView.postDelayed({ triggerVoice() }, 500)
+        }
         if (intent?.getBooleanExtra(EXTRA_OPEN_NOTIFICATIONS, false) != true) return
         intent.removeExtra(EXTRA_OPEN_NOTIFICATIONS)
         binding.webView.postDelayed({
             binding.webView.evaluateJavascript("window.__kokoOpenNotifications && window.__kokoOpenNotifications()", null)
         }, 600)
+    }
+
+    /** Abre el control por voz de la web. */
+    fun triggerVoice() {
+        resumeWebView()
+        binding.webView.evaluateJavascript("window.__kokoVoiceShortcut && window.__kokoVoiceShortcut()", null)
+    }
+
+    // Volumen arriba + volumen abajo a la vez (con la app delante) = control por voz.
+    // Una sola tecla sigue cambiando el volumen como siempre.
+    private var volUpDownAt = 0L
+    private var volDownDownAt = 0L
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val code = event.keyCode
+        if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                val now = SystemClock.uptimeMillis()
+                if (code == KeyEvent.KEYCODE_VOLUME_UP) volUpDownAt = now else volDownDownAt = now
+                if (volUpDownAt > 0 && volDownDownAt > 0 && kotlin.math.abs(volUpDownAt - volDownDownAt) < VoiceShortcut.COMBO_WINDOW_MS) {
+                    volUpDownAt = 0; volDownDownAt = 0
+                    triggerVoice()
+                    return true
+                }
+            } else if (event.action == KeyEvent.ACTION_UP) {
+                if (code == KeyEvent.KEYCODE_VOLUME_UP) volUpDownAt = 0 else volDownDownAt = 0
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun startSocialPolling() {

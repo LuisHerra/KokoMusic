@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-23-3',
+    date: '2026-11-23',
+    title: 'Gestos en el reproductor y atajo de voz',
+    changes: [
+      { kind: 'nuevo', text: 'En el reproductor del móvil, desliza sobre la portada para ir a otro momento de la canción. Con un deslizamiento largo o rápido pasas a la siguiente o vuelves a la anterior.' },
+      { kind: 'nuevo', text: 'En la app de Android, pulsa volumen arriba y volumen abajo a la vez para hablar con KokoMusic. Con la app en segundo plano aparece un aviso "Toca para hablar".' },
+    ],
+  },
+  {
     id: '2026-11-23-2',
     date: '2026-11-23',
     title: 'B-Music sin interrupciones y Amigos más rápido',

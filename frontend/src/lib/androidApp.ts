@@ -60,6 +60,8 @@ declare global {
     /** La APK llama aquí al tocar una notificación social: abre la campana. */
     __kokoOpenNotifications?: () => void;
     __kokoVideoSaved?: (requestId: string, ok: boolean, message: string) => void;
+    /** La APK llama aquí al pulsar volumen arriba + abajo a la vez: abre el control por voz. */
+    __kokoVoiceShortcut?: () => void;
   }
 }
 

@@ -9,6 +9,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioManager
+import androidx.media.VolumeProviderCompat
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -106,6 +108,39 @@ class PlaybackService : Service() {
             setSessionActivity(openAppIntent())
             isActive = true
         }
+        setupVolumeShortcut()
+    }
+
+    // ── Volumen arriba + abajo en segundo plano = control por voz ────────────
+    // Con la sesión en modo "remoto" las teclas de volumen llegan aquí aunque la
+    // app esté en segundo plano (mientras suena). Cada pulsación se aplica al
+    // volumen de música como siempre; si llegan subir y bajar casi a la vez, se
+    // lanza el control por voz.
+    private var lastVolUpAt = 0L
+    private var lastVolDownAt = 0L
+
+    private fun setupVolumeShortcut() {
+        val audio = getSystemService(AudioManager::class.java) ?: return
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val provider = object : VolumeProviderCompat(VOLUME_CONTROL_RELATIVE, max, audio.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+            override fun onAdjustVolume(direction: Int) {
+                if (direction == 0) return
+                val now = SystemClock.uptimeMillis()
+                if (direction > 0) lastVolUpAt = now else lastVolDownAt = now
+                if (lastVolUpAt > 0 && lastVolDownAt > 0 && kotlin.math.abs(lastVolUpAt - lastVolDownAt) < VoiceShortcut.COMBO_WINDOW_MS) {
+                    lastVolUpAt = 0; lastVolDownAt = 0
+                    // Deshacer el paso de volumen de la primera tecla del atajo
+                    audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, -direction, 0)
+                    currentVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    VoiceShortcut.launchFromBackground(applicationContext)
+                    return
+                }
+                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
+                currentVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+            }
+        }
+        runCatching { session.setPlaybackToRemote(provider) }
+            .onFailure { Log.w(TAG, "Atajo de volumen no disponible", it) }
     }
 
     private fun send(action: String) {
