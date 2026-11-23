@@ -184,7 +184,10 @@ export default function BottomNav() {
           data-tour="more"
           className={`bottom-nav-item bottom-nav-btn ${moreActive || isOpen ? 'active' : ''}`}
         >
-          <IconMore />
+          <span style={{ position: 'relative', display: 'inline-flex' }}>
+            <IconMore />
+            {changelogUnseen > 0 && <span className="nav-new-count nav-new-count-corner">{changelogUnseen > 9 ? '9+' : changelogUnseen}</span>}
+          </span>
           <span>Más</span>
         </button>
       </div>
@@ -269,7 +272,7 @@ export default function BottomNav() {
             <button onClick={() => handleNav('/novedades')} className={`bottom-sheet-item ${location.pathname === '/novedades' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap" style={{ position: 'relative' }}>
                 <IconSparkles size={20} />
-                {changelogUnseen && <span className="nav-new-dot" aria-label="Hay novedades" />}
+                {changelogUnseen > 0 && <span className="nav-new-count" aria-label={`${changelogUnseen} novedad${changelogUnseen === 1 ? '' : 'es'} sin ver`}>{changelogUnseen > 9 ? '9+' : changelogUnseen}</span>}
               </div>
               <span>Novedades</span>
             </button>

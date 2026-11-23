@@ -364,7 +364,7 @@ export default function Sidebar() {
         <li className="sidebar-nav-item">
           <NavLink to="/novedades" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Novedades" : undefined}>
             <IconSparkles size={22} /> {!isCollapsed && "Novedades"}
-            {changelogUnseen && <span className="nav-new-dot" aria-label="Hay novedades" />}
+            {changelogUnseen > 0 && <span className="nav-new-count" aria-label={`${changelogUnseen} novedad${changelogUnseen === 1 ? '' : 'es'} sin ver`}>{changelogUnseen > 9 ? '9+' : changelogUnseen}</span>}
           </NavLink>
         </li>
       </ul>

@@ -49,11 +49,21 @@ export function markChangelogSeen(): void {
   window.dispatchEvent(new Event('koko-changelog-seen'));
 }
 
-/** true mientras haya novedades sin ver; se actualiza al abrir la página. */
-export function useUnseenChangelog(): boolean {
-  const [unseen, setUnseen] = useState(hasUnseenChangelog);
+/** Versiones publicadas que el usuario aún no ha visto (0 si está al día). */
+export function unseenChangelogCount(): number {
+  try {
+    const seen = localStorage.getItem(SEEN_KEY);
+    const idx = CHANGELOG.findIndex((e) => e.id === seen);
+    // Nunca vista: solo cuenta la última versión, no todo el histórico
+    return idx === -1 ? (CHANGELOG.length ? 1 : 0) : idx;
+  } catch { return 0; }
+}
+
+/** Número de versiones sin ver; se actualiza al abrir la página. */
+export function useUnseenChangelog(): number {
+  const [unseen, setUnseen] = useState(unseenChangelogCount);
   useEffect(() => {
-    const onSeen = () => setUnseen(hasUnseenChangelog());
+    const onSeen = () => setUnseen(unseenChangelogCount());
     window.addEventListener('koko-changelog-seen', onSeen);
     return () => window.removeEventListener('koko-changelog-seen', onSeen);
   }, []);
