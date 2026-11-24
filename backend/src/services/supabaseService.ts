@@ -67,8 +67,21 @@ export async function verifyCredentials(email: string, password: string) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { data: null, error: new Error('Supabase no configurado') };
   const throwaway = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    // Node 20 (Render) no trae WebSocket nativo: sin esto createClient lanza
+    // "Node.js 20 detected without native WebSocket support" y el login falla.
+    realtime: { transport: ws as any },
   });
   return throwaway.auth.signInWithPassword({ email, password });
+}
+
+/** verifyCredentials sin lanzar nunca: cualquier fallo se devuelve como error de login. */
+export async function safeVerifyCredentials(email: string, password: string) {
+  try {
+    return await verifyCredentials(email, password);
+  } catch (e: any) {
+    console.error('[Supabase] Error comprobando credenciales:', e?.message || e);
+    return { data: { user: null, session: null }, error: e instanceof Error ? e : new Error(String(e)) };
+  }
 }
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────

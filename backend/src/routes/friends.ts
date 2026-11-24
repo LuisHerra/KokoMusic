@@ -14,7 +14,7 @@ import fs from 'fs';
 import { getUserStatsFromCloud } from '../services/historyService';
 import { getTrackById } from '../services/metadataService';
 import { hashStringToInteger } from '../services/artistService';
-import { getArtistFromDB, upsertArtist, verifyCredentials } from '../services/supabaseService';
+import { getArtistFromDB, upsertArtist, safeVerifyCredentials } from '../services/supabaseService';
 import { uploadImageToCDN } from '../services/cdnService';
 
 const router = Router();
@@ -54,7 +54,7 @@ async function verifyPassword(userId: string, password: string): Promise<boolean
     const email = userData?.user?.email;
     if (!email) return false; // sin email real no hay forma de verificar — nunca dejar pasar
     // Cliente de un solo uso: no dejar el cliente compartido con la sesión del usuario
-    const { error: signInErr } = await verifyCredentials(email, password);
+    const { error: signInErr } = await safeVerifyCredentials(email, password);
     return !signInErr;
   } catch (e) {
     console.warn('[Login] Error verificando contraseña:', e);
@@ -214,7 +214,7 @@ router.post('/account/login', async (req, res) => {
       if (targetIdOrUser.includes('@')) {
         // Cliente de un solo uso: antes este login dejaba al cliente compartido
         // del backend actuando como el usuario (RLS → playlists y amigos vacíos).
-        const { data: authData, error: authError } = await verifyCredentials(targetIdOrUser, password);
+        const { data: authData, error: authError } = await safeVerifyCredentials(targetIdOrUser, password);
 
         if (!authError && authData.user) {
           const { data: profile } = await supabase
