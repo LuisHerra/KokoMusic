@@ -124,6 +124,6 @@ export async function saveTrackVideoToDevice(
   if (!video?.youtubeId) throw new Error('Esta canción no tiene vídeo');
   // El vídeo lo extrae y descarga el propio móvil ("yt:<id>", ver
   // YouTubeVideoResolver.kt): desde el servidor YouTube bloquea la descarga.
-  await saveVideoToDevice(`yt:${video.youtubeId}`, fileBaseName(meta));
+  await saveVideoToDevice(`yt:${video.youtubeId}`, fileBaseName(meta), meta.title);
   return 'Vídeo guardado en tu Biblioteca, en "Mis vídeos"';
 }

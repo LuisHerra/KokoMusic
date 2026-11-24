@@ -3,6 +3,8 @@
  * master y la publica en la release fija "android-latest", así esta URL
  * siempre apunta a la última versión.
  */
+import { useVideoDownloads } from './videoDownloads';
+
 export const ANDROID_APK_URL = 'https://github.com/LuisHerra/KokoMusic/releases/download/android-latest/KokoMusic.apk';
 
 /** Puente nativo que expone la APK como `window.KokoAndroid` (ver MainActivity.kt). */
@@ -18,6 +20,8 @@ export interface KokoAndroidBridge {
   saveVideoToDevice?(requestId: string, url: string, baseName: string): void;
   /** JSON con los vídeos guardados: [{id, name, size, durationMs, addedAt}] */
   listVideos?(): string;
+  /** Abre un vídeo guardado en el reproductor del sistema. */
+  openVideoExternally?(id: string): boolean;
   deleteVideo?(id: string): boolean;
 }
 
@@ -27,20 +31,27 @@ export interface LocalVideo { id: number; name: string; size: number; durationMs
 export const canSaveVideosOnDevice = () => !!window.KokoAndroid?.saveVideoToDevice;
 
 /** Descarga un vídeo al dispositivo (solo APK). Resuelve con el nombre del archivo. */
-export function saveVideoToDevice(url: string, baseName: string): Promise<string> {
+export function saveVideoToDevice(url: string, baseName: string, title?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const bridge = window.KokoAndroid;
     if (!bridge?.saveVideoToDevice) return reject(new Error('Solo disponible en la app de Android'));
     const requestId = `v${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+    // Progreso visible en "Mis vídeos" mientras dura
+    useVideoDownloads.getState().start(requestId, title || baseName);
     const prev = window.__kokoVideoSaved;
     window.__kokoVideoSaved = (id, ok, message) => {
       if (id !== requestId) return prev?.(id, ok, message);
       window.__kokoVideoSaved = prev;
+      useVideoDownloads.getState().finish(requestId);
+      window.dispatchEvent(new Event('koko-videos-changed'));
       ok ? resolve(message) : reject(new Error(message));
     };
     bridge.saveVideoToDevice(requestId, url, baseName);
   });
 }
+
+/** Abre el vídeo en el reproductor de vídeo del móvil. false si la APK no lo soporta. */
+export const openLocalVideoExternally = (id: number) => !!window.KokoAndroid?.openVideoExternally?.(String(id));
 
 export function listLocalVideos(): LocalVideo[] {
   try { return JSON.parse(window.KokoAndroid?.listVideos?.() || '[]'); } catch { return []; }
@@ -60,6 +71,8 @@ declare global {
     /** La APK llama aquí al tocar una notificación social: abre la campana. */
     __kokoOpenNotifications?: () => void;
     __kokoVideoSaved?: (requestId: string, ok: boolean, message: string) => void;
+    /** Progreso de una descarga de vídeo (0-100) y su fase. */
+    __kokoVideoProgress?: (requestId: string, pct: number, stage: string) => void;
     /** La APK llama aquí al pulsar volumen arriba + abajo a la vez: abre el control por voz. */
     __kokoVoiceShortcut?: () => void;
   }

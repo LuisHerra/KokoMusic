@@ -11,7 +11,8 @@ import { useQuery } from '@tanstack/react-query';
 import { getLyrics, resolveImageUrl, getTrackVideo, searchTracks, type Lyrics, type VideoData, formatYoutubeEmbedUrl, BASE } from '../../lib/api';
 import { parseSyncedLyrics } from '../../lib/lyricsParser';
 import { isTrackOffline, saveTrackOffline, deleteOfflineTrack } from '../../lib/offlineAudio';
-import { saveTrackToDevice, saveTrackVideoToDevice } from '../../lib/deviceDownload';
+import { saveTrackToDevice } from '../../lib/deviceDownload';
+import { startVideoDownload } from '../Common/DownloadVideoAction';
 import DownloadChoiceSheet from '../Common/DownloadChoiceSheet';
 import { getApiUrl } from '../../lib/backendResolver';
 import { useVideoSync } from '../../hooks/useVideoSync';
@@ -249,18 +250,9 @@ export default function MobileFullPlayer({ isOpen, onClose }: MobileFullPlayerPr
     }
   };
 
-  const handleVideoDownload = async () => {
-    if (!currentTrack) return;
-    const { setError } = usePlayerStore.getState();
-    setSavingToDevice(true);
-    setError('Guardando el vídeo…');
-    try {
-      setError(await saveTrackVideoToDevice(currentTrack.id, { title: currentTrack.title, artist: currentTrack.artist }));
-    } catch (err: any) {
-      setError(err?.message || 'No se pudo guardar el vídeo');
-    } finally {
-      setSavingToDevice(false);
-    }
+  // Misma descarga que el menú de tres puntos: aviso informativo y progreso en Mis vídeos
+  const handleVideoDownload = () => {
+    if (currentTrack) void startVideoDownload(currentTrack);
   };
 
   const handleRemoveOffline = async () => {

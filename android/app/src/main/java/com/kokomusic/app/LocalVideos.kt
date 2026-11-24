@@ -11,6 +11,7 @@ import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.webkit.WebResourceResponse
 import org.json.JSONArray
@@ -39,7 +40,13 @@ object LocalVideos {
      * También acepta una URL http(s) directa de un mp4 (APKs/webs antiguas).
      * Devuelve el nombre del archivo.
      */
-    fun download(context: Context, source: String, baseName: String): String {
+    fun download(
+        context: Context,
+        source: String,
+        baseName: String,
+        /** (porcentaje 0-100, fase: "video" | "audio" | "uniendo" | "guardando") */
+        onProgress: (Int, String) -> Unit = { _, _ -> },
+    ): String {
         val safe = baseName.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "").trim().take(120).ifEmpty { "KokoMusic" }
         val fileName = "$safe.mp4"
         val work = File(context.cacheDir, "video_${System.currentTimeMillis()}").apply { mkdirs() }
@@ -49,16 +56,20 @@ object LocalVideos {
                 val streams = YouTubeVideoResolver.resolveStreams(source.removePrefix("yt:"))
                 val videoFile = File(work, "video.mp4")
                 val audioFile = File(work, "audio.m4a")
-                downloadChunked(streams.videoUrl, videoFile)
-                downloadChunked(streams.audioUrl, audioFile)
+                // Reparto aproximado: vídeo 0-85 %, audio 85-95 %, unir y guardar el resto
+                downloadChunked(streams.videoUrl, videoFile) { f -> onProgress((f * 85).toInt(), "video") }
+                downloadChunked(streams.audioUrl, audioFile) { f -> onProgress(85 + (f * 10).toInt(), "audio") }
+                onProgress(96, "uniendo")
                 mux(videoFile, audioFile, result)
             } else {
                 val parsed = Uri.parse(source)
                 require(parsed.scheme == "http" || parsed.scheme == "https") { "URL de vídeo no válida" }
-                downloadChunked(source, result)
+                downloadChunked(source, result) { f -> onProgress((f * 95).toInt(), "video") }
             }
             if (result.length() == 0L) throw IllegalStateException("No se pudo obtener el vídeo de esta canción")
+            onProgress(98, "guardando")
             FileInputStream(result).use { saveToMovies(context, it, fileName, safe) }
+            onProgress(100, "guardando")
             return fileName
         } finally {
             work.deleteRecursively()
@@ -69,7 +80,7 @@ object LocalVideos {
      * Descarga por trozos con Range: YouTube limita mucho la velocidad de las
      * descargas de un solo golpe y corta las conexiones largas.
      */
-    private fun downloadChunked(url: String, out: File) {
+    private fun downloadChunked(url: String, out: File, onFraction: (Float) -> Unit = {}) {
         val chunk = 4L * 1024 * 1024
         var pos = 0L
         var total = -1L
@@ -98,6 +109,7 @@ object LocalVideos {
                     val read = conn.inputStream.use { it.copyTo(output) }
                     if (read <= 0L) break
                     pos += read
+                    if (total in 1 until Long.MAX_VALUE) onFraction((pos.toFloat() / total).coerceIn(0f, 1f))
                 } finally {
                     conn.disconnect()
                 }
@@ -209,6 +221,17 @@ object LocalVideos {
         return out.toString()
     }
 
+    /** Abre el vídeo en el reproductor de vídeo del móvil (alternativa al de la app). */
+    fun openExternally(context: Context, id: Long): Boolean = runCatching {
+        val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "video/mp4")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        true
+    }.getOrDefault(false)
+
     fun delete(context: Context, id: Long): Boolean = runCatching {
         context.contentResolver.delete(ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id), null, null) > 0
     }.getOrDefault(false)
@@ -218,7 +241,11 @@ object LocalVideos {
         val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
         val fd = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }.getOrNull() ?: return null
         val total = fd.statSize
-        val stream: InputStream = FileInputStream(fd.fileDescriptor)
+        // AutoCloseInputStream mantiene vivo el ParcelFileDescriptor mientras se
+        // lee. Antes se usaba solo fd.fileDescriptor: el recolector de basura
+        // cerraba el descriptor y el <video> recibía un archivo roto (icono de
+        // vídeo tachado en "Mis vídeos").
+        val stream: InputStream = ParcelFileDescriptor.AutoCloseInputStream(fd)
         val headers = mutableMapOf("Accept-Ranges" to "bytes", "Access-Control-Allow-Origin" to "*")
         val match = rangeHeader?.let { Regex("bytes=(\\d*)-(\\d*)").find(it) }
         if (match == null || total <= 0) {
@@ -232,7 +259,13 @@ object LocalVideos {
             return WebResourceResponse("video/mp4", null, 416, "Range Not Satisfiable",
                 headers + ("Content-Range" to "bytes */$total"), null)
         }
-        stream.skip(start)
+        // skip() puede saltar menos de lo pedido: repetir hasta llegar al inicio
+        var toSkip = start
+        while (toSkip > 0) {
+            val skipped = stream.skip(toSkip)
+            if (skipped <= 0) break
+            toSkip -= skipped
+        }
         val length = end - start + 1
         headers["Content-Range"] = "bytes $start-$end/$total"
         headers["Content-Length"] = length.toString()

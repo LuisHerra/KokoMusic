@@ -5,20 +5,22 @@
  */
 import { canSaveVideosOnDevice } from '../../lib/androidApp';
 import { saveTrackVideoToDevice } from '../../lib/deviceDownload';
-import { usePlayerStore } from '../../store/playerStore';
+import { notify } from '../../lib/notice';
 
 let downloading = false;
 
-/** Lanza la descarga del videoclip y avisa del resultado con el mensaje del reproductor. */
+/**
+ * Lanza la descarga del videoclip. Avisa con el toast informativo (no el rojo
+ * de errores) y el progreso se ve en Biblioteca → Mis vídeos.
+ */
 export async function startVideoDownload(track: { id: string; title: string; artist: string }) {
-  const { setError } = usePlayerStore.getState();
-  if (downloading) { setError('Ya se está descargando un vídeo'); return; }
+  if (downloading) { notify('Ya se está descargando un vídeo; mira el progreso en Mis vídeos'); return; }
   downloading = true;
-  setError(`Descargando el vídeo de "${track.title}"…`);
+  notify(`Descargando el vídeo de "${track.title}". Sigue el progreso en Biblioteca → Mis vídeos`);
   try {
-    setError(await saveTrackVideoToDevice(track.id, { title: track.title, artist: track.artist }));
+    notify(await saveTrackVideoToDevice(track.id, { title: track.title, artist: track.artist }), 'success');
   } catch (err: any) {
-    setError(err?.message || 'No se pudo guardar el vídeo');
+    notify(err?.message || 'No se pudo guardar el vídeo', 'error');
   } finally {
     downloading = false;
   }

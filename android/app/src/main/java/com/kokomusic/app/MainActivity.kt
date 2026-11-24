@@ -362,7 +362,21 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun saveVideoToDevice(requestId: String, url: String, baseName: String) {
             lifecycleScope.launch(Dispatchers.IO) {
-                val result = runCatching { LocalVideos.download(applicationContext, url, baseName) }
+                // Progreso a la web (barra en "Mis vídeos"): solo cuando cambia el %
+                var lastPct = -1
+                val result = runCatching {
+                    LocalVideos.download(applicationContext, url, baseName) { pct, stage ->
+                        if (pct == lastPct) return@download
+                        lastPct = pct
+                        runOnUiThread {
+                            binding.webView.evaluateJavascript(
+                                "window.__kokoVideoProgress && window.__kokoVideoProgress(" +
+                                    "${JSONObject.quote(requestId)}, $pct, ${JSONObject.quote(stage)})",
+                                null
+                            )
+                        }
+                    }
+                }
                 result.exceptionOrNull()?.let { Log.e("VideoExport", "No se pudo guardar $url", it) }
                 val message = result.getOrElse { it.message ?: "No se pudo guardar el vídeo" }
                 withContext(Dispatchers.Main) {
@@ -374,6 +388,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        @JavascriptInterface
+        fun openVideoExternally(id: String): Boolean =
+            id.toLongOrNull()?.let { LocalVideos.openExternally(this@MainActivity, it) } ?: false
 
         @JavascriptInterface
         fun listVideos(): String = runCatching { LocalVideos.list(applicationContext) }.getOrDefault("[]")

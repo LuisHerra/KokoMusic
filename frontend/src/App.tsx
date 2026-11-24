@@ -46,6 +46,7 @@ import TimeCapsules from './pages/TimeCapsules';
 import LocalVideos from './pages/LocalVideos';
 import Changelog from './pages/Changelog';
 import SongDropOverlay from './components/SongDropOverlay';
+import { useNoticeStore } from './lib/notice';
 import { isGuestMode, enterGuestMode, exitGuestMode, loadGuestPlayableIds } from './lib/guest';
 import GuidedTour from './components/GuidedTour';
 import { useThemeStore } from './store/themeStore';
@@ -209,6 +210,29 @@ function PlayerErrorToast() {
   return (
     <div className="toast" style={{ background: '#c0392b', cursor: 'pointer' }} onClick={() => setError(null)}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="white" style={{ flexShrink: 0 }}><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg> {error}
+    </div>
+  );
+}
+
+// Avisos que no son errores (descargas, confirmaciones): sin rojo ni advertencia
+function NoticeToast() {
+  const { text, kind, seq, clear } = useNoticeStore();
+  useEffect(() => {
+    if (!text) return;
+    const t = setTimeout(clear, kind === 'error' ? 6000 : 4000);
+    return () => clearTimeout(t);
+  }, [text, kind, seq, clear]);
+  if (!text) return null;
+  return (
+    <div className={`toast notice-toast notice-${kind}`} role="status" onClick={clear}>
+      {kind === 'success' ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+      ) : kind === 'error' ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+      )}
+      <span>{text}</span>
     </div>
   );
 }
@@ -397,6 +421,7 @@ function AppShell() {
   return (
     <div className={`app-shell ${isRightPanelOpen ? 'with-right-panel' : ''} ${isLyricsOpen ? 'lyrics-mode' : ''} ${currentTrack ? 'has-track' : ''}`}>
       <PlayerErrorToast />
+      <NoticeToast />
       <Sidebar />
 
       {/* Immersive Lyrics if open, otherwise standard main content */}
