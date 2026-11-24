@@ -16,14 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    id: '2026-11-24',
+    // id distinto al publicado a mediodía para que vuelva a salir el aviso
+    id: '2026-11-24-b',
     date: '2026-11-24',
     title: 'Me gusta a salvo y vídeos que sí se descargan',
     changes: [
-      { kind: 'arreglo', text: 'Tus "Me gusta", playlists y amigos podían aparecer vacíos de repente después de que alguien iniciara sesión. Ya no pasa, y no se había perdido nada.' },
-      { kind: 'arreglo', text: 'Descargar el videoclip de una canción ya funciona: ahora lo descarga directamente tu móvil.' },
-      { kind: 'nuevo', text: 'Opción "Descargar vídeo" en el menú de tres puntos de cada canción (app de Android).' },
+      { kind: 'nuevo', text: 'Opción "Descargar vídeo" en el menú de tres puntos de cada canción y en la descarga del reproductor (app de Android).' },
+      { kind: 'nuevo', text: 'Botón para descargar la app de Android en tu Perfil y aquí en Novedades.' },
       { kind: 'mejora', text: '"Mis vídeos" está ahora dentro de tu Biblioteca, junto a las canciones descargadas.' },
+      { kind: 'mejora', text: '"Tus me gusta" ya no se puede convertir en playlist colaborativa, para que tus likes estén siempre en un solo sitio.' },
+      { kind: 'arreglo', text: 'Tus "Me gusta", playlists y amigos podían aparecer vacíos de repente, y a veces fallaba añadir amigos. Ya no pasa, y no se había perdido nada.' },
+      { kind: 'arreglo', text: 'Descargar el videoclip de una canción ya funciona: ahora lo descarga directamente tu móvil. Necesitas la última versión de la app de Android.' },
     ],
   },
   {

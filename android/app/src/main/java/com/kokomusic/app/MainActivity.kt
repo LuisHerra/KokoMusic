@@ -221,6 +221,12 @@ class MainActivity : AppCompatActivity() {
                         runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                         return true
                     }
+                    // La APK nueva (botón de Novedades) se abre en el navegador: el
+                    // WebView no descarga archivos y Android la instala desde ahí.
+                    if (uri.path?.endsWith(".apk") == true) {
+                        runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                        return true
+                    }
                     return false
                 }
 

@@ -7337,3 +7337,12 @@ input:checked + .autoplay-slider:before {
   box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .android-app-btn:active { transform: scale(0.97); }
+
+/* Novedades: descargar / actualizar la APK */
+.changelog-apk {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 0 0 28px; padding: 16px 18px; border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 8%, rgba(255,255,255,0.03)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.changelog-apk > div { flex: 1 1 220px; }
+.changelog-apk strong { font-size: 15px; color: #fff; }
+.changelog-apk p { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
