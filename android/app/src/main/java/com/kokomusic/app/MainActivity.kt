@@ -389,6 +389,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        /** Reproduce un vídeo guardado dentro de la app (pantalla nativa). */
+        @JavascriptInterface
+        fun playVideo(id: String, title: String): Boolean {
+            val videoId = id.toLongOrNull() ?: return false
+            runOnUiThread { VideoPlayerActivity.start(this@MainActivity, videoId, title) }
+            return true
+        }
+
         @JavascriptInterface
         fun openVideoExternally(id: String): Boolean =
             id.toLongOrNull()?.let { LocalVideos.openExternally(this@MainActivity, it) } ?: false

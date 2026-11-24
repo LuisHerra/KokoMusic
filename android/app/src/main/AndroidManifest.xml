@@ -120,6 +120,14 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Reproductor de "Mis vídeos" dentro de la app (VideoPlayerActivity) -->
+        <activity
+            android:name=".VideoPlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.KokoMusic" />
+
         <service
             android:name=".PlaybackService"
             android:exported="false"

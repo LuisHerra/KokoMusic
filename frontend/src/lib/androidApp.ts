@@ -22,6 +22,8 @@ export interface KokoAndroidBridge {
   listVideos?(): string;
   /** Abre un vídeo guardado en el reproductor del sistema. */
   openVideoExternally?(id: string): boolean;
+  /** Reproduce un vídeo guardado en la pantalla de vídeo de la propia app. */
+  playVideo?(id: string, title: string): boolean;
   deleteVideo?(id: string): boolean;
 }
 
@@ -49,6 +51,9 @@ export function saveVideoToDevice(url: string, baseName: string, title?: string)
     bridge.saveVideoToDevice(requestId, url, baseName);
   });
 }
+
+/** Reproduce el vídeo dentro de la app (pantalla nativa). false si la APK es antigua. */
+export const playLocalVideoInApp = (id: number, title: string) => !!window.KokoAndroid?.playVideo?.(String(id), title);
 
 /** Abre el vídeo en el reproductor de vídeo del móvil. false si la APK no lo soporta. */
 export const openLocalVideoExternally = (id: number) => !!window.KokoAndroid?.openVideoExternally?.(String(id));

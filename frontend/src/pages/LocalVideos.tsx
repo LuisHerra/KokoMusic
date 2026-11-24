@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import {
-  canSaveVideosOnDevice, deleteLocalVideo, listLocalVideos, localVideoUrl, openLocalVideoExternally,
+  canSaveVideosOnDevice, deleteLocalVideo, listLocalVideos, localVideoUrl, openLocalVideoExternally, playLocalVideoInApp,
   type LocalVideo,
 } from '../lib/androidApp';
 import { useVideoDownloads, STAGE_LABEL } from '../lib/videoDownloads';
@@ -45,6 +45,9 @@ export default function LocalVideos() {
   const open = (v: LocalVideo) => {
     // Que no suenen a la vez la canción y el vídeo
     if (usePlayerStore.getState().isPlaying) usePlayerStore.getState().setIsPlaying(false);
+    // Reproductor de vídeo de la propia app (pantalla completa, sin salir de
+    // KokoMusic). Con APKs antiguas, el de la página como antes.
+    if (playLocalVideoInApp(v.id, v.name)) return;
     setPlayError(false);
     setPlaying(v);
   };

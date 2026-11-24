@@ -7,6 +7,8 @@ import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import org.schabi.newpipe.extractor.stream.AudioStream
+import org.schabi.newpipe.extractor.stream.AudioTrackType
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import java.net.HttpURLConnection
 import java.net.URL
@@ -48,8 +50,17 @@ object YouTubeVideoResolver {
             .maxByOrNull { it.second }
             ?: throw IllegalStateException("Este vídeo no tiene una versión descargable")
 
-        val audio = info.audioStreams
-            .filter { it.isUrl && it.format == MediaFormat.M4A }
+        // YouTube añade doblajes automáticos (otros idiomas) como pistas extra.
+        // Antes se elegía la de más calidad sin mirar el tipo y a veces salía
+        // doblada (p. ej. al tamil o al árabe). Siempre la ORIGINAL.
+        val m4a = info.audioStreams.filter { it.isUrl && it.format == MediaFormat.M4A }
+        val isDubbed = { s: AudioStream ->
+            s.audioTrackType == AudioTrackType.DUBBED || s.audioTrackType == AudioTrackType.DESCRIPTIVE ||
+                s.content.contains("acont%3Ddubbed") || s.content.contains("acont=dubbed")
+        }
+        val audio = m4a.filter { it.audioTrackType == AudioTrackType.ORIGINAL }
+            .ifEmpty { m4a.filterNot(isDubbed) }
+            .ifEmpty { m4a }
             .maxByOrNull { it.averageBitrate }
             ?: throw IllegalStateException("Este vídeo no tiene audio descargable")
 
