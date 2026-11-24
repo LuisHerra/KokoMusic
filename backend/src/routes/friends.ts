@@ -14,7 +14,7 @@ import fs from 'fs';
 import { getUserStatsFromCloud } from '../services/historyService';
 import { getTrackById } from '../services/metadataService';
 import { hashStringToInteger } from '../services/artistService';
-import { getArtistFromDB, upsertArtist } from '../services/supabaseService';
+import { getArtistFromDB, upsertArtist, verifyCredentials } from '../services/supabaseService';
 import { uploadImageToCDN } from '../services/cdnService';
 
 const router = Router();
@@ -53,7 +53,8 @@ async function verifyPassword(userId: string, password: string): Promise<boolean
     const { data: userData } = await supabase.auth.admin.getUserById(userId);
     const email = userData?.user?.email;
     if (!email) return false; // sin email real no hay forma de verificar — nunca dejar pasar
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+    // Cliente de un solo uso: no dejar el cliente compartido con la sesión del usuario
+    const { error: signInErr } = await verifyCredentials(email, password);
     return !signInErr;
   } catch (e) {
     console.warn('[Login] Error verificando contraseña:', e);
@@ -211,10 +212,9 @@ router.post('/account/login', async (req, res) => {
     try {
       // 1. Try Supabase auth if identifier has '@'
       if (targetIdOrUser.includes('@')) {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: targetIdOrUser,
-          password: password,
-        });
+        // Cliente de un solo uso: antes este login dejaba al cliente compartido
+        // del backend actuando como el usuario (RLS → playlists y amigos vacíos).
+        const { data: authData, error: authError } = await verifyCredentials(targetIdOrUser, password);
 
         if (!authError && authData.user) {
           const { data: profile } = await supabase

@@ -37,10 +37,39 @@ if (supabaseKeyRole && supabaseKeyRole !== 'service_role') {
 
 export const supabase = (SUPABASE_URL && SUPABASE_SERVICE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { persistSession: false },
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       realtime: { transport: ws as any },
     })
   : null;
+
+// Seguro: el cliente compartido NUNCA debe tener sesión de usuario. Si algo
+// (una llamada futura a signIn/setSession, un refresco) se la pone, se descarta
+// al momento: con ella todas las consultas irían con los permisos de ese
+// usuario y RLS devolvería vacías las playlists y "Me gusta" de los demás.
+supabase?.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    console.error(`[Supabase] ⚠️ El cliente del backend recibió una sesión de usuario (${event}); se descarta`);
+    supabase!.auth.signOut({ scope: 'local' }).catch(() => {});
+  }
+});
+
+/**
+ * Comprueba email + contraseña SIN tocar el cliente compartido.
+ *
+ * Antes se llamaba a `supabase.auth.signInWithPassword` sobre el cliente
+ * `service_role`: el cliente se quedaba con la sesión de ese usuario y todas
+ * las consultas siguientes del backend iban con SUS permisos. Con RLS eso
+ * devolvía 0 filas sin error: playlists y "Me gusta" vacíos, amistades que no
+ * se podían crear... hasta reiniciar el servidor. Aquí se usa un cliente de un
+ * solo uso que se descarta después.
+ */
+export async function verifyCredentials(email: string, password: string) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { data: null, error: new Error('Supabase no configurado') };
+  const throwaway = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  return throwaway.auth.signInWithPassword({ email, password });
+}
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
