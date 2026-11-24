@@ -1,3 +1,5 @@
+import { canSaveVideosOnDevice, listLocalVideos } from '../lib/androidApp';
+import { IconVideo } from '../components/SocialIcons';
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -378,6 +380,7 @@ export default function Library() {
   const [creating, setCreating] = useState(false);
   const openSpotifyImport = useSpotifyImportStore((s) => s.open);
   const [offlineTracksCount, setOfflineTracksCount] = useState(0);
+  const [localVideosCount] = useState(() => (canSaveVideosOnDevice() ? listLocalVideos().length : 0));
   const [offlineTracks, setOfflineTracks] = useState<Track[]>([]);
 
   useEffect(() => {
@@ -769,6 +772,28 @@ export default function Library() {
                   {offlineTracksCount === 1 ? '1 canción guardada' : `${offlineTracksCount} canciones guardadas`}
                 </div>
               </div>
+
+              {/* Mis vídeos — videoclips guardados en el móvil (solo app de Android) */}
+              {canSaveVideosOnDevice() && (
+                <div className="track-card" onClick={() => navigate('/videos')}>
+                  <div
+                    className="track-card-cover-wrap"
+                    style={{
+                      background: 'linear-gradient(135deg, var(--accent) 0%, #121212 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                    }}
+                  >
+                    <IconVideo size={40} />
+                  </div>
+                  <div className="track-card-title">Mis vídeos</div>
+                  <div className="track-card-artist">
+                    {localVideosCount === 1 ? '1 vídeo guardado' : `${localVideosCount} vídeos guardados`}
+                  </div>
+                </div>
+              )}
 
               {/* En bucle — lo que más repites últimamente */}
               <div className="track-card" onClick={() => navigate('/playlist/on-repeat')}>

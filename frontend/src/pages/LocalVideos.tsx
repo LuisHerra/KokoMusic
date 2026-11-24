@@ -23,7 +23,7 @@ export default function LocalVideos() {
     return (
       <div className="capsules-page">
         <h1 className="capsule-h1"><IconVideo size={28} /> Mis vídeos</h1>
-        <p className="capsule-sub">Los vídeos se guardan solo en el móvil: descárgalos desde la app de Android (botón “Guardar vídeo” en el panel de vídeo).</p>
+        <p className="capsule-sub">Los vídeos se guardan solo en el móvil: descárgalos desde la app de Android con “Descargar vídeo” en el menú de tres puntos de una canción.</p>
       </div>
     );
   }
@@ -50,7 +50,7 @@ export default function LocalVideos() {
       )}
 
       {videos.length === 0 ? (
-        <p className="capsule-sub">Aún no has guardado ningún vídeo. Abre el vídeo de una canción y pulsa “Guardar vídeo”.</p>
+        <p className="capsule-sub">Aún no has guardado ningún vídeo. Toca los tres puntos de una canción y elige “Descargar vídeo”.</p>
       ) : (
         <ul className="capsule-results" style={{ marginTop: 16 }}>
           {videos.map((v) => (

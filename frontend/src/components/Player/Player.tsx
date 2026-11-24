@@ -35,6 +35,7 @@ function formatTime(secs: number): string {
 import { isTrackOffline, saveTrackOffline, deleteOfflineTrack } from '../../lib/offlineAudio';
 import { saveTrackToDevice } from '../../lib/deviceDownload';
 import DownloadChoiceSheet from '../Common/DownloadChoiceSheet';
+import { startVideoDownload } from '../Common/DownloadVideoAction';
 import { resolveImageUrl, isDesktopApp } from '../../lib/api';
 import { getApiUrl } from '../../lib/backendResolver';
 
@@ -656,6 +657,7 @@ export default function Player() {
           internalSaved={downloadStatus === 'downloaded'}
           onInternal={() => (downloadStatus === 'downloaded' ? handleRemoveOffline() : handleDownload())}
           onExternal={handleDeviceDownload}
+          onVideo={() => currentTrack && startVideoDownload(currentTrack)}
         />
       )}
     </div>

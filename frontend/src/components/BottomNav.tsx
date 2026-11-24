@@ -6,8 +6,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { getMyProfile } from '../lib/api';
 import { IconKaraoke } from './Icons/NavIcons';
 
-import { isInsideAndroidApp } from '../lib/androidApp';
-import { IconHourglass, IconSparkles, IconVideo } from './SocialIcons';
+import { IconHourglass, IconSparkles } from './SocialIcons';
 import { useUnseenChangelog } from '../lib/changelog';
 import { isGuestMode } from '../lib/guest';
 function IconHome() {
@@ -132,7 +131,7 @@ export default function BottomNav() {
     navigate(path);
   };
 
-  const moreActive = ['/stats', '/dj', '/following', '/events', '/profile', '/capsules', '/videos', '/novedades'].includes(location.pathname);
+  const moreActive = ['/stats', '/dj', '/following', '/events', '/profile', '/capsules', '/novedades'].includes(location.pathname);
 
   if (isGuestMode()) {
     return (
@@ -211,13 +210,6 @@ export default function BottomNav() {
               <div className="bottom-sheet-icon-wrap"><IconHourglass size={20} /></div>
               <span>Cápsula del tiempo</span>
             </button>
-
-            {isInsideAndroidApp() && (
-              <button onClick={() => handleNav('/videos')} className={`bottom-sheet-item ${location.pathname === '/videos' ? 'active' : ''}`}>
-                <div className="bottom-sheet-icon-wrap"><IconVideo size={20} /></div>
-                <span>Mis vídeos</span>
-              </button>
-            )}
 
             <button onClick={() => handleNav('/dj')} className={`bottom-sheet-item ${location.pathname === '/dj' ? 'active' : ''}`}>
               <div className="bottom-sheet-icon-wrap"><IconDj /></div>

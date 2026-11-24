@@ -30,11 +30,16 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        // NewPipeExtractor necesita Java 11 y java.time (desugaring en Android < 8)
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "11"
+    }
+    packaging {
+        resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module")
     }
     buildFeatures {
         viewBinding = true
@@ -53,4 +58,8 @@ dependencies {
     implementation("androidx.media:media:1.7.0")
     // Sondeo de avisos sociales con la app cerrada (SocialNotifier)
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    // Extrae el vídeo de YouTube en el móvil: desde los servidores (Render)
+    // YouTube bloquea la descarga, desde la IP del usuario no.
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

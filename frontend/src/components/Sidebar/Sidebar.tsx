@@ -1,6 +1,5 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { isInsideAndroidApp } from '../../lib/androidApp';
-import { IconHourglass, IconVideo } from '../SocialIcons';
+import { IconHourglass } from '../SocialIcons';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPlaylists, createPlaylist, getCollabPlaylists, deletePlaylist, getPlaylistTrackCount, getMyProfile } from '../../lib/api';
@@ -279,13 +278,6 @@ export default function Sidebar() {
             <IconHourglass size={22} /> {!isCollapsed && "Cápsula del tiempo"}
           </NavLink>
         </li>
-        {isInsideAndroidApp() && (
-          <li className="sidebar-nav-item">
-            <NavLink to="/videos" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Mis vídeos" : undefined}>
-              <IconVideo size={22} /> {!isCollapsed && "Mis vídeos"}
-            </NavLink>
-          </li>
-        )}
         <li className="sidebar-nav-item">
           <NavLink to="/friends" style={isCollapsed ? { justifyContent: 'center', padding: '10px 0' } : undefined} title={isCollapsed ? "Amigos" : undefined}>
             <IconFriends /> {!isCollapsed && "Amigos"}

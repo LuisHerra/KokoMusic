@@ -1,3 +1,4 @@
+import DownloadVideoAction from '../components/Common/DownloadVideoAction';
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -391,6 +392,7 @@ function TrackRow({ trackId, prevTrackId, index, waitForBatch, onPlay, onRemove,
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 <span>Añadir a la cola</span>
               </button>
+              <DownloadVideoAction track={track} onDone={() => setIsActionsOpen(false)} />
 
               {onMove && (
                 <>
@@ -1851,8 +1853,10 @@ export default function Playlist() {
                 Barajar orden
               </button>
             )}
-            {/* Collab toggle */}
-            {!isVirtualPlaylist && !collabCode && !pl?._isCollab && (
+            {/* Collab toggle — nunca en "Tus me gusta": convertirla creaba una
+                copia colaborativa y (en versiones antiguas) borraba la original,
+                y así se perdieron "Me gusta" */}
+            {!isVirtualPlaylist && id !== 'liked-songs' && !collabCode && !pl?._isCollab && (
               <button
                 onClick={handleActivateCollab}
                 disabled={collabActivating}

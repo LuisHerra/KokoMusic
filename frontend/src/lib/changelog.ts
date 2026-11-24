@@ -16,13 +16,24 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-24',
+    date: '2026-11-24',
+    title: 'Me gusta a salvo y vídeos que sí se descargan',
+    changes: [
+      { kind: 'arreglo', text: 'Tus "Me gusta", playlists y amigos podían aparecer vacíos de repente después de que alguien iniciara sesión. Ya no pasa, y no se había perdido nada.' },
+      { kind: 'arreglo', text: 'Descargar el videoclip de una canción ya funciona: ahora lo descarga directamente tu móvil.' },
+      { kind: 'nuevo', text: 'Opción "Descargar vídeo" en el menú de tres puntos de cada canción (app de Android).' },
+      { kind: 'mejora', text: '"Mis vídeos" está ahora dentro de tu Biblioteca, junto a las canciones descargadas.' },
+    ],
+  },
+  {
     id: '2026-11-23-3',
     date: '2026-11-23',
     title: 'Gestos en el reproductor y atajo de voz',
     changes: [
       { kind: 'nuevo', text: 'En el móvil, desliza sobre la barra del reproductor desde cualquier sección (o sobre la portada con el reproductor abierto) para ir a otro momento de la canción. Con un deslizamiento largo o rápido pasas a la siguiente o vuelves a la anterior.' },
       { kind: 'nuevo', text: 'En la app de Android, pulsa rápido volumen arriba, abajo y arriba (o abajo, arriba y abajo) para hablar con KokoMusic; el volumen no cambia. Con la app en segundo plano y música sonando aparece un aviso "Toca para hablar".' },
-      { kind: 'mejora', text: 'Para guardar un videoclip en el móvil, toca descargar en el reproductor y elige "Vídeo en mi dispositivo". Los encontrarás en "Mis vídeos", dentro del menú "Más". El atajo de voz y los vídeos necesitan la última versión de la app de Android.' },
+      { kind: 'mejora', text: 'Para guardar un videoclip en el móvil, toca descargar en el reproductor y elige "Vídeo en mi dispositivo". Los encontrarás en "Mis vídeos", dentro de tu Biblioteca. El atajo de voz y los vídeos necesitan la última versión de la app de Android.' },
     ],
   },
   {
